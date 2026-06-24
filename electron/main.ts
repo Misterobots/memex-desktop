@@ -14,9 +14,11 @@ const execAsync = promisify(exec);
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
-const MEMEX_UI_URL  = "http://192.168.2.101:3300";
-const FALLBACK_URL  = "http://localhost:3300";
-const isDev         = process.env.NODE_ENV === "development";
+// Primary: Authentik-protected URL — login happens here, cookies persist
+const MEMEX_URL          = "https://memex.shivelymedia.com";
+// Fallback: local LAN URL — no auth, used when external URL unreachable
+const MEMEX_LOCAL_URL    = "http://192.168.2.101:3300";
+const isDev              = process.env.NODE_ENV === "development";
 
 let mainWindow:    BrowserWindow    | null = null;
 let memexView:     WebContentsView  | null = null;
@@ -60,18 +62,16 @@ function createMainWindow() {
     },
   });
 
-  // Inject desktop identity header on every request to agent_runtime.
-  // This gives agent_runtime a consistent uid ("desktop") so all features
-  // that read X-authentik-uid work without Authentik SSO.
+  // Mark all requests from the desktop app so agent_runtime can identify
+  // the client. X-authentik-uid comes from Authentik cookies automatically
+  // after the user logs in — we only add the desktop marker here.
   memexView.webContents.session.webRequest.onBeforeSendHeaders(
-    { urls: ["http://192.168.2.101:8008/*", "http://192.168.2.102:8200/*"] },
+    { urls: ["https://memex.shivelymedia.com/*", "http://192.168.2.101:*/*", "http://192.168.2.102:*/*"] },
     (details, callback) => {
       callback({
         requestHeaders: {
           ...details.requestHeaders,
-          "X-authentik-uid":   "desktop",
-          "X-authentik-email": "desktop@memex.local",
-          "X-desktop-client":  "memex-desktop",
+          "X-desktop-client": "memex-desktop",
         },
       });
     }
@@ -90,14 +90,37 @@ function createMainWindow() {
       height: bounds.height - titleBarHeight,
     });
   };
-
   mainWindow.on("resize", resizeView);
   mainWindow.on("ready-to-show", resizeView);
   resizeView();
 
-  // Load Memex UI
-  memexView.webContents.loadURL(MEMEX_UI_URL).catch(() => {
-    memexView!.webContents.loadURL(FALLBACK_URL);
+  // Load primary URL (Authentik-protected). If unreachable, fall back to LAN.
+  // Authentik handles the login redirect transparently inside the WebContentsView —
+  // the user sees the login page, authenticates, and lands on the app.
+  // Electron's session persists cookies in userData so they survive restarts.
+  memexView.webContents.loadURL(MEMEX_URL).catch(() => {
+    mainWindow?.webContents.send("showLoadError");
+    // Attempt LAN fallback after 2s
+    setTimeout(() => {
+      memexView?.webContents.loadURL(MEMEX_LOCAL_URL).catch(() => {});
+    }, 2000);
+  });
+
+  // Surface load failures to the local shell overlay
+  memexView.webContents.on("did-fail-load", (_e, code, desc) => {
+    // -3 = ABORTED (navigation cancelled), ignore
+    if (code === -3) return;
+    mainWindow?.webContents.send("showLoadError", { code, desc });
+  });
+
+  memexView.webContents.on("did-finish-load", () => {
+    mainWindow?.webContents.send("hideLoadError");
+  });
+
+  // Open external links in system browser, not inside the app
+  memexView.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: "deny" };
   });
 
   if (isDev) {
@@ -299,6 +322,10 @@ ipcMain.handle("dialog:openFolder", async () => {
   const r = await dialog.showOpenDialog({ properties: ["openDirectory"] });
   return r.canceled ? null : r.filePaths[0];
 });
+
+// Shell overlay actions
+ipcMain.on("shell:retry",    () => memexView?.webContents.loadURL(MEMEX_URL));
+ipcMain.on("shell:useLocal", () => memexView?.webContents.loadURL(MEMEX_LOCAL_URL));
 
 ipcMain.handle("app:getCwd",       () => process.cwd());
 ipcMain.handle("app:getVersion",   () => app.getVersion());

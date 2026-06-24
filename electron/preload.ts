@@ -4,6 +4,10 @@
 import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("shell", {
-  onLoadError: (cb: () => void)  => ipcRenderer.on("showLoadError", cb),
-  onLoadOk:    (cb: () => void)  => ipcRenderer.on("hideLoadError", cb),
+  onLoadError: (cb: (info?: { code: number; desc: string }) => void) =>
+    ipcRenderer.on("showLoadError", (_e, info) => cb(info)),
+  onLoadOk: (cb: () => void) =>
+    ipcRenderer.on("hideLoadError", cb),
+  retry:    () => ipcRenderer.send("shell:retry"),
+  useLocal: () => ipcRenderer.send("shell:useLocal"),
 });

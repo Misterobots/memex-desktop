@@ -54,14 +54,24 @@
     <div id="error">
       <div class="icon">◈</div>
       <h2>Couldn't connect to Memex</h2>
-      <p>Make sure the Memex UI is running at 192.168.2.101:3300 and try again.</p>
-      <button onclick="location.reload()">Retry</button>
+      <p id="error-detail">Unable to reach memex.shivelymedia.com. Check your connection and try again.</p>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button onclick="window.shell?.retry()">Retry</button>
+        <button id="btn-local" style="background:#3a3937;color:#f5f4ef" onclick="window.shell?.useLocal()">
+          Use local (no auth)
+        </button>
+      </div>
     </div>
 
     <script>
-      const errorEl = document.getElementById('error');
-      window.shell?.onLoadError(() => errorEl.classList.add('visible'));
-      window.shell?.onLoadOk(()    => errorEl.classList.remove('visible'));
+      const errorEl  = document.getElementById('error');
+      const detailEl = document.getElementById('error-detail');
+
+      window.shell?.onLoadError((info) => {
+        errorEl.classList.add('visible');
+        if (info?.desc) detailEl.textContent = info.desc;
+      });
+      window.shell?.onLoadOk(() => errorEl.classList.remove('visible'));
     </script>
   </body>
 </html>
