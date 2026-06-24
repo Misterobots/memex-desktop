@@ -59,6 +59,23 @@ function createMainWindow() {
       nodeIntegration:  false,
     },
   });
+
+  // Inject desktop identity header on every request to agent_runtime.
+  // This gives agent_runtime a consistent uid ("desktop") so all features
+  // that read X-authentik-uid work without Authentik SSO.
+  memexView.webContents.session.webRequest.onBeforeSendHeaders(
+    { urls: ["http://192.168.2.101:8008/*", "http://192.168.2.102:8200/*"] },
+    (details, callback) => {
+      callback({
+        requestHeaders: {
+          ...details.requestHeaders,
+          "X-authentik-uid":   "desktop",
+          "X-authentik-email": "desktop@memex.local",
+          "X-desktop-client":  "memex-desktop",
+        },
+      });
+    }
+  );
   memexView.setBackgroundColor("#00000000");
   mainWindow.contentView.addChildView(memexView);
 
