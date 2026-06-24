@@ -106,14 +106,16 @@ function createMainWindow() {
     }, 2000);
   });
 
-  // Surface load failures to the local shell overlay
+  // Surface load failures and start recovery loop
   memexView.webContents.on("did-fail-load", (_e, code, desc) => {
-    // -3 = ABORTED (navigation cancelled), ignore
-    if (code === -3) return;
+    if (code === -3) return; // ABORTED — navigation cancelled, ignore
     mainWindow?.webContents.send("showLoadError", { code, desc });
+    startHealthLoop();
   });
 
   memexView.webContents.on("did-finish-load", () => {
+    if (healthCheckTimer) { clearTimeout(healthCheckTimer); healthCheckTimer = null; }
+    healthAttempt = 0;
     mainWindow?.webContents.send("hideLoadError");
   });
 
@@ -234,6 +236,56 @@ ipcMain.on("quick:submit", (_e, text: string | null) => {
 });
 
 // ---------------------------------------------------------------------------
+// Connection health loop — mirrors Claude Desktop's Ce() retry pattern
+// ---------------------------------------------------------------------------
+let healthCheckTimer: ReturnType<typeof setTimeout> | null = null;
+let healthAttempt = 0;
+
+function backoffMs(attempt: number): number {
+  const base = Math.min(1000 * Math.pow(2, attempt - 1), 30_000);
+  return base + Math.random() * 0.1 * base; // ±10% jitter
+}
+
+function startHealthLoop() {
+  healthAttempt = 0;
+  scheduleHealthCheck();
+}
+
+function scheduleHealthCheck() {
+  if (healthCheckTimer) clearTimeout(healthCheckTimer);
+  const delay = healthAttempt === 0 ? 0 : backoffMs(healthAttempt);
+  healthCheckTimer = setTimeout(runHealthCheck, delay);
+}
+
+async function runHealthCheck() {
+  if (!memexView) return;
+  const isOnline = await memexView.webContents
+    .executeJavaScript("navigator.onLine")
+    .catch(() => false);
+
+  if (!isOnline) {
+    mainWindow?.webContents.send("showLoadError", { desc: "No internet connection." });
+    healthAttempt++;
+    scheduleHealthCheck();
+    return;
+  }
+
+  // Try to reach the primary URL
+  try {
+    const res = await fetch(MEMEX_URL, { method: "HEAD", signal: AbortSignal.timeout(5000) });
+    if (res.ok) {
+      healthAttempt = 0;
+      mainWindow?.webContents.send("hideLoadError");
+      memexView.webContents.loadURL(MEMEX_URL);
+      return;
+    }
+  } catch {}
+
+  healthAttempt++;
+  scheduleHealthCheck();
+}
+
+// ---------------------------------------------------------------------------
 // App lifecycle
 // ---------------------------------------------------------------------------
 app.whenReady().then(() => {
@@ -330,6 +382,27 @@ ipcMain.on("shell:useLocal", () => memexView?.webContents.loadURL(MEMEX_LOCAL_UR
 ipcMain.handle("app:getCwd",       () => process.cwd());
 ipcMain.handle("app:getVersion",   () => app.getVersion());
 ipcMain.handle("app:openExternal", (_e, url: string) => shell.openExternal(url));
+
+// ---------------------------------------------------------------------------
+// Auto-start on login
+// ---------------------------------------------------------------------------
+ipcMain.handle("app:getAutoStart", () => {
+  return app.getLoginItemSettings({ path: process.execPath }).openAtLogin;
+});
+
+ipcMain.handle("app:setAutoStart", (_e, enable: boolean) => {
+  app.setLoginItemSettings({
+    openAtLogin: enable,
+    path:        process.execPath,
+    args:        enable ? ["--startup"] : [],
+  });
+  return enable;
+});
+
+// On --startup launch: open minimized to tray, don't steal focus
+if (process.argv.includes("--startup")) {
+  app.whenReady().then(() => mainWindow?.hide());
+}
 
 // ---------------------------------------------------------------------------
 // File drag-and-drop — relay folder drops to Memex UI

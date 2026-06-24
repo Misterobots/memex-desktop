@@ -56,4 +56,10 @@ contextBridge.exposeInMainWorld("memex", {
   onOpenPath: (cb: (path: string) => void) => {
     (window as any).__memexOpenPath = cb;
   },
+
+  // Auto-start on login
+  autoStart: {
+    get: () => ipcRenderer.invoke("app:getAutoStart"),
+    set: (enable: boolean) => ipcRenderer.invoke("app:setAutoStart", enable),
+  },
 });
