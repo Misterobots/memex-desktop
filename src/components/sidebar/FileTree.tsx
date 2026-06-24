@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ipc } from "../../lib/ipc";
 import type { DirEntry } from "../../types/memex";
 
-interface Props { root: string; depth?: number; }
+interface Props { root: string; depth?: number; onFileClick?: (path: string) => void; }
 
 function FileIcon({ isDir }: { isDir: boolean }) {
   return isDir ? (
@@ -16,12 +16,15 @@ function FileIcon({ isDir }: { isDir: boolean }) {
   );
 }
 
-function FileNode({ entry, depth }: { entry: DirEntry; depth: number }) {
+function FileNode({ entry, depth, onFileClick }: { entry: DirEntry; depth: number; onFileClick?: (path: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [children, setChildren] = useState<DirEntry[]>([]);
 
   const toggle = async () => {
-    if (!entry.isDir) return;
+    if (!entry.isDir) {
+      onFileClick?.(entry.path);
+      return;
+    }
     if (!expanded && children.length === 0) {
       const entries = await ipc.readDir(entry.path);
       setChildren(entries.sort((a, b) => Number(b.isDir) - Number(a.isDir) || a.name.localeCompare(b.name)));
@@ -44,13 +47,13 @@ function FileNode({ entry, depth }: { entry: DirEntry; depth: number }) {
         <span className="truncate">{entry.name}</span>
       </button>
       {expanded && children.map((c) => (
-        <FileNode key={c.path} entry={c} depth={depth + 1} />
+        <FileNode key={c.path} entry={c} depth={depth + 1} onFileClick={onFileClick} />
       ))}
     </div>
   );
 }
 
-export function FileTree({ root }: Props) {
+export function FileTree({ root, onFileClick }: Props) {
   const [entries, setEntries] = useState<DirEntry[]>([]);
 
   useEffect(() => {
@@ -61,7 +64,7 @@ export function FileTree({ root }: Props) {
 
   return (
     <div className="py-1">
-      {entries.map((e) => <FileNode key={e.path} entry={e} depth={0} />)}
+      {entries.map((e) => <FileNode key={e.path} entry={e} depth={0} onFileClick={onFileClick} />)}
     </div>
   );
 }

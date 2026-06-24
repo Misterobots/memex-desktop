@@ -1,8 +1,9 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from "electron";
 import { join } from "path";
-import { readFileSync, writeFileSync, readdirSync, statSync } from "fs";
+import { readFileSync, writeFileSync, readdirSync, statSync, mkdirSync } from "fs";
 import { exec } from "child_process";
 import { promisify } from "util";
+import * as pty from "node-pty";
 
 const execAsync = promisify(exec);
 const isDev = process.env.NODE_ENV === "development";
@@ -83,3 +84,48 @@ ipcMain.handle("dialog:openFolder", async () => {
 ipcMain.handle("app:getCwd", () => process.cwd());
 ipcMain.handle("app:getVersion", () => app.getVersion());
 ipcMain.handle("app:openExternal", (_e, url: string) => shell.openExternal(url));
+
+ipcMain.handle("fs:mkdir", async (_e, path: string) => {
+  mkdirSync(path, { recursive: true });
+});
+
+// ---------------------------------------------------------------------------
+// PTY — persistent terminal sessions
+// ---------------------------------------------------------------------------
+const ptyProcesses = new Map<string, pty.IPty>();
+
+ipcMain.handle("pty:create", (_e, id: string, cwd?: string) => {
+  const shell = process.platform === "win32" ? "powershell.exe" : process.env.SHELL ?? "bash";
+  const ptyProcess = pty.spawn(shell, [], {
+    name: "xterm-color",
+    cols: 120,
+    rows: 36,
+    cwd: cwd ?? process.env.HOME ?? process.cwd(),
+    env: process.env as Record<string, string>,
+  });
+  ptyProcesses.set(id, ptyProcess);
+
+  ptyProcess.onData((data) => {
+    win?.webContents.send(`pty:data:${id}`, data);
+  });
+
+  ptyProcess.onExit(({ exitCode }) => {
+    win?.webContents.send(`pty:exit:${id}`, exitCode);
+    ptyProcesses.delete(id);
+  });
+
+  return { pid: ptyProcess.pid };
+});
+
+ipcMain.handle("pty:write", (_e, id: string, data: string) => {
+  ptyProcesses.get(id)?.write(data);
+});
+
+ipcMain.handle("pty:resize", (_e, id: string, cols: number, rows: number) => {
+  ptyProcesses.get(id)?.resize(cols, rows);
+});
+
+ipcMain.handle("pty:kill", (_e, id: string) => {
+  ptyProcesses.get(id)?.kill();
+  ptyProcesses.delete(id);
+});
