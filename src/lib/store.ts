@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type {
-  ChatMessage, Session, ConnectionStatus, MemexMode, MessageEvent,
+  ChatMessage, Session, ConnectionStatus, MemexMode, MessageEvent, AppTab,
 } from "../types/memex";
 
 interface AppState {
@@ -10,6 +10,7 @@ interface AppState {
   activeSessionId: string | null;
 
   // UI state
+  activeTab: AppTab;
   mode: MemexMode;
   cwd: string;
   sidebarOpen: boolean;
@@ -29,6 +30,7 @@ interface AppState {
   updateMessageContent: (sessionId: string, msgId: string, content: string) => void;
 
   // Actions — UI
+  setActiveTab: (tab: AppTab) => void;
   setMode: (mode: MemexMode) => void;
   setCwd: (cwd: string) => void;
   toggleSidebar: () => void;
@@ -47,6 +49,7 @@ export const useStore = create<AppState>()(
     (set, get) => ({
       sessions: [],
       activeSessionId: null,
+      activeTab: "chat",
       mode: "chat",
       cwd: "",
       sidebarOpen: true,
@@ -110,6 +113,7 @@ export const useStore = create<AppState>()(
           ),
         })),
 
+      setActiveTab:      (activeTab)         => set({ activeTab }),
       setMode:           (mode)              => set({ mode }),
       setCwd:            (cwd)               => set({ cwd }),
       toggleSidebar:     ()                  => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
@@ -128,6 +132,7 @@ export const useStore = create<AppState>()(
       partialize: (s) => ({
         sessions: s.sessions.slice(0, 50),
         activeSessionId: s.activeSessionId,
+        activeTab: s.activeTab,
         mode: s.mode,
         cwd: s.cwd,
         sidebarOpen: s.sidebarOpen,

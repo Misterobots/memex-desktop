@@ -1,5 +1,5 @@
 import { AGENT_RUNTIME } from "./memex-client";
-import type { EventType, MemexMode, MODE_FLAGS } from "../types/memex";
+import type { EventType, MemexMode } from "../types/memex";
 
 export interface SSEEvent {
   type: EventType;

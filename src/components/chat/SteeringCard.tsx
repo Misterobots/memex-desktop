@@ -24,7 +24,7 @@ function parseCard(content: string): { question: string; options: Option[] } {
   return { question, options };
 }
 
-export function SteeringCard({ content, messageId }: Props) {
+export function SteeringCard({ content }: Props) {
   const [answer, setAnswer] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const { mode, activeSessionId, addMessage, appendEvent, updateMessageContent, setStreaming, activeSession } = useStore();

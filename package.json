@@ -4,7 +4,7 @@
   "description": "Memex Desktop — local-first AI development harness",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "concurrently \"vite\" \"electron-wait-vite\"",
+    "dev": "vite",
     "dev:electron": "wait-on http://localhost:5173 && electron .",
     "build": "vite build && tsc -p electron/tsconfig.json && electron-builder",
     "build:renderer": "vite build",

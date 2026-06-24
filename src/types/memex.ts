@@ -1,10 +1,13 @@
+export type AppTab = "chat" | "goals" | "art" | "dev";
+
 export type MemexMode =
   | "chat"
   | "swarm"
   | "research"
   | "design"
   | "think"
-  | "plan";
+  | "plan"
+  | "workshop";
 
 export const MODE_FLAGS: Record<MemexMode, Record<string, boolean>> = {
   chat:     {},
@@ -13,6 +16,7 @@ export const MODE_FLAGS: Record<MemexMode, Record<string, boolean>> = {
   design:   { design_mode: true },
   think:    { ultrathink_mode: true },
   plan:     { swarm_mode: true, ultraplan_mode: true },
+  workshop: { workshop_mode: true },
 };
 
 export const MODE_LABELS: Record<MemexMode, string> = {
@@ -22,6 +26,7 @@ export const MODE_LABELS: Record<MemexMode, string> = {
   design:   "Design",
   think:    "Think",
   plan:     "Plan",
+  workshop: "Workshop",
 };
 
 export type EventType =

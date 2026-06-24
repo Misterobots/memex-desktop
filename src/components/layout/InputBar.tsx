@@ -5,34 +5,45 @@ import { MODE_FLAGS, MODE_LABELS, type MemexMode, type ChatMessage, type Message
 
 const MODES: MemexMode[] = ["chat", "swarm", "research", "design", "think", "plan"];
 
-const MODE_COLORS: Record<MemexMode, string> = {
-  chat:     "text-muted border-border",
-  swarm:    "text-accent border-accent",
-  research: "text-green border-green",
-  design:   "text-yellow border-yellow",
-  think:    "text-purple-400 border-purple-400",
-  plan:     "text-orange-400 border-orange-400",
+const MODE_DOT: Record<MemexMode, string> = {
+  chat:     "bg-muted",
+  swarm:    "bg-accent",
+  research: "bg-green",
+  design:   "bg-yellow",
+  think:    "bg-[#b48ead]",
+  plan:     "bg-[#d4a85f]",
+  workshop: "bg-accent",
 };
 
-export function InputBar() {
+interface InputBarProps {
+  /** Extra request flags merged into every send (e.g. { dev_mode: true }). */
+  extraFlags?: Record<string, boolean>;
+  /** When set, the composer is locked to this mode and the mode pill is hidden. */
+  lockMode?: MemexMode;
+  /** Placeholder override. */
+  placeholder?: string;
+}
+
+export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarProps) {
   const [text, setText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const {
-    mode, setMode, activeSessionId, createSession,
+    mode: globalMode, setMode, activeSessionId, createSession,
     addMessage, appendEvent, updateMessageContent,
     setStreaming, streaming, stopStream, activeSession,
   } = useStore();
 
-  // Auto-resize textarea
+  const mode = lockMode ?? globalMode;
+
   useEffect(() => {
     const ta = textareaRef.current;
     if (!ta) return;
     ta.style.height = "auto";
-    ta.style.height = Math.min(ta.scrollHeight, 200) + "px";
+    ta.style.height = Math.min(ta.scrollHeight, 220) + "px";
   }, [text]);
 
   const cycleMode = () => {
-    const idx = MODES.indexOf(mode);
+    const idx = MODES.indexOf(globalMode);
     setMode(MODES[(idx + 1) % MODES.length]);
   };
 
@@ -44,39 +55,25 @@ export function InputBar() {
     const sessionId = activeSessionId ?? createSession();
     const session = activeSession();
 
-    const userMsg: ChatMessage = {
-      id: `msg-${Date.now()}-u`,
-      role: "user",
-      content,
-      events: [],
-      timestamp: Date.now(),
-      mode,
-    };
-    addMessage(sessionId, userMsg);
+    addMessage(sessionId, {
+      id: `msg-${Date.now()}-u`, role: "user", content,
+      events: [], timestamp: Date.now(), mode,
+    } as ChatMessage);
 
     const assistantId = `msg-${Date.now()}-a`;
-    const assistantMsg: ChatMessage = {
-      id: assistantId,
-      role: "assistant",
-      content: "",
-      events: [],
-      timestamp: Date.now(),
-      mode,
-    };
-    addMessage(sessionId, assistantMsg);
+    addMessage(sessionId, {
+      id: assistantId, role: "assistant", content: "",
+      events: [], timestamp: Date.now(), mode,
+    } as ChatMessage);
 
-    const history = (session?.messages ?? []).map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
+    const history = (session?.messages ?? []).map((m) => ({ role: m.role, content: m.content }));
     history.push({ role: "user", content });
 
     let accumulated = "";
-
     const stop = streamChat({
       messages: history,
       mode,
-      modeFlags: MODE_FLAGS[mode],
+      modeFlags: { ...MODE_FLAGS[mode], ...extraFlags },
       sessionId,
       onEvent: (event) => {
         appendEvent(sessionId, assistantId, event as MessageEvent);
@@ -91,9 +88,8 @@ export function InputBar() {
         setStreaming(false);
       },
     });
-
     setStreaming(true, stop);
-  }, [text, streaming, mode, activeSessionId]);
+  }, [text, streaming, mode, activeSessionId, extraFlags]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && (e.shiftKey || e.ctrlKey)) {
@@ -107,45 +103,57 @@ export function InputBar() {
   };
 
   return (
-    <div className="border-t border-border bg-surface px-4 py-3 flex-shrink-0">
-      <div className="flex items-end gap-3 max-w-4xl mx-auto">
-        {/* Mode pill */}
-        <button
-          onClick={cycleMode}
-          className={`flex-shrink-0 px-2 py-1 rounded border text-xs font-mono mb-1 transition-colors hover:opacity-80 ${MODE_COLORS[mode]}`}
-          title="Click to cycle mode"
-        >
-          {MODE_LABELS[mode]}
-        </button>
+    <div className="px-6 pb-5 pt-2 flex-shrink-0">
+      <div className="max-w-conversation mx-auto">
+        <div className="bg-surface border border-border rounded-2xl px-3 pt-3 pb-2 focus-within:border-accent/50 transition-colors shadow-lg shadow-black/10">
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder ?? (streaming ? "Streaming… (Esc to stop)" : "Message Memex…")}
+            rows={1}
+            className="w-full bg-transparent px-2 text-text text-[15px] resize-none focus:outline-none placeholder-faint min-h-[24px] leading-relaxed"
+          />
+          <div className="flex items-center justify-between mt-1.5">
+            {/* Mode selector */}
+            {lockMode ? (
+              <span className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted">
+                <span className={`w-1.5 h-1.5 rounded-full ${MODE_DOT[mode]}`} />
+                {MODE_LABELS[mode]}
+              </span>
+            ) : (
+              <button
+                onClick={cycleMode}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-muted hover:text-text hover:bg-surface2 transition-colors"
+                title="Click to cycle mode"
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${MODE_DOT[mode]}`} />
+                {MODE_LABELS[mode]}
+              </button>
+            )}
 
-        {/* Textarea */}
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={streaming ? "Streaming… (Esc to stop)" : "Message Memex (Shift+Enter to send)"}
-          disabled={false}
-          rows={1}
-          className="flex-1 bg-canvas border border-border rounded-lg px-3 py-2 text-text text-sm resize-none focus:outline-none focus:border-accent placeholder-muted transition-colors min-h-[36px]"
-        />
-
-        {/* Send / Stop */}
-        <button
-          onClick={streaming ? () => { stopStream?.(); setStreaming(false); } : submit}
-          disabled={!streaming && !text.trim()}
-          className={`flex-shrink-0 mb-1 px-3 py-1.5 rounded text-xs font-mono transition-colors ${
-            streaming
-              ? "bg-red text-white hover:opacity-80"
-              : "bg-accent text-canvas hover:opacity-80 disabled:opacity-30 disabled:cursor-not-allowed"
-          }`}
-        >
-          {streaming ? "Stop" : "Send"}
-        </button>
+            <button
+              onClick={streaming ? () => { stopStream?.(); setStreaming(false); } : submit}
+              disabled={!streaming && !text.trim()}
+              className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${
+                streaming
+                  ? "bg-red/90 text-white hover:bg-red"
+                  : "bg-accent text-canvas hover:bg-accentdim disabled:bg-surface2 disabled:text-faint disabled:cursor-not-allowed"
+              }`}
+              title={streaming ? "Stop" : "Send"}
+            >
+              {streaming ? (
+                <span className="w-2.5 h-2.5 bg-current rounded-sm" />
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
+                  <path d="M8 13V3M8 3L4 7M8 3l4 4" />
+                </svg>
+              )}
+            </button>
+          </div>
+        </div>
       </div>
-      <p className="text-center text-muted text-xs mt-1.5">
-        Ctrl+K — command palette · Shift+Enter — send · Esc — stop
-      </p>
     </div>
   );
 }

@@ -4,19 +4,27 @@ export default {
   theme: {
     extend: {
       colors: {
-        canvas:  "#0d1117",
-        surface: "#161b22",
-        border:  "#30363d",
-        text:    "#e6edf3",
-        muted:   "#8b949e",
-        accent:  "#58a6ff",
-        green:   "#3fb950",
-        yellow:  "#d29922",
-        red:     "#f85149",
-        bubble:  "#1f2937",
+        // Anthropic warm-dark palette
+        canvas:   "#262624",   // app background (warm dark)
+        surface:  "#30302e",   // raised surfaces (sidebar, cards)
+        surface2: "#3a3937",   // hover / nested
+        border:   "#403e3c",   // subtle warm border
+        text:     "#f5f4ef",   // warm off-white
+        muted:    "#a3a096",   // warm gray
+        faint:    "#6f6d66",   // very muted
+        accent:   "#d97757",   // Claude coral
+        accentdim:"#bd6248",   // coral pressed
+        green:    "#7cae7a",   // muted sage (connected)
+        yellow:   "#d4a85f",   // warm amber
+        red:      "#d97066",   // warm red
+        userbubble:"#3a3937",  // user message bubble
       },
       fontFamily: {
-        mono: ["'Cascadia Code'", "'Fira Code'", "Consolas", "monospace"],
+        sans: ["ui-sans-serif", "system-ui", "-apple-system", "'Segoe UI'", "sans-serif"],
+        mono: ["'Cascadia Code'", "'Fira Code'", "'SF Mono'", "Consolas", "monospace"],
+      },
+      maxWidth: {
+        conversation: "768px",
       },
     },
   },
