@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { background: transparent; overflow: hidden; }
+
+      #container {
+        display: flex;
+        align-items: stretch;
+        background: #30302e;
+        border: 1px solid #524f4c;
+        border-radius: 14px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 0 0.5px rgba(255,255,255,0.06);
+        overflow: hidden;
+        margin: 4px;
+      }
+
+      #icon {
+        display: flex;
+        align-items: center;
+        padding: 0 14px 0 16px;
+        color: #d97757;
+        font-size: 18px;
+        flex-shrink: 0;
+        font-family: sans-serif;
+      }
+
+      #input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        outline: none;
+        color: #f5f4ef;
+        font-size: 15px;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        padding: 14px 0;
+        min-height: 52px;
+        resize: none;
+        line-height: 1.5;
+        max-height: 240px;
+        overflow-y: auto;
+      }
+
+      #input::placeholder { color: #6f6d66; }
+
+      #send {
+        display: flex;
+        align-items: center;
+        padding: 0 14px;
+        flex-shrink: 0;
+      }
+
+      #send button {
+        width: 28px; height: 28px;
+        border-radius: 8px;
+        background: #d97757;
+        border: none;
+        cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        color: #262624;
+        font-size: 14px;
+        transition: opacity 0.15s;
+      }
+      #send button:disabled { background: #403e3c; color: #6f6d66; cursor: default; }
+      #send button:not(:disabled):hover { opacity: 0.85; }
+    </style>
+  </head>
+  <body>
+    <div id="container">
+      <div id="icon">◈</div>
+      <textarea id="input" rows="1" placeholder="Ask Memex…" autofocus></textarea>
+      <div id="send">
+        <button id="btn" disabled title="Send">↑</button>
+      </div>
+    </div>
+
+    <script>
+      const input = document.getElementById('input');
+      const btn   = document.getElementById('btn');
+      const q     = window.quick;
+
+      function skooch() {
+        const container = document.getElementById('container');
+        const h = container.offsetHeight + 8; // +8 for margin
+        q.skooch(640, h);
+      }
+
+      input.addEventListener('input', () => {
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 200) + 'px';
+        btn.disabled = !input.value.trim();
+        skooch();
+      });
+
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          submit();
+        }
+        if (e.key === 'Escape') {
+          q.submit(null);
+        }
+      });
+
+      btn.addEventListener('click', submit);
+
+      function submit() {
+        const text = input.value.trim();
+        if (!text) return;
+        q.submit(text);
+        input.value = '';
+        input.style.height = 'auto';
+        btn.disabled = true;
+        skooch();
+      }
+
+      // Initial size
+      requestAnimationFrame(skooch);
+    </script>
+  </body>
+</html>

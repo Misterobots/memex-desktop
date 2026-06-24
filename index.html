@@ -3,11 +3,65 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- CSP applied in production via Electron's session.setPermissionRequestHandler -->
     <title>Memex Desktop</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { height: 100%; overflow: hidden; background: transparent; }
+
+      /* Transparent drag region sits above the WebContentsView */
+      #titlebar {
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        height: 40px;
+        -webkit-app-region: drag;
+        background: transparent;
+        z-index: 10;
+      }
+
+      /* Error overlay — shown when Memex UI fails to load */
+      #error {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: #262624;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        color: #f5f4ef;
+        z-index: 200;
+      }
+      #error.visible { display: flex; }
+      #error .icon { font-size: 40px; color: #d97757; }
+      #error h2    { font-size: 17px; font-weight: 600; }
+      #error p     { font-size: 13px; color: #a3a096; max-width: 300px; text-align: center; line-height: 1.5; }
+      #error button {
+        padding: 8px 22px;
+        background: #d97757;
+        color: #262624;
+        border: none;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <div id="titlebar"></div>
+
+    <div id="error">
+      <div class="icon">◈</div>
+      <h2>Couldn't connect to Memex</h2>
+      <p>Make sure the Memex UI is running at 192.168.2.101:3300 and try again.</p>
+      <button onclick="location.reload()">Retry</button>
+    </div>
+
+    <script>
+      const errorEl = document.getElementById('error');
+      window.shell?.onLoadError(() => errorEl.classList.add('visible'));
+      window.shell?.onLoadOk(()    => errorEl.classList.remove('visible'));
+    </script>
   </body>
 </html>
