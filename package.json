@@ -4,35 +4,51 @@
   "description": "Memex Desktop — native shell for the Memex UI",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev":            "vite",
-    "build":          "vite build && electron-builder",
+    "dev": "vite",
+    "build": "vite build && electron-builder",
     "build:electron": "vite build",
-    "start":          "electron ."
+    "start": "electron ."
   },
   "dependencies": {
-    "node-pty":               "^1.1.0",
-    "xterm":                  "^5.3.0",
-    "@xterm/addon-fit":       "^0.11.0",
-    "@xterm/addon-web-links": "^0.12.0"
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-web-links": "^0.12.0",
+    "electron-updater": "^6.8.9",
+    "node-pty": "^1.1.0",
+    "xterm": "^5.3.0"
   },
   "devDependencies": {
-    "@types/node":              "^20.14.0",
-    "concurrently":             "^8.2.2",
-    "electron":                 "^31.0.0",
-    "electron-builder":         "^24.13.3",
-    "typescript":               "^5.4.5",
-    "vite":                     "^5.3.1",
-    "vite-plugin-electron":     "^0.28.7",
-    "wait-on":                  "^7.2.0"
+    "@types/node": "^20.14.0",
+    "concurrently": "^8.2.2",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.4.5",
+    "vite": "^5.3.1",
+    "vite-plugin-electron": "^0.28.7",
+    "wait-on": "^7.2.0"
   },
   "build": {
     "appId": "com.memex.desktop",
     "productName": "Memex Desktop",
     "directories": { "output": "release" },
-    "files": ["dist/**/*", "dist-electron/**/*", "index.html", "quick.html"],
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "index.html",
+      "quick.html"
+    ],
     "extraResources": [],
-    "win":   { "target": "nsis" },
-    "mac":   { "target": "dmg" },
-    "linux": { "target": "AppImage" }
+    "publish": {
+      "provider": "github",
+      "owner":    "Misterobots",
+      "repo":     "memex-desktop"
+    },
+    "win":   { "target": [{ "target": "nsis", "arch": ["x64"] }] },
+    "mac":   { "target": [{ "target": "dmg",  "arch": ["x64", "arm64"] }] },
+    "linux": { "target": [{ "target": "AppImage", "arch": ["x64"] }] },
+    "nsis": {
+      "oneClick":        false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    }
   }
 }

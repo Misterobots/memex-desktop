@@ -63,6 +63,20 @@ contextBridge.exposeInMainWorld("memex", {
     set: (enable: boolean) => ipcRenderer.invoke("app:setAutoStart", enable),
   },
 
+  // Auto-updater
+  updater: {
+    onStatus: (cb: (status: {
+      state: "checking" | "available" | "downloading" | "ready" | "current" | "error";
+      version?: string;
+      percent?: number;
+      message?: string;
+    }) => void) => {
+      ipcRenderer.on("update:status", (_e, status) => cb(status));
+      return () => ipcRenderer.removeAllListeners("update:status");
+    },
+    install: () => ipcRenderer.send("update:install"),
+  },
+
   // Permission prompts — native dialog for tool approval
   permissions: {
     request: (opts: {

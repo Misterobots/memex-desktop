@@ -8,6 +8,7 @@ import { readFileSync, writeFileSync, readdirSync, statSync, mkdirSync } from "f
 import { exec } from "child_process";
 import { promisify } from "util";
 import * as pty from "node-pty";
+import { autoUpdater } from "electron-updater";
 
 const execAsync = promisify(exec);
 
@@ -236,6 +237,59 @@ ipcMain.on("quick:submit", (_e, text: string | null) => {
 });
 
 // ---------------------------------------------------------------------------
+// Auto-updater — checks GitHub Releases on launch, notifies via tray + IPC
+// ---------------------------------------------------------------------------
+function setupUpdater() {
+  if (isDev) return; // skip in dev — no packaged app to update
+
+  autoUpdater.autoDownload    = true;   // download silently in background
+  autoUpdater.autoInstallOnAppQuit = true; // install when user quits normally
+
+  autoUpdater.on("checking-for-update", () => {
+    mainWindow?.webContents.send("update:status", { state: "checking" });
+  });
+
+  autoUpdater.on("update-available", (info) => {
+    mainWindow?.webContents.send("update:status", { state: "available", version: info.version });
+    tray?.setToolTip(`Memex Desktop — update ${info.version} downloading…`);
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    mainWindow?.webContents.send("update:status", { state: "current" });
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    mainWindow?.webContents.send("update:status", {
+      state:    "downloading",
+      percent:  Math.round(progress.percent),
+      bytesPerSecond: progress.bytesPerSecond,
+    });
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    mainWindow?.webContents.send("update:status", { state: "ready", version: info.version });
+    tray?.setToolTip(`Memex Desktop — update ${info.version} ready`);
+
+    // Show tray notification so user knows even if window is hidden
+    tray?.displayBalloon({
+      title:   "Memex Desktop update ready",
+      content: `Version ${info.version} is ready to install. Restart Memex to apply.`,
+    });
+  });
+
+  autoUpdater.on("error", (err) => {
+    mainWindow?.webContents.send("update:status", { state: "error", message: err.message });
+  });
+
+  // Check 5 seconds after launch (let the app settle), then every 6 hours
+  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 5000);
+  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
+}
+
+// IPC: renderer can trigger install-and-restart
+ipcMain.on("update:install", () => autoUpdater.quitAndInstall(false, true));
+
+// ---------------------------------------------------------------------------
 // Connection health loop — mirrors Claude Desktop's Ce() retry pattern
 // ---------------------------------------------------------------------------
 let healthCheckTimer: ReturnType<typeof setTimeout> | null = null;
@@ -291,6 +345,7 @@ async function runHealthCheck() {
 app.whenReady().then(() => {
   createMainWindow();
   createTray();
+  setupUpdater();
 
   // Global shortcut: Option+Option (or Ctrl+Shift+Space on Windows) → Quick Entry
   const shortcut = process.platform === "darwin" ? "Option+Space" : "Ctrl+Shift+Space";
