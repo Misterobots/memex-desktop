@@ -45,6 +45,22 @@
     "win":   { "target": [{ "target": "nsis", "arch": ["x64"] }] },
     "mac":   { "target": [{ "target": "dmg",  "arch": ["x64", "arm64"] }] },
     "linux": { "target": [{ "target": "AppImage", "arch": ["x64"] }] },
+    "fileAssociations": [
+      {
+        "ext":         "memex",
+        "name":        "Memex Session",
+        "description": "Memex session or skill file",
+        "mimeType":    "application/x-memex",
+        "role":        "Editor"
+      },
+      {
+        "ext":         "claude",
+        "name":        "Claude Skill",
+        "description": "Claude Code skill package",
+        "mimeType":    "application/x-claude-skill",
+        "role":        "Editor"
+      }
+    ],
     "nsis": {
       "oneClick":        false,
       "allowToChangeInstallationDirectory": true,

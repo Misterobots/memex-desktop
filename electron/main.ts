@@ -529,11 +529,36 @@ if (process.argv.includes("--startup")) {
 }
 
 // ---------------------------------------------------------------------------
-// File drag-and-drop — relay folder drops to Memex UI
+// File handling — drag-and-drop + double-click from Explorer
 // ---------------------------------------------------------------------------
+function routeFilePath(filePath: string) {
+  const lower = filePath.toLowerCase();
+
+  if (lower.endsWith(".memex") || lower.endsWith(".claude")) {
+    // Skill / session file — relay to UI for import
+    memexView?.webContents.executeJavaScript(
+      `window.__memexImportFile && window.__memexImportFile(${JSON.stringify(filePath)})`
+    );
+  } else {
+    // Directory or generic file — open in dev workspace
+    memexView?.webContents.executeJavaScript(
+      `window.__memexOpenPath && window.__memexOpenPath(${JSON.stringify(filePath)})`
+    );
+  }
+}
+
 app.on("open-file", (event, filePath) => {
   event.preventDefault();
-  memexView?.webContents.executeJavaScript(
-    `window.__memexOpenPath && window.__memexOpenPath(${JSON.stringify(filePath)})`
-  );
+  mainWindow?.show();
+  mainWindow?.focus();
+  routeFilePath(filePath);
 });
+
+// Cold-boot: launched by double-clicking a file
+if (process.argv.length > 1) {
+  const candidate = process.argv[process.argv.length - 1];
+  // Only if it looks like a file path (not a flag)
+  if (!candidate.startsWith("--") && candidate.includes(".")) {
+    app.whenReady().then(() => routeFilePath(candidate));
+  }
+}
