@@ -9,6 +9,7 @@
   },
   "include": [
     "main.ts",
+    "lsp-manager.ts",
     "preload.ts",
     "preload-memex.ts",
     "preload-quick.ts"

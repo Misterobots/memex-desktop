@@ -57,6 +57,20 @@ contextBridge.exposeInMainWorld("memex", {
     (window as any).__memexOpenPath = cb;
   },
 
+  // LSP bridge
+  lsp: {
+    start:   (ext: string, rootUri: string) =>
+      ipcRenderer.invoke("lsp:start", ext, rootUri) as Promise<boolean>,
+    request: (lang: string, rootUri: string, method: string, params: unknown) =>
+      ipcRenderer.invoke("lsp:request", lang, rootUri, method, params),
+    notify:  (lang: string, rootUri: string, method: string, params: unknown) =>
+      ipcRenderer.send("lsp:notify", lang, rootUri, method, params),
+    onNotification: (cb: (data: { lang: string; method: string; params: unknown }) => void) => {
+      ipcRenderer.on("lsp:notification", (_e, data) => cb(data));
+      return () => ipcRenderer.removeAllListeners("lsp:notification");
+    },
+  },
+
   // Auto-start on login
   autoStart: {
     get: () => ipcRenderer.invoke("app:getAutoStart"),
