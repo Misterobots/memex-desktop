@@ -62,4 +62,16 @@ contextBridge.exposeInMainWorld("memex", {
     get: () => ipcRenderer.invoke("app:getAutoStart"),
     set: (enable: boolean) => ipcRenderer.invoke("app:setAutoStart", enable),
   },
+
+  // Permission prompts — native dialog for tool approval
+  permissions: {
+    request: (opts: {
+      toolName:  string;
+      toolInput: Record<string, unknown>;
+      callId:    string;
+    }) => ipcRenderer.invoke("permission:request", opts) as Promise<{
+      approved: boolean;
+      scope: "once" | "session" | "workspace";
+    }>,
+  },
 });

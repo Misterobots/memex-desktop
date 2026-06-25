@@ -379,6 +379,49 @@ ipcMain.handle("dialog:openFolder", async () => {
 ipcMain.on("shell:retry",    () => memexView?.webContents.loadURL(MEMEX_URL));
 ipcMain.on("shell:useLocal", () => memexView?.webContents.loadURL(MEMEX_LOCAL_URL));
 
+// ---------------------------------------------------------------------------
+// Permission prompts — native dialog for tool approval (like Claude Code)
+// ---------------------------------------------------------------------------
+ipcMain.handle("permission:request", async (_e, opts: {
+  toolName:  string;
+  toolInput: Record<string, unknown>;
+  callId:    string;
+}) => {
+  if (!mainWindow) return { approved: false, scope: "once" as const };
+
+  // Bring the window to front so the user sees the request
+  mainWindow.show();
+  mainWindow.focus();
+
+  const toolLabel = opts.toolName.replace(/_/g, " ");
+  const argsSummary = Object.entries(opts.toolInput)
+    .slice(0, 3)
+    .map(([k, v]) => `${k}: ${String(v).slice(0, 60)}`)
+    .join("\n");
+
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type:    "question",
+    title:   "Tool permission required",
+    message: `Allow: ${toolLabel}`,
+    detail:  argsSummary
+      ? `Arguments:\n${argsSummary}\n\nChoose how to proceed:`
+      : "Choose how to proceed:",
+    buttons: [
+      "Approve once",
+      "Auto-approve for session",
+      "Auto-approve for workspace",
+      "Deny",
+    ],
+    defaultId:  0,
+    cancelId:   3,
+    noLink:     true,
+  });
+
+  const scopes = ["once", "session", "workspace", "deny"] as const;
+  const chosen  = scopes[response] ?? "deny";
+  return { approved: chosen !== "deny", scope: chosen === "deny" ? "once" : chosen };
+});
+
 ipcMain.handle("app:getCwd",       () => process.cwd());
 ipcMain.handle("app:getVersion",   () => app.getVersion());
 ipcMain.handle("app:openExternal", (_e, url: string) => shell.openExternal(url));
