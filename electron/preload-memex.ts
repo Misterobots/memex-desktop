@@ -57,6 +57,15 @@ contextBridge.exposeInMainWorld("memex", {
     (window as any).__memexOpenPath = cb;
   },
 
+  // Chrome extension browser bridge
+  browser: {
+    send: (msg: Record<string, unknown>) => ipcRenderer.invoke("browser:send", msg),
+    onMessage: (cb: (msg: Record<string, unknown>) => void) => {
+      ipcRenderer.on("browser:message", (_e, msg) => cb(msg));
+      return () => ipcRenderer.removeAllListeners("browser:message");
+    },
+  },
+
   // LSP bridge
   lsp: {
     start:   (ext: string, rootUri: string) =>

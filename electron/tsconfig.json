@@ -10,6 +10,7 @@
   "include": [
     "main.ts",
     "lsp-manager.ts",
+    "browser-bridge.ts",
     "preload.ts",
     "preload-memex.ts",
     "preload-quick.ts"

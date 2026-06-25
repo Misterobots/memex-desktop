@@ -9,7 +9,8 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import * as pty from "node-pty";
 import { autoUpdater }  from "electron-updater";
-import { LspManager }   from "./lsp-manager";
+import { LspManager }       from "./lsp-manager";
+import { BrowserBridge, registerNativeHost } from "./browser-bridge";
 
 const execAsync = promisify(exec);
 
@@ -26,7 +27,8 @@ let mainWindow:    BrowserWindow    | null = null;
 let memexView:     WebContentsView  | null = null;
 let quickWindow:   BrowserWindow    | null = null;
 let tray:          Tray             | null = null;
-const lsp = new LspManager(() => mainWindow);
+const lsp     = new LspManager(() => mainWindow);
+const browser = new BrowserBridge();
 
 // ---------------------------------------------------------------------------
 // Main window
@@ -348,6 +350,12 @@ app.whenReady().then(() => {
   createMainWindow();
   createTray();
   setupUpdater();
+  registerNativeHost();
+
+  // Browser bridge — relay messages from Chrome extension to Memex UI
+  browser.start((msg) => {
+    memexView?.webContents.send("browser:message", msg);
+  });
 
   // Global shortcuts
   const shortcuts: Array<{ accelerator: string; action: () => void; description: string }> = [
@@ -385,9 +393,13 @@ app.whenReady().then(() => {
   });
 });
 
+// Browser bridge IPC
+ipcMain.handle("browser:send", (_e, msg: Record<string, unknown>) => browser.send(msg));
+
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
   lsp.stopAll();
+  browser.stop();
 });
 
 app.on("window-all-closed", () => {
