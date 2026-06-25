@@ -347,9 +347,35 @@ app.whenReady().then(() => {
   createTray();
   setupUpdater();
 
-  // Global shortcut: Option+Option (or Ctrl+Shift+Space on Windows) → Quick Entry
-  const shortcut = process.platform === "darwin" ? "Option+Space" : "Ctrl+Shift+Space";
-  globalShortcut.register(shortcut, toggleQuickWindow);
+  // Global shortcuts
+  const shortcuts: Array<{ accelerator: string; action: () => void; description: string }> = [
+    {
+      accelerator:  process.platform === "darwin" ? "Option+Space" : "Ctrl+Shift+Space",
+      action:       toggleQuickWindow,
+      description:  "Toggle quick entry",
+    },
+    {
+      accelerator:  process.platform === "darwin" ? "Command+Shift+M" : "Ctrl+Shift+M",
+      action:       () => { mainWindow?.show(); mainWindow?.focus(); },
+      description:  "Show Memex Desktop",
+    },
+    {
+      accelerator:  process.platform === "darwin" ? "Command+Shift+N" : "Ctrl+Shift+N",
+      action:       () => {
+        mainWindow?.show();
+        mainWindow?.focus();
+        // Signal new conversation to the web UI
+        memexView?.webContents.executeJavaScript(
+          "window.__memexNewConversation && window.__memexNewConversation()"
+        );
+      },
+      description:  "New conversation",
+    },
+  ];
+
+  for (const { accelerator, action } of shortcuts) {
+    try { globalShortcut.register(accelerator, action); } catch {}
+  }
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
