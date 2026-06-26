@@ -1,10 +1,38 @@
-import { useStore } from "../../lib/store";
+import { useStore }    from "../../lib/store";
 import type { ChatMessage } from "../../types/memex";
-import { StatusEvent } from "./StatusEvent";
-import { AgentTrace } from "./AgentTrace";
+import { StatusEvent }  from "./StatusEvent";
+import { AgentTrace }   from "./AgentTrace";
 import { SteeringCard } from "./SteeringCard";
 
+// Lazy import to avoid hard dep on ChatView context when used outside it
+import { useInspector } from "../views/ChatView";
+
 interface Props { message: ChatMessage; }
+
+function RunButton({ runId }: { runId: string }) {
+  const inspector = useInspector(); // returns null when outside ChatView
+  if (!inspector) return null;
+
+  const { open, activeRunId } = inspector;
+  const isActive = activeRunId === runId;
+
+  return (
+    <button
+      onClick={() => open(runId)}
+      title="Inspect run"
+      className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border transition-colors
+        ${isActive
+          ? "border-accent/50 bg-accent/10 text-accent"
+          : "border-border/40 bg-surface2/30 text-muted hover:text-text hover:border-border/70"}`}
+    >
+      <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <circle cx="6" cy="6" r="4.5" />
+        <path d="M6 3.5v3l2 1" />
+      </svg>
+      Run
+    </button>
+  );
+}
 
 export function MessageBubble({ message }: Props) {
   const { streaming } = useStore();
@@ -55,6 +83,13 @@ export function MessageBubble({ message }: Props) {
           <div className={`text-text text-[15px] leading-relaxed whitespace-pre-wrap ${isStreaming ? "cursor-blink" : ""}`}>
             {message.content}
             {streaming && message.content && <span className="cursor-blink" />}
+          </div>
+        )}
+
+        {/* Run inspector button — only shown when run is attached */}
+        {message.runId && !isStreaming && (
+          <div className="pt-0.5">
+            <RunButton runId={message.runId} />
           </div>
         )}
       </div>

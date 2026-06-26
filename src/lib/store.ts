@@ -28,6 +28,7 @@ interface AppState {
   addMessage: (sessionId: string, msg: ChatMessage) => void;
   appendEvent: (sessionId: string, msgId: string, event: MessageEvent) => void;
   updateMessageContent: (sessionId: string, msgId: string, content: string) => void;
+  updateMessageRunId: (sessionId: string, msgId: string, runId: string) => void;
 
   // Actions — UI
   setActiveTab: (tab: AppTab) => void;
@@ -108,6 +109,18 @@ export const useStore = create<AppState>()(
               ...sess,
               messages: sess.messages.map((m) =>
                 m.id !== msgId ? m : { ...m, content }
+              ),
+            }
+          ),
+        })),
+
+      updateMessageRunId: (sessionId, msgId, runId) =>
+        set((s) => ({
+          sessions: s.sessions.map((sess) =>
+            sess.id !== sessionId ? sess : {
+              ...sess,
+              messages: sess.messages.map((m) =>
+                m.id !== msgId ? m : { ...m, runId }
               ),
             }
           ),

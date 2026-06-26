@@ -58,6 +58,42 @@ export interface ChatMessage {
   events: MessageEvent[];
   timestamp: number;
   mode: MemexMode;
+  runId?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Run Inspector types (mirrored from electron/run-store.ts)
+// ---------------------------------------------------------------------------
+export type RunStatus = "running" | "done" | "error" | "cancelled";
+export type RunEventType =
+  | "message_chunk"
+  | "tool_call"
+  | "permission"
+  | "memory_read"
+  | "memory_write"
+  | "file_write"
+  | "error"
+  | "done";
+
+export interface RunRecord {
+  id:         string;
+  sessionId:  string;
+  startedAt:  string;  // ISO-8601
+  endedAt?:   string;
+  status:     RunStatus;
+  mode:       MemexMode;
+  model:      string;
+  profile:    string;
+  message:    string;
+  eventCount: number;
+}
+
+export interface RunEvent {
+  runId:   string;
+  seq:     number;
+  type:    RunEventType;
+  ts:      string;  // ISO-8601
+  payload: Record<string, unknown>;
 }
 
 export interface MessageEvent {

@@ -29,7 +29,7 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarPro
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const {
     mode: globalMode, setMode, activeSessionId, createSession,
-    addMessage, appendEvent, updateMessageContent,
+    addMessage, appendEvent, updateMessageContent, updateMessageRunId,
     setStreaming, streaming, stopStream, activeSession, selectedModel,
   } = useStore();
 
@@ -76,6 +76,8 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarPro
       model: selectedModel,
       modeFlags: { ...MODE_FLAGS[mode], ...extraFlags },
       sessionId,
+      runMeta: { profile: "default" },
+      onRunStarted: (runId) => updateMessageRunId(sessionId, assistantId, runId),
       onEvent: (event) => {
         appendEvent(sessionId, assistantId, event as MessageEvent);
         if (event.type === "message" || event.type === "response") {

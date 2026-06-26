@@ -19,6 +19,8 @@ export interface StreamOptions {
   alreadySteered?: boolean;
   /** If provided, a RunRecord will be opened and closed around the stream. */
   runMeta?: { profile: string };
+  /** Called as soon as the run record is created, with its ID. */
+  onRunStarted?: (runId: string) => void;
   onEvent: (event: SSEEvent) => void;
   onDone: () => void;
   onError: (err: Error) => void;
@@ -38,7 +40,10 @@ export function streamChat(opts: StreamOptions): () => void {
       model:     opts.model ?? "swarm",
       profile:   opts.runMeta.profile,
       message:   userMsg.slice(0, 200),
-    }).then((r: any) => { runId = r?.id; });
+    }).then((r) => {
+      runId = r?.id;
+      if (runId) opts.onRunStarted?.(runId);
+    });
   }
 
   const body = JSON.stringify({
