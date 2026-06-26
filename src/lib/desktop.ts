@@ -3,8 +3,8 @@
  * The React app uses this to access native capabilities.
  * Gracefully no-ops when not running in Electron.
  */
-import type { RunRecord, RunEvent } from "../types/memex";
-export type { RunRecord, RunEvent };
+import type { RunRecord, RunEvent, EvalCase, EvalResult } from "../types/memex";
+export type { RunRecord, RunEvent, EvalCase, EvalResult };
 
 // Fallback constants used when not running inside Electron (e.g. browser dev).
 // In Electron, the active RuntimeProfile's URLs are used instead via config.getUrls().
@@ -118,6 +118,15 @@ export interface MemexBridge {
     addEvent:  (id: string, type: string, payload: unknown) => Promise<void>;
     getRecent: (limit?: number) => Promise<RunRecord[]>;
     getEvents: (id: string) => Promise<RunEvent[]>;
+  };
+
+  evals: {
+    getCases:     ()                                    => Promise<EvalCase[]>;
+    saveCase:     (c: Partial<EvalCase>)                => Promise<EvalCase>;
+    deleteCase:   (id: string)                          => Promise<void>;
+    getResults:   (caseId?: string)                     => Promise<EvalResult[]>;
+    startResult:  (caseId: string, runId?: string)      => Promise<EvalResult>;
+    updateResult: (id: string, patch: Partial<EvalResult>) => Promise<EvalResult | null>;
   };
 
   onQuickSubmit: (cb: (text: string) => void) => void;

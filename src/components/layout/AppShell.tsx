@@ -5,7 +5,8 @@ import { ChatView } from "../views/ChatView";
 import { GoalsView } from "../views/GoalsView";
 import { ArtView } from "../views/ArtView";
 import { DevView } from "../views/DevView";
-import { SettingsView } from "../views/SettingsView";
+import { SettingsView }   from "../views/SettingsView";
+import { EvalBenchView }  from "../views/EvalBenchView";
 import { DiffReviewModal } from "../shared/DiffReviewModal";
 import { DiffReviewContext, useDiffReviewStore } from "../../hooks/useDiffReview";
 
@@ -23,6 +24,7 @@ function AppShellInner() {
           {activeTab === "goals"    && <GoalsView />}
           {activeTab === "art"      && <ArtView />}
           {activeTab === "dev"      && <DevView />}
+          {activeTab === "eval"     && <EvalBenchView />}
           {activeTab === "settings" && <SettingsView />}
         </div>
       </div>

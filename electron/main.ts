@@ -18,6 +18,7 @@ import {
 } from "./windows";
 import { registerAllIpc } from "./ipc-handlers";
 import { RunStore }       from "./run-store";
+import { EvalStore }      from "./eval-store";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -29,6 +30,7 @@ let tray:       Tray          | null = null;
 let config:     ConfigStore;
 let firewall:   WorkspaceFirewall;
 let runs:       RunStore;
+let evals:      EvalStore;
 const lsp     = new LspManager(() => mainWindow);
 const browser = new BrowserBridge();
 
@@ -45,6 +47,7 @@ app.whenReady().then(() => {
   config   = new ConfigStore(userData);
   firewall = new WorkspaceFirewall(userData);
   runs     = new RunStore(userData);
+  evals    = new EvalStore(userData);
   setBridgeAllowedIds(config.getAllowedExtensionIds());
 
   mainWindow = createMainWindow(config, getTray);
@@ -61,7 +64,7 @@ app.whenReady().then(() => {
   registerNativeHost();
   browser.start((msg) => mainWindow?.webContents.send("browser:message", msg));
 
-  registerAllIpc({ config, firewall, lsp, browser, runs, getMain, startHealthLoop: doStartHealthLoop });
+  registerAllIpc({ config, firewall, lsp, browser, runs, evals, getMain, startHealthLoop: doStartHealthLoop });
 
   app.on("activate", () => {
     if (mainWindow) { mainWindow.show(); mainWindow.focus(); }

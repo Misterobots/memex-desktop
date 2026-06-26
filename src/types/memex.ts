@@ -1,4 +1,4 @@
-export type AppTab = "chat" | "goals" | "art" | "dev" | "settings";
+export type AppTab = "chat" | "goals" | "art" | "dev" | "eval" | "settings";
 
 export type MemexMode =
   | "chat"
@@ -126,4 +126,44 @@ export interface ClarificationCard {
   question: string;
   context?: string;
   options?: Array<{ label: string; value: string; description?: string }>;
+}
+
+// ---------------------------------------------------------------------------
+// Eval Bench types (mirrored from electron/eval-store.ts)
+// ---------------------------------------------------------------------------
+export interface EvalCase {
+  id:            string;
+  name:          string;
+  input:         string;
+  mode:          MemexMode;
+  model:         string;
+  expectedNotes: string;
+  rubric:        string;
+  workspaceRoot?: string;
+  createdAt:     string;
+}
+
+export interface EvalResult {
+  id:         string;
+  caseId:     string;
+  runId?:     string;
+  startedAt:  string;
+  endedAt?:   string;
+  latencyMs?: number;
+  output:     string;
+  score?:     number;
+  notes?:     string;
+}
+
+// ---------------------------------------------------------------------------
+// Skill Registry types
+// ---------------------------------------------------------------------------
+export interface SkillEntry {
+  id:          string;
+  name:        string;
+  version:     string;
+  enabled:     boolean;
+  sourcePath:  string;
+  description: string;
+  modifiedAt:  string;
 }

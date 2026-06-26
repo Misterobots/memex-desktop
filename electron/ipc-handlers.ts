@@ -19,6 +19,7 @@ import type { BrowserBridge }     from "./browser-bridge";
 import { getCurrentUid, setCurrentUid } from "./identity";
 import { updateNativeHostManifest }     from "./browser-bridge";
 import type { RunStore }               from "./run-store";
+import type { EvalStore }              from "./eval-store";
 
 const execAsync = promisify(exec);
 
@@ -28,12 +29,13 @@ export interface IpcContext {
   lsp:       LspManager;
   browser:   BrowserBridge;
   runs:      RunStore;
+  evals:     EvalStore;
   getMain:   () => BrowserWindow | null;
   startHealthLoop: () => void;
 }
 
 export function registerAllIpc(ctx: IpcContext): void {
-  const { config, firewall, lsp, browser, runs, getMain, startHealthLoop } = ctx;
+  const { config, firewall, lsp, browser, runs, evals, getMain, startHealthLoop } = ctx;
 
   // ── Identity ──────────────────────────────────────────────────────────────
   ipcMain.handle("identity:get", () => getCurrentUid());
@@ -183,4 +185,12 @@ export function registerAllIpc(ctx: IpcContext): void {
   ipcMain.handle("runs:addEvent",   (_e, id, type, payload) => runs.addEvent(id, type, payload));
   ipcMain.handle("runs:getRecent",  (_e, limit)  => runs.getRecentRuns(limit));
   ipcMain.handle("runs:getEvents",  (_e, id)     => runs.getEventsForRun(id));
+
+  // ── Eval store ────────────────────────────────────────────────────────────
+  ipcMain.handle("eval:getCases",       ()               => evals.getCases());
+  ipcMain.handle("eval:saveCase",       (_e, c)          => evals.saveCase(c));
+  ipcMain.handle("eval:deleteCase",     (_e, id)         => evals.deleteCase(id));
+  ipcMain.handle("eval:getResults",     (_e, caseId)     => evals.getResults(caseId));
+  ipcMain.handle("eval:startResult",    (_e, caseId, runId) => evals.startResult(caseId, runId));
+  ipcMain.handle("eval:updateResult",   (_e, id, patch)  => evals.updateResult(id, patch));
 }

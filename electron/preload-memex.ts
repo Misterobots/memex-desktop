@@ -149,6 +149,16 @@ contextBridge.exposeInMainWorld("memex", {
     getEvents: (id: string)     => ipcRenderer.invoke("runs:getEvents", id),
   },
 
+  // Eval bench
+  evals: {
+    getCases:     ()                            => ipcRenderer.invoke("eval:getCases"),
+    saveCase:     (c: unknown)                  => ipcRenderer.invoke("eval:saveCase", c),
+    deleteCase:   (id: string)                  => ipcRenderer.invoke("eval:deleteCase", id),
+    getResults:   (caseId?: string)             => ipcRenderer.invoke("eval:getResults", caseId),
+    startResult:  (caseId: string, runId?: string) => ipcRenderer.invoke("eval:startResult", caseId, runId),
+    updateResult: (id: string, patch: unknown)  => ipcRenderer.invoke("eval:updateResult", id, patch),
+  },
+
   // Quick submit / open path relays (set by the React app)
   onQuickSubmit: (cb: (text: string) => void) => { (window as any).__memexQuickSubmit = cb; },
   onOpenPath:    (cb: (path: string) => void) => { (window as any).__memexOpenPath    = cb; },
