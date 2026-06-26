@@ -6,6 +6,16 @@
 import type { RunRecord, RunEvent, EvalCase, EvalResult } from "../types/memex";
 export type { RunRecord, RunEvent, EvalCase, EvalResult };
 
+export type PermissionMode = "trusted" | "workspace" | "ask";
+
+export interface OllamaModel {
+  name:          string;
+  parameterSize: string;
+  family:        string;
+  sizeGb:        number;
+  modifiedAt:    string;
+}
+
 // Fallback constants used when not running inside Electron (e.g. browser dev).
 // In Electron, the active RuntimeProfile's URLs are used instead via config.getUrls().
 export const AGENT_RUNTIME_DEFAULT = "http://192.168.2.101:8008";
@@ -118,6 +128,10 @@ export interface MemexBridge {
     addEvent:  (id: string, type: string, payload: unknown) => Promise<void>;
     getRecent: (limit?: number) => Promise<RunRecord[]>;
     getEvents: (id: string) => Promise<RunEvent[]>;
+  };
+
+  ollama: {
+    listModels: () => Promise<OllamaModel[]>;
   };
 
   evals: {

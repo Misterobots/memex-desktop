@@ -5,6 +5,7 @@ import { ConversationPane } from "../chat/ConversationPane";
 import { InputBar } from "../layout/InputBar";
 import { TerminalPane } from "../dev/TerminalPane";
 import { FileEditor } from "../dev/FileEditor";
+import { WorkspaceSafetyBadge } from "../dev/WorkspaceSafetyBadge";
 import { ipc } from "../../lib/ipc";
 
 type PrimaryPane = "chat" | "editor";
@@ -78,6 +79,7 @@ export function DevView() {
             </button>
           ))}
           <div className="flex-1" />
+          <WorkspaceSafetyBadge />
           <button
             onClick={toggleTerminal}
             className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-colors ${
