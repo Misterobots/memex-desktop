@@ -92,6 +92,21 @@ contextBridge.exposeInMainWorld("memex", {
     },
   },
 
+  // Native health loop
+  health: {
+    check:   () => ipcRenderer.invoke("health:check"),
+    getLast: () => ipcRenderer.invoke("health:getLast"),
+    onStatus: (cb: (status: {
+      agentRuntime: "connected" | "disconnected";
+      mempalace:    "connected" | "disconnected";
+      ollama:       "connected" | "disconnected";
+      checkedAt:    string;
+    }) => void) => {
+      ipcRenderer.on("health:status", (_e, s) => cb(s));
+      return () => ipcRenderer.removeAllListeners("health:status");
+    },
+  },
+
   // Workspace capability firewall
   workspace: {
     getPolicy:    () => ipcRenderer.invoke("workspace:getPolicy"),

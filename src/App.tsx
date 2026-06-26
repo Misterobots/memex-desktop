@@ -3,7 +3,7 @@ import { AppShell } from "./components/layout/AppShell";
 import { CommandPalette } from "./components/shared/CommandPalette";
 import { useStore } from "./lib/store";
 import { checkHealth } from "./lib/memex-client";
-import { desktop } from "./lib/desktop";
+import { desktop, isDesktop } from "./lib/desktop";
 import { initRuntimeUrls } from "./lib/runtime-urls";
 
 export default function App() {
@@ -17,17 +17,41 @@ export default function App() {
     // Load active profile URLs before any requests fire
     initRuntimeUrls();
 
-    // Health check on mount and every 30s
-    const poll = async () => {
-      const h = await checkHealth();
-      setConnections({
-        agentRuntime: h.agentRuntime ? "connected" : "disconnected",
-        mempalace:    h.mempalace    ? "connected" : "disconnected",
-        ollama:       h.ollama       ? "connected" : "disconnected",
+    // Health status — prefer native push events in Electron, fall back to JS polling
+    let id: ReturnType<typeof setInterval> | undefined;
+    let offHealth: (() => void) | undefined;
+
+    if (isDesktop()) {
+      const bridge = desktop()!;
+      // Subscribe to native health:status events from main process
+      offHealth = bridge.health.onStatus((s) => {
+        setConnections({
+          agentRuntime: s.agentRuntime as "connected" | "disconnected",
+          mempalace:    s.mempalace    as "connected" | "disconnected",
+          ollama:       s.ollama       as "connected" | "disconnected",
+        });
       });
-    };
-    poll();
-    const id = setInterval(poll, 30_000);
+      // Seed with last known status if available
+      bridge.health.getLast().then((s) => {
+        if (s) setConnections({
+          agentRuntime: s.agentRuntime as "connected" | "disconnected",
+          mempalace:    s.mempalace    as "connected" | "disconnected",
+          ollama:       s.ollama       as "connected" | "disconnected",
+        });
+      });
+    } else {
+      // Browser dev — JS fetch-based polling
+      const poll = async () => {
+        const h = await checkHealth();
+        setConnections({
+          agentRuntime: h.agentRuntime ? "connected" : "disconnected",
+          mempalace:    h.mempalace    ? "connected" : "disconnected",
+          ollama:       h.ollama       ? "connected" : "disconnected",
+        });
+      };
+      poll();
+      id = setInterval(poll, 30_000);
+    }
 
     // Native bridge handlers
     const bridge = desktop();
@@ -59,7 +83,10 @@ export default function App() {
       setCwd("");
     }
 
-    return () => clearInterval(id);
+    return () => {
+      if (id)        clearInterval(id);
+      if (offHealth) offHealth();
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -84,6 +84,12 @@ export interface MemexBridge {
       Promise<{ approved: boolean; scope: "once" | "session" | "workspace" }>;
   };
 
+  health: {
+    check:    () => Promise<{ agentRuntime: string; mempalace: string; ollama: string; checkedAt: string }>;
+    getLast:  () => Promise<{ agentRuntime: string; mempalace: string; ollama: string; checkedAt: string } | null>;
+    onStatus: (cb: (s: { agentRuntime: string; mempalace: string; ollama: string; checkedAt: string }) => void) => () => void;
+  };
+
   workspace: {
     getPolicy:    () => Promise<{ roots: string[]; mode: string; allowShell: boolean; allowWrite: boolean }>;
     setPolicy:    (policy: { roots?: string[]; mode?: string; allowShell?: boolean; allowWrite?: boolean }) => Promise<void>;

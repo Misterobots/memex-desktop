@@ -224,30 +224,60 @@ function setupUpdater() {
 ipcMain.on("update:install", () => autoUpdater.quitAndInstall(false, true));
 
 // ---------------------------------------------------------------------------
-// Connection health loop
+// Native health loop — checks all three endpoints, pushes status to renderer
 // ---------------------------------------------------------------------------
-let healthTimer: ReturnType<typeof setTimeout> | null = null;
-let healthAttempt = 0;
+export interface HealthStatus {
+  agentRuntime: "connected" | "disconnected";
+  mempalace:    "connected" | "disconnected";
+  ollama:       "connected" | "disconnected";
+  checkedAt:    string; // ISO-8601
+}
+
+let healthTimer:   ReturnType<typeof setInterval> | null = null;
+let lastHealth:    HealthStatus | null                   = null;
+
+async function probe(url: string): Promise<boolean> {
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    return r.ok;
+  } catch { return false; }
+}
+
+async function runHealthCheck(): Promise<HealthStatus> {
+  const { agentRuntime, mempalace, ollama } = configStore.getUrls();
+  const [ar, mp, ol] = await Promise.all([
+    probe(`${agentRuntime}/`),
+    probe(`${mempalace}/health`),
+    probe(`${ollama}/api/version`),
+  ]);
+  return {
+    agentRuntime: ar ? "connected" : "disconnected",
+    mempalace:    mp ? "connected" : "disconnected",
+    ollama:       ol ? "connected" : "disconnected",
+    checkedAt:    new Date().toISOString(),
+  };
+}
 
 function startHealthLoop() {
-  healthAttempt = 0;
-  scheduleHealth();
+  if (healthTimer) clearInterval(healthTimer);
+  // Check immediately on start, then every 30s
+  const tick = async () => {
+    const status = await runHealthCheck();
+    lastHealth   = status;
+    mainWindow?.webContents.send("health:status", status);
+  };
+  tick();
+  healthTimer = setInterval(tick, 30_000);
 }
-function scheduleHealth() {
-  if (healthTimer) clearTimeout(healthTimer);
-  const delay = healthAttempt === 0 ? 0
-    : Math.min(1000 * Math.pow(2, healthAttempt - 1), 30_000) * (1 + 0.1 * Math.random());
-  healthTimer = setTimeout(runHealth, delay);
-}
-async function runHealth() {
-  try {
-    const { agentRuntime } = configStore.getUrls();
-    const r = await fetch(`${agentRuntime}/`, { signal: AbortSignal.timeout(5000) });
-    if (r.ok) { healthAttempt = 0; return; }
-  } catch {}
-  healthAttempt++;
-  scheduleHealth();
-}
+
+// Force an immediate re-check (e.g. after profile switch)
+ipcMain.handle("health:check", async () => {
+  const status = await runHealthCheck();
+  lastHealth   = status;
+  mainWindow?.webContents.send("health:status", status);
+  return status;
+});
+ipcMain.handle("health:getLast", () => lastHealth);
 
 // ---------------------------------------------------------------------------
 // App lifecycle
@@ -256,6 +286,7 @@ app.whenReady().then(() => {
   configStore       = new ConfigStore(app.getPath("userData"));
   workspaceFirewall = new WorkspaceFirewall(app.getPath("userData"));
   createMainWindow();
+  startHealthLoop();
   createTray();
   setupUpdater();
   registerNativeHost();
@@ -421,7 +452,10 @@ ipcMain.handle("config:getAll",    () => configStore.getAll());
 ipcMain.handle("config:getActive", () => configStore.getActive());
 ipcMain.handle("config:setActive", (_e, id: string) => {
   const ok = configStore.setActive(id);
-  if (ok) mainWindow?.webContents.send("config:changed", configStore.getActive());
+  if (ok) {
+    mainWindow?.webContents.send("config:changed", configStore.getActive());
+    startHealthLoop(); // re-probe with new endpoints immediately
+  }
   return ok;
 });
 ipcMain.handle("config:save",   (_e, profile) => configStore.saveProfile(profile));
