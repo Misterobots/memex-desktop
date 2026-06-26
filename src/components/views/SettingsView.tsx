@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { desktop, type RuntimeProfile } from "../../lib/desktop";
+import { SkillRegistry } from "../settings/SkillRegistry";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -389,6 +390,11 @@ export function SettingsView() {
             className="px-3 py-1.5 rounded-lg bg-surface2 border border-border/60 text-sm hover:bg-surface2/80 self-start"
           >Add</button>
         </div>
+      </Section>
+
+      {/* ── Skill Registry ── */}
+      <Section title="Skill Registry">
+        <SkillRegistry />
       </Section>
 
     </div>
