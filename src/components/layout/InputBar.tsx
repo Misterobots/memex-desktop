@@ -96,7 +96,9 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarPro
   }, [text, streaming, mode, activeSessionId, extraFlags]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && (e.shiftKey || e.ctrlKey)) {
+    // Enter sends; Shift+Enter inserts a newline. Skip while an IME composition
+    // is active so Enter can confirm candidates instead of sending.
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submit();
     }
