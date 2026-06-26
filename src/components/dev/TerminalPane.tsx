@@ -3,14 +3,13 @@ import { Terminal } from "xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "xterm/css/xterm.css";
+import { desktop } from "../../lib/desktop";
 
 interface Props {
   id: string;
   cwd?: string;
   className?: string;
 }
-
-const isElectron = () => typeof window !== "undefined" && !!(window as any).electron?.pty;
 
 export function TerminalPane({ id, cwd, className = "" }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -23,9 +22,7 @@ export function TerminalPane({ id, cwd, className = "" }: Props) {
     try {
       fitRef.current.fit();
       const { cols, rows } = termRef.current;
-      if (isElectron()) {
-        (window as any).electron.pty.resize(id, cols, rows);
-      }
+      desktop()?.pty.resize(id, cols, rows);
     } catch {}
   }, [id]);
 
@@ -69,23 +66,22 @@ export function TerminalPane({ id, cwd, className = "" }: Props) {
     // Slight delay to let the container settle before fitting
     setTimeout(fit, 50);
 
-    if (isElectron()) {
-      const el = (window as any).electron;
-
-      el.pty.create(id, cwd).then(() => {
-        const offData = el.pty.onData(id, (data: string) => term.write(data));
-        const offExit = el.pty.onExit(id, () => {
+    const bridge = desktop();
+    if (bridge) {
+      bridge.pty.create(id, cwd).then(() => {
+        const offData = bridge.pty.onData(id, (data: string) => term.write(data));
+        const offExit = bridge.pty.onExit(id, () => {
           term.write("\r\n\x1b[90m[process exited]\x1b[0m\r\n");
         });
         cleanupRef.current.push(offData, offExit);
       });
 
-      const onKey = term.onKey(({ key }) => {
-        el.pty.write(id, key);
-      });
-      cleanupRef.current.push(() => onKey.dispose());
+      // onData captures all input including paste and control sequences,
+      // unlike onKey which only fires for single keystrokes.
+      const onData = term.onData((data) => bridge.pty.write(id, data));
+      cleanupRef.current.push(() => onData.dispose());
     } else {
-      term.write("\x1b[90mTerminal requires the Electron desktop app.\x1b[0m\r\n");
+      term.write("\x1b[90mTerminal requires the Memex Desktop app.\x1b[0m\r\n");
     }
 
     const ro = new ResizeObserver(fit);
@@ -95,7 +91,7 @@ export function TerminalPane({ id, cwd, className = "" }: Props) {
     return () => {
       cleanupRef.current.forEach((fn) => fn());
       cleanupRef.current = [];
-      if (isElectron()) (window as any).electron.pty.kill(id);
+      desktop()?.pty.kill(id);
       term.dispose();
       termRef.current = null;
       fitRef.current  = null;
