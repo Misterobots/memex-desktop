@@ -11,8 +11,8 @@ const MODE_DOT: Record<MemexMode, string> = {
   swarm:    "bg-accent",
   research: "bg-green",
   design:   "bg-yellow",
-  think:    "bg-[#b48ead]",
-  plan:     "bg-[#d4a85f]",
+  think:    "bg-accent2",
+  plan:     "bg-yellow",
   workshop: "bg-accent",
 };
 

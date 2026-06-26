@@ -31,19 +31,19 @@ export function TerminalPane({ id, cwd, className = "" }: Props) {
 
     const term = new Terminal({
       theme: {
-        background:  "#1a1917",
-        foreground:  "#e8e6e0",
-        cursor:      "#d97757",
-        cursorAccent:"#1a1917",
-        selectionBackground: "rgba(217,119,87,0.3)",
-        black:   "#1a1917", brightBlack:   "#6f6d66",
-        red:     "#d97066", brightRed:     "#e88077",
-        green:   "#7cae7a", brightGreen:   "#8dbe8b",
-        yellow:  "#d4a85f", brightYellow:  "#e4b86f",
+        background:  "#111114",
+        foreground:  "#ededf0",
+        cursor:      "#00cca8",
+        cursorAccent:"#111114",
+        selectionBackground: "rgba(0,204,168,0.3)",
+        black:   "#111114", brightBlack:   "#5b5b66",
+        red:     "#f06d6d", brightRed:     "#ff8080",
+        green:   "#34d399", brightGreen:   "#5ee9b5",
+        yellow:  "#e0b341", brightYellow:  "#f0c95e",
         blue:    "#7a9fc2", brightBlue:    "#8bafd2",
-        magenta: "#b48ead", brightMagenta: "#c49ebd",
-        cyan:    "#7ec8c8", brightCyan:    "#8ed8d8",
-        white:   "#e8e6e0", brightWhite:   "#f5f4ef",
+        magenta: "#9580ff", brightMagenta: "#ad9bff",
+        cyan:    "#00cca8", brightCyan:    "#00eed0",
+        white:   "#ededf0", brightWhite:   "#ffffff",
       },
       fontFamily: "'Cascadia Code', 'Fira Code', 'SF Mono', Consolas, monospace",
       fontSize: 13,
@@ -101,7 +101,7 @@ export function TerminalPane({ id, cwd, className = "" }: Props) {
   return (
     <div
       ref={containerRef}
-      className={`bg-[#1a1917] ${className}`}
+      className={`bg-surface ${className}`}
       style={{ padding: "8px 4px" }}
     />
   );

@@ -11,21 +11,21 @@
 html, body, #root {
   height: 100%;
   overflow: hidden;
-  background: #262624;
-  color: #f5f4ef;
+  background: #0a0a0d;
+  color: #ededf0;
   font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 14px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Scrollbar — subtle, warm */
+/* Scrollbar — subtle, neutral */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #403e3c; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #524f4c; }
+::-webkit-scrollbar-thumb { background: #26262b; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a42; }
 
-::selection { background: rgba(217, 119, 87, 0.3); }
+::selection { background: rgba(0, 204, 168, 0.3); }
 
 /* Drag region for frameless window */
 .drag-region { -webkit-app-region: drag; }
@@ -36,15 +36,15 @@ html, body, #root {
 .cursor-blink::after {
   content: "▋";
   animation: blink 1.1s step-end infinite;
-  color: #d97757;
+  color: #00cca8;
   margin-left: 2px;
   font-size: 0.9em;
 }
 
 /* Code blocks — mono, only here */
 pre {
-  background: #1f1e1d;
-  border: 1px solid #403e3c;
+  background: #16161a;
+  border: 1px solid #26262b;
   border-radius: 8px;
   padding: 14px 16px;
   overflow-x: auto;
@@ -58,11 +58,11 @@ code {
   font-size: 12.5px;
 }
 :not(pre) > code {
-  background: #1f1e1d;
+  background: #16161a;
   padding: 1px 5px;
   border-radius: 4px;
   font-size: 0.88em;
-  color: #e8b4a0;
+  color: #5eead4;
 }
 
 p + p { margin-top: 12px; }

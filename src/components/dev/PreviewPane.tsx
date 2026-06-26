@@ -20,7 +20,7 @@ export function PreviewPane({ html, title = "Preview" }: Props) {
   }, [html]);
 
   return (
-    <div className="flex flex-col h-full bg-[#1a1917]">
+    <div className="flex flex-col h-full bg-surface">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border/60 bg-surface flex-shrink-0">
         <span className="text-xs text-muted">{title}</span>
@@ -51,7 +51,7 @@ export function PreviewPane({ html, title = "Preview" }: Props) {
       </div>
 
       {/* iframe */}
-      <div className="flex-1 overflow-auto flex items-start justify-center p-4 bg-[#141312]">
+      <div className="flex-1 overflow-auto flex items-start justify-center p-4 bg-canvas">
         <iframe
           ref={iframeRef}
           sandbox="allow-scripts allow-same-origin"

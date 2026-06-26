@@ -39,15 +39,15 @@ const LANE_X: Record<"left" | "center" | "right", number> = {
 };
 
 const NODE_COLOR: Record<string, string> = {
-  start:        "#a3be8c",
-  end:          "#88c0d0",
-  tool_call:    "#81a1c1",
-  file_write:   "#5e81ac",
-  permission:   "#d08770",
-  memory_read:  "#b48ead",
-  memory_write: "#b48ead",
-  error:        "#bf616a",
-  done:         "#a3be8c",
+  start:        "#34d399",
+  end:          "#34d399",
+  tool_call:    "#00cca8",
+  file_write:   "#60a5fa",
+  permission:   "#e0b341",
+  memory_read:  "#9580ff",
+  memory_write: "#9580ff",
+  error:        "#f06d6d",
+  done:         "#34d399",
 };
 
 const NODE_ICON: Record<string, string> = {
