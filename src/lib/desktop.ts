@@ -109,6 +109,14 @@ export interface MemexBridge {
     onChange:  (cb: (profile: RuntimeProfile) => void) => () => void;
   };
 
+  runs: {
+    start:     (opts: Record<string, unknown>) => Promise<{ id: string; [k: string]: unknown }>;
+    end:       (id: string, status: "done" | "error" | "cancelled") => Promise<void>;
+    addEvent:  (id: string, type: string, payload: unknown) => Promise<void>;
+    getRecent: (limit?: number) => Promise<unknown[]>;
+    getEvents: (id: string) => Promise<unknown[]>;
+  };
+
   onQuickSubmit: (cb: (text: string) => void) => void;
   onOpenPath:    (cb: (path: string) => void) => void;
 }

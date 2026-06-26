@@ -18,6 +18,7 @@ import type { LspManager }        from "./lsp-manager";
 import type { BrowserBridge }     from "./browser-bridge";
 import { getCurrentUid, setCurrentUid } from "./identity";
 import { updateNativeHostManifest }     from "./browser-bridge";
+import type { RunStore }               from "./run-store";
 
 const execAsync = promisify(exec);
 
@@ -26,12 +27,13 @@ export interface IpcContext {
   firewall:  WorkspaceFirewall;
   lsp:       LspManager;
   browser:   BrowserBridge;
+  runs:      RunStore;
   getMain:   () => BrowserWindow | null;
   startHealthLoop: () => void;
 }
 
 export function registerAllIpc(ctx: IpcContext): void {
-  const { config, firewall, lsp, browser, getMain, startHealthLoop } = ctx;
+  const { config, firewall, lsp, browser, runs, getMain, startHealthLoop } = ctx;
 
   // ── Identity ──────────────────────────────────────────────────────────────
   ipcMain.handle("identity:get", () => getCurrentUid());
@@ -169,4 +171,11 @@ export function registerAllIpc(ctx: IpcContext): void {
   ipcMain.handle("config:save",    (_e, profile) => config.saveProfile(profile));
   ipcMain.handle("config:delete",  (_e, id)      => config.deleteProfile(id));
   ipcMain.handle("config:getUrls", ()            => config.getUrls());
+
+  // ── Run store ─────────────────────────────────────────────────────────────
+  ipcMain.handle("runs:start",      (_e, opts)   => runs.startRun(opts));
+  ipcMain.handle("runs:end",        (_e, id, st) => runs.endRun(id, st));
+  ipcMain.handle("runs:addEvent",   (_e, id, type, payload) => runs.addEvent(id, type, payload));
+  ipcMain.handle("runs:getRecent",  (_e, limit)  => runs.getRecentRuns(limit));
+  ipcMain.handle("runs:getEvents",  (_e, id)     => runs.getEventsForRun(id));
 }

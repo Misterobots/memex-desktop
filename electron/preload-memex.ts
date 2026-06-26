@@ -139,6 +139,15 @@ contextBridge.exposeInMainWorld("memex", {
       }>,
   },
 
+  // Run and audit data model
+  runs: {
+    start:     (opts: unknown) => ipcRenderer.invoke("runs:start", opts),
+    end:       (id: string, status: string) => ipcRenderer.invoke("runs:end", id, status),
+    addEvent:  (id: string, type: string, payload: unknown) => ipcRenderer.invoke("runs:addEvent", id, type, payload),
+    getRecent: (limit?: number) => ipcRenderer.invoke("runs:getRecent", limit),
+    getEvents: (id: string)     => ipcRenderer.invoke("runs:getEvents", id),
+  },
+
   // Quick submit / open path relays (set by the React app)
   onQuickSubmit: (cb: (text: string) => void) => { (window as any).__memexQuickSubmit = cb; },
   onOpenPath:    (cb: (path: string) => void) => { (window as any).__memexOpenPath    = cb; },

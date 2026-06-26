@@ -17,6 +17,7 @@ import {
   registerShortcuts, routeFilePath, toggleQuickWindow,
 } from "./windows";
 import { registerAllIpc } from "./ipc-handlers";
+import { RunStore }       from "./run-store";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -27,6 +28,7 @@ let mainWindow: BrowserWindow | null = null;
 let tray:       Tray          | null = null;
 let config:     ConfigStore;
 let firewall:   WorkspaceFirewall;
+let runs:       RunStore;
 const lsp     = new LspManager(() => mainWindow);
 const browser = new BrowserBridge();
 
@@ -42,6 +44,7 @@ app.whenReady().then(() => {
   initIdentity(userData);
   config   = new ConfigStore(userData);
   firewall = new WorkspaceFirewall(userData);
+  runs     = new RunStore(userData);
   setBridgeAllowedIds(config.getAllowedExtensionIds());
 
   mainWindow = createMainWindow(config, getTray);
@@ -58,7 +61,7 @@ app.whenReady().then(() => {
   registerNativeHost();
   browser.start((msg) => mainWindow?.webContents.send("browser:message", msg));
 
-  registerAllIpc({ config, firewall, lsp, browser, getMain, startHealthLoop: doStartHealthLoop });
+  registerAllIpc({ config, firewall, lsp, browser, runs, getMain, startHealthLoop: doStartHealthLoop });
 
   app.on("activate", () => {
     if (mainWindow) { mainWindow.show(); mainWindow.focus(); }

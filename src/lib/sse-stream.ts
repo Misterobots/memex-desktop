@@ -1,4 +1,5 @@
 import { getAgentRuntime } from "./runtime-urls";
+import { desktop }         from "./desktop";
 import type { EventType, MemexMode } from "../types/memex";
 
 export interface SSEEvent {
@@ -16,6 +17,8 @@ export interface StreamOptions {
   model?: string;
   sessionId?: string;
   alreadySteered?: boolean;
+  /** If provided, a RunRecord will be opened and closed around the stream. */
+  runMeta?: { profile: string };
   onEvent: (event: SSEEvent) => void;
   onDone: () => void;
   onError: (err: Error) => void;
@@ -23,6 +26,20 @@ export interface StreamOptions {
 
 export function streamChat(opts: StreamOptions): () => void {
   const controller = new AbortController();
+  const bridge     = desktop();
+  let runId: string | undefined;
+
+  // Open a run record if the bridge is available
+  if (bridge?.runs && opts.runMeta) {
+    const userMsg = opts.messages.findLast((m) => m.role === "user")?.content ?? "";
+    bridge.runs.start({
+      sessionId: opts.sessionId ?? "default",
+      mode:      opts.mode,
+      model:     opts.model ?? "swarm",
+      profile:   opts.runMeta.profile,
+      message:   userMsg.slice(0, 200),
+    }).then((r: any) => { runId = r?.id; });
+  }
 
   const body = JSON.stringify({
     model: opts.model || "swarm",
@@ -76,10 +93,16 @@ export function streamChat(opts: StreamOptions): () => void {
         }
       }
 
+      if (runId) bridge?.runs?.end(runId, "done");
       opts.onDone();
     })
     .catch((err) => {
-      if (err.name !== "AbortError") opts.onError(err);
+      if (err.name !== "AbortError") {
+        if (runId) bridge?.runs?.end(runId, "error");
+        opts.onError(err);
+      } else {
+        if (runId) bridge?.runs?.end(runId, "cancelled");
+      }
     });
 
   return () => controller.abort();
