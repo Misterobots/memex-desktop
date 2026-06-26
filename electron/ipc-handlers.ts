@@ -186,6 +186,26 @@ export function registerAllIpc(ctx: IpcContext): void {
   ipcMain.handle("runs:getRecent",  (_e, limit)  => runs.getRecentRuns(limit));
   ipcMain.handle("runs:getEvents",  (_e, id)     => runs.getEventsForRun(id));
 
+  // ── Ollama model list ─────────────────────────────────────────────────────
+  ipcMain.handle("ollama:listModels", async () => {
+    try {
+      const urls  = config.getUrls();
+      const base  = urls.ollama ?? "http://localhost:11434";
+      const res   = await fetch(`${base}/api/tags`, { signal: AbortSignal.timeout(4000) });
+      if (!res.ok) return [];
+      const data  = await res.json() as { models?: Array<{ name: string; size: number; modified_at: string; details?: { parameter_size?: string; family?: string } }> };
+      return (data.models ?? []).map((m) => ({
+        name:          m.name,
+        parameterSize: m.details?.parameter_size ?? "",
+        family:        m.details?.family ?? "",
+        sizeGb:        +(m.size / 1e9).toFixed(1),
+        modifiedAt:    m.modified_at,
+      }));
+    } catch {
+      return [];
+    }
+  });
+
   // ── Eval store ────────────────────────────────────────────────────────────
   ipcMain.handle("eval:getCases",       ()               => evals.getCases());
   ipcMain.handle("eval:saveCase",       (_e, c)          => evals.saveCase(c));

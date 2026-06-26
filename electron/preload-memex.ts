@@ -149,6 +149,11 @@ contextBridge.exposeInMainWorld("memex", {
     getEvents: (id: string)     => ipcRenderer.invoke("runs:getEvents", id),
   },
 
+  // Ollama model list
+  ollama: {
+    listModels: () => ipcRenderer.invoke("ollama:listModels"),
+  },
+
   // Eval bench
   evals: {
     getCases:     ()                            => ipcRenderer.invoke("eval:getCases"),

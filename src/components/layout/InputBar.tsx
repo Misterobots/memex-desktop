@@ -2,6 +2,7 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { useStore } from "../../lib/store";
 import { streamChat } from "../../lib/sse-stream";
 import { MODE_FLAGS, MODE_LABELS, type MemexMode, type ChatMessage, type MessageEvent } from "../../types/memex";
+import { ModelPickerPopover } from "./ModelPickerPopover";
 
 const MODES: MemexMode[] = ["chat", "swarm", "research", "design", "think", "plan"];
 
@@ -119,22 +120,25 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarPro
             className="w-full bg-transparent px-2 text-text text-[15px] resize-none focus:outline-none placeholder-faint min-h-[24px] leading-relaxed"
           />
           <div className="flex items-center justify-between mt-1.5">
-            {/* Mode selector */}
-            {lockMode ? (
-              <span className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted">
-                <span className={`w-1.5 h-1.5 rounded-full ${MODE_DOT[mode]}`} />
-                {MODE_LABELS[mode]}
-              </span>
-            ) : (
-              <button
-                onClick={cycleMode}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-muted hover:text-text hover:bg-surface2 transition-colors"
-                title="Click to cycle mode"
-              >
-                <span className={`w-1.5 h-1.5 rounded-full ${MODE_DOT[mode]}`} />
-                {MODE_LABELS[mode]}
-              </button>
-            )}
+            {/* Mode selector + model picker */}
+            <div className="flex items-center gap-1">
+              {lockMode ? (
+                <span className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted">
+                  <span className={`w-1.5 h-1.5 rounded-full ${MODE_DOT[mode]}`} />
+                  {MODE_LABELS[mode]}
+                </span>
+              ) : (
+                <button
+                  onClick={cycleMode}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-muted hover:text-text hover:bg-surface2 transition-colors"
+                  title="Click to cycle mode"
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${MODE_DOT[mode]}`} />
+                  {MODE_LABELS[mode]}
+                </button>
+              )}
+              <ModelPickerPopover />
+            </div>
 
             <button
               onClick={streaming ? () => { stopStream?.(); setStreaming(false); } : submit}
