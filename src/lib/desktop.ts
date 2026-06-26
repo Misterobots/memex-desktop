@@ -32,10 +32,11 @@ export interface MemexBridge {
   };
 
   fs: {
-    readFile:  (path: string) => Promise<string>;
-    writeFile: (path: string, content: string) => Promise<void>;
-    readDir:   (path: string) => Promise<Array<{ name: string; path: string; isDir: boolean }>>;
-    mkdir:     (path: string) => Promise<void>;
+    readFile:     (path: string)                  => Promise<string>;
+    previewWrite: (path: string)                  => Promise<string>;
+    writeFile:    (path: string, content: string) => Promise<void>;
+    readDir:      (path: string)                  => Promise<Array<{ name: string; path: string; isDir: boolean }>>;
+    mkdir:        (path: string)                  => Promise<void>;
   };
 
   shell: {

@@ -16,8 +16,9 @@ contextBridge.exposeInMainWorld("memex", {
 
   // File system
   fs: {
-    readFile:  (path: string)                  => ipcRenderer.invoke("fs:readFile", path),
-    writeFile: (path: string, content: string) => ipcRenderer.invoke("fs:writeFile", path, content),
+    readFile:     (path: string)                  => ipcRenderer.invoke("fs:readFile", path),
+    previewWrite: (path: string)                  => ipcRenderer.invoke("fs:previewWrite", path) as Promise<string>,
+    writeFile:    (path: string, content: string) => ipcRenderer.invoke("fs:writeFile", path, content),
     readDir:   (path: string)                  => ipcRenderer.invoke("fs:readDir", path),
     mkdir:     (path: string)                  => ipcRenderer.invoke("fs:mkdir", path),
   },

@@ -47,6 +47,11 @@ export function registerAllIpc(ctx: IpcContext): void {
     if (!await firewall.checkRead(path, getMain())) throw new Error("Permission denied");
     return readFileSync(path, "utf-8");
   });
+  ipcMain.handle("fs:previewWrite", async (_e, path: string) => {
+    // Returns current file content so the renderer can show a diff before committing.
+    // No permission check here — this is a read for preview only, not a write.
+    try { return readFileSync(path, "utf-8"); } catch { return ""; }
+  });
   ipcMain.handle("fs:writeFile", async (_e, path: string, content: string) => {
     if (!await firewall.checkWrite(path, getMain())) throw new Error("Permission denied");
     writeFileSync(path, content, "utf-8");

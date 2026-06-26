@@ -6,21 +6,39 @@ import { GoalsView } from "../views/GoalsView";
 import { ArtView } from "../views/ArtView";
 import { DevView } from "../views/DevView";
 import { SettingsView } from "../views/SettingsView";
+import { DiffReviewModal } from "../shared/DiffReviewModal";
+import { DiffReviewContext, useDiffReviewStore } from "../../hooks/useDiffReview";
 
-export function AppShell() {
+function AppShellInner() {
   const { activeTab } = useStore();
+  const diffReview = useDiffReviewStore();
 
   return (
-    <div className="flex flex-col h-full bg-canvas">
-      <StatusBar />
-      <TabBar />
-      <div className="flex flex-1 min-h-0">
-        {activeTab === "chat"     && <ChatView />}
-        {activeTab === "goals"    && <GoalsView />}
-        {activeTab === "art"      && <ArtView />}
-        {activeTab === "dev"      && <DevView />}
-        {activeTab === "settings" && <SettingsView />}
+    <DiffReviewContext.Provider value={diffReview}>
+      <div className="flex flex-col h-full bg-canvas">
+        <StatusBar />
+        <TabBar />
+        <div className="flex flex-1 min-h-0">
+          {activeTab === "chat"     && <ChatView />}
+          {activeTab === "goals"    && <GoalsView />}
+          {activeTab === "art"      && <ArtView />}
+          {activeTab === "dev"      && <DevView />}
+          {activeTab === "settings" && <SettingsView />}
+        </div>
       </div>
-    </div>
+      {diffReview.pending && (
+        <DiffReviewModal
+          filePath={diffReview.pending.filePath}
+          oldContent={diffReview.pending.oldContent}
+          newContent={diffReview.pending.newContent}
+          onApprove={diffReview.approve}
+          onReject={diffReview.reject}
+        />
+      )}
+    </DiffReviewContext.Provider>
   );
+}
+
+export function AppShell() {
+  return <AppShellInner />;
 }
