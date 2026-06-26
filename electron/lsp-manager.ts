@@ -52,22 +52,35 @@ function encode(obj: unknown): Buffer {
   return Buffer.concat([Buffer.from(header, "ascii"), Buffer.from(body, "utf8")]);
 }
 
-function* parseMessages(buf: Buffer): Generator<unknown> {
+/**
+ * Parse zero or more complete LSP messages from buf.
+ * Returns [messages, remainder] — callers must keep the remainder and prepend
+ * it to the next data chunk so partial messages are never lost.
+ */
+function parseMessages(buf: Buffer): [unknown[], Buffer] {
+  const messages: unknown[] = [];
   let offset = 0;
+
   while (offset < buf.length) {
-    const header = buf.indexOf("\r\n\r\n", offset);
-    if (header === -1) break;
-    const headerStr = buf.slice(offset, header).toString("ascii");
+    const sep = buf.indexOf("\r\n\r\n", offset);
+    if (sep === -1) break; // header incomplete — wait for more data
+
+    const headerStr = buf.slice(offset, sep).toString("ascii");
     const clMatch   = headerStr.match(/Content-Length:\s*(\d+)/i);
-    if (!clMatch) { offset = header + 4; continue; }
+    if (!clMatch) { offset = sep + 4; continue; } // malformed header — skip
+
     const contentLen = parseInt(clMatch[1], 10);
-    const bodyStart  = header + 4;
-    if (buf.length < bodyStart + contentLen) break;
+    const bodyStart  = sep + 4;
+    if (buf.length < bodyStart + contentLen) break; // body incomplete — wait
+
     try {
-      yield JSON.parse(buf.slice(bodyStart, bodyStart + contentLen).toString("utf8"));
-    } catch {}
+      messages.push(JSON.parse(buf.slice(bodyStart, bodyStart + contentLen).toString("utf8")));
+    } catch {} // malformed JSON — skip and advance
+
     offset = bodyStart + contentLen;
   }
+
+  return [messages, buf.slice(offset)]; // slice(offset) preserves the partial tail
 }
 
 // ---------------------------------------------------------------------------
@@ -93,13 +106,14 @@ class LspServer {
 
     this.proc.stdout?.on("data", (chunk: Buffer) => {
       this.buf = Buffer.concat([this.buf, chunk]);
-      for (const msg of parseMessages(this.buf)) {
-        this.buf = Buffer.alloc(0); // reset after full parse pass
-        this.handleMessage(msg);
-      }
+      const [messages, remainder] = parseMessages(this.buf);
+      this.buf = remainder; // preserve partial trailing data for next chunk
+      for (const msg of messages) this.handleMessage(msg);
     });
 
-    this.proc.stderr?.on("data", () => {}); // suppress noise
+    this.proc.stderr?.on("data", (chunk: Buffer) => {
+      console.warn(`[LSP:${this.lang}] stderr:`, chunk.toString("utf8").trimEnd());
+    });
     this.proc.on("exit", () => { this.ready = false; });
 
     this.initialize();
