@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { desktop }               from "../../lib/desktop";
 import type { RunRecord, RunEvent, RunEventType } from "../../types/memex";
+import { AgentGraph } from "./AgentGraph";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -56,7 +57,7 @@ interface Props {
 export function RunInspectorPanel({ runId, onClose }: Props) {
   const [run,    setRun]    = useState<RunRecord | null>(null);
   const [events, setEvents] = useState<RunEvent[]>([]);
-  const [tab,    setTab]    = useState<"timeline" | "payload">("timeline");
+  const [tab,    setTab]    = useState<"timeline" | "graph" | "payload">("timeline");
 
   const bridge = desktop();
 
@@ -167,7 +168,7 @@ export function RunInspectorPanel({ runId, onClose }: Props) {
 
           {/* Tab bar */}
           <div className="flex border-b border-border/40 flex-shrink-0">
-            {(["timeline", "payload"] as const).map((t) => (
+            {(["timeline", "graph", "payload"] as const).map((t) => (
               <button key={t}
                 onClick={() => setTab(t)}
                 className={`flex-1 py-1.5 text-xs capitalize transition-colors
@@ -178,7 +179,7 @@ export function RunInspectorPanel({ runId, onClose }: Props) {
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto">
-            {tab === "timeline" ? (
+            {tab === "timeline" && (
               <ol className="py-2">
                 {events.map((e, i) => (
                   <li key={i} className="flex gap-2 px-4 py-1.5 hover:bg-surface2/20 group">
@@ -198,7 +199,11 @@ export function RunInspectorPanel({ runId, onClose }: Props) {
                   <li className="px-4 py-6 text-center text-xs text-muted">No events recorded</li>
                 )}
               </ol>
-            ) : (
+            )}
+            {tab === "graph" && (
+              <AgentGraph events={events} />
+            )}
+            {tab === "payload" && (
               <div className="p-4">
                 <pre className="text-[10px] text-text/70 font-mono whitespace-pre-wrap break-all">
                   {JSON.stringify(run, null, 2)}
