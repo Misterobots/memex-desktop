@@ -134,4 +134,80 @@ None — pure bug fix; no API surface changes.
 ## HR-6: Rework Browser Bridge Contract
 
 **Rollback tag:** _pending_
-**Commit:** _pending_
+**Commit:** harden browser native bridge — `93f79a67`
+
+---
+
+## TI-1: Run & Audit Data Model
+
+**Commit:** `5496d0d1`
+
+---
+
+## TI-2: Diff Review Path for File Writes
+
+**Commit:** `3020cf75`
+
+---
+
+## TI-3: Run Inspector + Agent Graph
+
+**Commits:** `92444b5a` (run inspector), `9d456b72` (agent graph)
+
+---
+
+## TI-4: Eval Bench
+
+**Commit:** `060646dc`
+
+---
+
+## TI-5: Settings View
+
+**Commit:** `e787ac17`
+
+---
+
+## FA-1: Prompt & Skill Registry
+
+**Commit:** `970cacc5`
+
+---
+
+## FA-2 → FA-4: (see individual commits)
+
+---
+
+## FA-5: Workspace Safety Mode
+
+**Commit:** `78959c50`
+
+---
+
+## FA-6: Model Router UI
+
+**Commit:** `c3899dec`
+
+---
+
+## FA-7: Setup Wizard
+
+**Commit:** `9f275b20`
+
+---
+
+## FA-8: Artifact System
+
+**Commit:** `60685f2d`
+
+---
+
+## FA-9: Memory Management UI
+
+**Commit:** `f78bd2f2`
+
+---
+
+## FA-10: Share and Export Flow
+
+**Commit:** `ae301770`
