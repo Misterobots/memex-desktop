@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { desktop, type RuntimeProfile } from "../../lib/desktop";
 import { SkillRegistry } from "../settings/SkillRegistry";
+import { MemoryView } from "./MemoryView";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -395,6 +396,13 @@ export function SettingsView() {
       {/* ── Skill Registry ── */}
       <Section title="Skill Registry">
         <SkillRegistry />
+      </Section>
+
+      {/* ── Memory Management ── */}
+      <Section title="Memory Management (MemPalace)">
+        <div className="h-[420px] -m-4 overflow-hidden rounded-b-xl">
+          <MemoryView />
+        </div>
       </Section>
 
     </div>

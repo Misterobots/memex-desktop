@@ -88,8 +88,27 @@ export function streamChat(opts: StreamOptions): () => void {
             const delta = chunk?.choices?.[0]?.delta;
             if (!delta?.content) continue;
 
+            const rawType   = (delta.type as string) ?? "message";
+            const eventType = rawType as EventType;
+
+            // In Ask mode, gate memory writes through the permission dialog
+            if (rawType === "memory_write" && bridge) {
+              const policy = await bridge.workspace.getPolicy();
+              if (policy.mode === "ask") {
+                const { approved } = await bridge.permissions.request({
+                  toolName:  "memory_write",
+                  toolInput: { content: String(delta.content).slice(0, 100) },
+                  callId:    `mw-${Date.now()}`,
+                });
+                if (!approved) {
+                  if (runId) bridge.runs?.addEvent(runId, "permission", { action: "memory_write", denied: true });
+                  continue;
+                }
+              }
+            }
+
             opts.onEvent({
-              type:         (delta.type as EventType) ?? "message",
+              type:         eventType,
               content:      delta.content,
               agent_name:   delta.agent_name,
               pioneer_name: delta.pioneer_name,
