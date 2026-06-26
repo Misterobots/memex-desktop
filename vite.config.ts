@@ -1,45 +1,24 @@
 import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 import electron from "vite-plugin-electron";
+import renderer from "vite-plugin-electron-renderer";
+import { resolve } from "path";
 
-/**
- * Memex Desktop — Claude Desktop architecture.
- *
- * The renderer is a minimal local shell (index.html / quick.html) that
- * provides the native title-bar drag region and error overlay.
- * All real UI is loaded by the WebContentsView from http://192.168.2.101:3300.
- *
- * No React renderer build needed — vite only compiles the Electron processes.
- */
 export default defineConfig({
   plugins: [
+    react(),
     electron([
       {
-        // Main process
         entry: "electron/main.ts",
         vite: {
           build: {
             outDir:   "dist-electron",
             sourcemap: true,
-            rollupOptions: {
-              external: ["electron", "node-pty"],
-            },
+            rollupOptions: { external: ["electron", "node-pty"] },
           },
         },
       },
       {
-        // Local shell preload
-        entry: "electron/preload.ts",
-        vite: {
-          build: {
-            outDir:   "dist-electron",
-            sourcemap: true,
-            lib: { formats: ["cjs"] },
-            rollupOptions: { external: ["electron"] },
-          },
-        },
-      },
-      {
-        // Memex WebContentsView preload (window.memex bridge)
         entry: "electron/preload-memex.ts",
         vite: {
           build: {
@@ -51,7 +30,6 @@ export default defineConfig({
         },
       },
       {
-        // Quick entry window preload
         entry: "electron/preload-quick.ts",
         vite: {
           build: {
@@ -63,7 +41,12 @@ export default defineConfig({
         },
       },
     ]),
+    renderer(),
   ],
+
+  resolve: {
+    alias: { "@": resolve(__dirname, "src") },
+  },
 
   server: {
     host: "0.0.0.0",
@@ -71,7 +54,6 @@ export default defineConfig({
   },
 
   build: {
-    outDir:        "dist",
-    rollupOptions: { input: { main: "index.html" } },
+    outDir: "dist",
   },
 });

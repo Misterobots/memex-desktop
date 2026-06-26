@@ -1,14 +1,18 @@
 /**
- * Injected into the Memex WebContentsView.
- * Exposes window.memex — the same pattern as window.claude in Claude Desktop.
- * The Memex Next.js UI checks for window.memex to unlock native features.
+ * Injected into the main BrowserWindow renderer (local React app).
+ * Exposes window.memex — the full native bridge to the Electron main process.
  */
 import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("memex", {
-  // Signals the web UI it's running inside the desktop app
   isDesktop: true,
   version:   () => ipcRenderer.invoke("app:getVersion"),
+
+  // Identity — who is using this desktop instance
+  identity: {
+    get: () => ipcRenderer.invoke("identity:get") as Promise<string>,
+    set: (uid: string) => ipcRenderer.invoke("identity:set", uid) as Promise<string>,
+  },
 
   // File system
   fs: {
@@ -18,10 +22,10 @@ contextBridge.exposeInMainWorld("memex", {
     mkdir:     (path: string)                  => ipcRenderer.invoke("fs:mkdir", path),
   },
 
-  // Shell execution
+  // Shell
   shell: {
-    exec:        (cmd: string, cwd?: string) => ipcRenderer.invoke("shell:exec", cmd, cwd),
-    openExternal:(url: string)               => ipcRenderer.invoke("app:openExternal", url),
+    exec:         (cmd: string, cwd?: string) => ipcRenderer.invoke("shell:exec", cmd, cwd),
+    openExternal: (url: string)               => ipcRenderer.invoke("app:openExternal", url),
   },
 
   // Dialogs
@@ -47,19 +51,27 @@ contextBridge.exposeInMainWorld("memex", {
     },
   },
 
-  // Quick-entry relay — called from main when user submits via quick window
-  onQuickSubmit: (cb: (text: string) => void) => {
-    (window as any).__memexQuickSubmit = cb;
+  // Auto-start
+  autoStart: {
+    get: () => ipcRenderer.invoke("app:getAutoStart"),
+    set: (enable: boolean) => ipcRenderer.invoke("app:setAutoStart", enable),
   },
 
-  // File/folder drop relay
-  onOpenPath: (cb: (path: string) => void) => {
-    (window as any).__memexOpenPath = cb;
+  // Auto-updater
+  updater: {
+    onStatus: (cb: (status: {
+      state: "checking" | "available" | "downloading" | "ready" | "current" | "error";
+      version?: string; percent?: number; message?: string;
+    }) => void) => {
+      ipcRenderer.on("update:status", (_e, status) => cb(status));
+      return () => ipcRenderer.removeAllListeners("update:status");
+    },
+    install: () => ipcRenderer.send("update:install"),
   },
 
   // Chrome extension browser bridge
   browser: {
-    send: (msg: Record<string, unknown>) => ipcRenderer.invoke("browser:send", msg),
+    send:      (msg: Record<string, unknown>) => ipcRenderer.invoke("browser:send", msg),
     onMessage: (cb: (msg: Record<string, unknown>) => void) => {
       ipcRenderer.on("browser:message", (_e, msg) => cb(msg));
       return () => ipcRenderer.removeAllListeners("browser:message");
@@ -80,35 +92,15 @@ contextBridge.exposeInMainWorld("memex", {
     },
   },
 
-  // Auto-start on login
-  autoStart: {
-    get: () => ipcRenderer.invoke("app:getAutoStart"),
-    set: (enable: boolean) => ipcRenderer.invoke("app:setAutoStart", enable),
-  },
-
-  // Auto-updater
-  updater: {
-    onStatus: (cb: (status: {
-      state: "checking" | "available" | "downloading" | "ready" | "current" | "error";
-      version?: string;
-      percent?: number;
-      message?: string;
-    }) => void) => {
-      ipcRenderer.on("update:status", (_e, status) => cb(status));
-      return () => ipcRenderer.removeAllListeners("update:status");
-    },
-    install: () => ipcRenderer.send("update:install"),
-  },
-
-  // Permission prompts — native dialog for tool approval
+  // Permission prompts
   permissions: {
-    request: (opts: {
-      toolName:  string;
-      toolInput: Record<string, unknown>;
-      callId:    string;
-    }) => ipcRenderer.invoke("permission:request", opts) as Promise<{
-      approved: boolean;
-      scope: "once" | "session" | "workspace";
-    }>,
+    request: (opts: { toolName: string; toolInput: Record<string, unknown>; callId: string }) =>
+      ipcRenderer.invoke("permission:request", opts) as Promise<{
+        approved: boolean; scope: "once" | "session" | "workspace";
+      }>,
   },
+
+  // Quick submit / open path relays (set by the React app)
+  onQuickSubmit: (cb: (text: string) => void) => { (window as any).__memexQuickSubmit = cb; },
+  onOpenPath:    (cb: (path: string) => void) => { (window as any).__memexOpenPath    = cb; },
 });

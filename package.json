@@ -1,70 +1,54 @@
 {
   "name": "memex-desktop",
   "version": "0.1.0",
-  "description": "Memex Desktop — native shell for the Memex UI",
+  "description": "Memex Desktop — local-first AI development harness",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build && electron-builder",
+    "dev":            "vite",
+    "build":          "vite build && electron-builder",
     "build:electron": "vite build",
-    "start": "electron ."
+    "start":          "electron ."
   },
   "dependencies": {
-    "@xterm/addon-fit": "^0.11.0",
-    "@xterm/addon-web-links": "^0.12.0",
-    "electron-updater": "^6.8.9",
-    "node-pty": "^1.1.0",
-    "xterm": "^5.3.0"
+    "react":                  "^18.3.1",
+    "react-dom":              "^18.3.1",
+    "zustand":                "^4.5.4",
+    "node-pty":               "^1.1.0",
+    "electron-updater":       "^6.8.9",
+    "xterm":                  "^5.3.0",
+    "@xterm/addon-fit":       "^0.11.0",
+    "@xterm/addon-web-links": "^0.12.0"
   },
   "devDependencies": {
-    "@types/node": "^20.14.0",
-    "concurrently": "^8.2.2",
-    "electron": "^31.0.0",
-    "electron-builder": "^24.13.3",
-    "typescript": "^5.4.5",
-    "vite": "^5.3.1",
-    "vite-plugin-electron": "^0.28.7",
-    "wait-on": "^7.2.0"
+    "@types/node":                "^20.14.0",
+    "@types/react":               "^18.3.3",
+    "@types/react-dom":           "^18.3.0",
+    "@vitejs/plugin-react":       "^4.3.1",
+    "autoprefixer":               "^10.4.19",
+    "concurrently":               "^8.2.2",
+    "electron":                   "^31.0.0",
+    "electron-builder":           "^24.13.3",
+    "postcss":                    "^8.4.38",
+    "tailwindcss":                "^3.4.4",
+    "typescript":                 "^5.4.5",
+    "vite":                       "^5.3.1",
+    "vite-plugin-electron":       "^0.28.7",
+    "vite-plugin-electron-renderer": "^0.14.5",
+    "wait-on":                    "^7.2.0"
   },
   "build": {
     "appId": "com.memex.desktop",
     "productName": "Memex Desktop",
     "directories": { "output": "release" },
-    "files": [
-      "dist/**/*",
-      "dist-electron/**/*",
-      "index.html",
-      "quick.html"
+    "files": ["dist/**/*", "dist-electron/**/*", "quick.html"],
+    "fileAssociations": [
+      { "ext": "memex", "name": "Memex Session",  "role": "Editor" },
+      { "ext": "claude", "name": "Claude Skill",  "role": "Editor" }
     ],
-    "extraResources": [],
-    "publish": {
-      "provider": "github",
-      "owner":    "Misterobots",
-      "repo":     "memex-desktop"
-    },
+    "publish": { "provider": "github", "owner": "Misterobots", "repo": "memex-desktop" },
     "win":   { "target": [{ "target": "nsis", "arch": ["x64"] }] },
     "mac":   { "target": [{ "target": "dmg",  "arch": ["x64", "arm64"] }] },
     "linux": { "target": [{ "target": "AppImage", "arch": ["x64"] }] },
-    "fileAssociations": [
-      {
-        "ext":         "memex",
-        "name":        "Memex Session",
-        "description": "Memex session or skill file",
-        "mimeType":    "application/x-memex",
-        "role":        "Editor"
-      },
-      {
-        "ext":         "claude",
-        "name":        "Claude Skill",
-        "description": "Claude Code skill package",
-        "mimeType":    "application/x-claude-skill",
-        "role":        "Editor"
-      }
-    ],
-    "nsis": {
-      "oneClick":        false,
-      "allowToChangeInstallationDirectory": true,
-      "deleteAppDataOnUninstall": false
-    }
+    "nsis":  { "oneClick": false, "allowToChangeInstallationDirectory": true }
   }
 }
