@@ -31,7 +31,7 @@ export function streamChat(opts: StreamOptions): () => void {
 
   // Open a run record if the bridge is available
   if (bridge?.runs && opts.runMeta) {
-    const userMsg = opts.messages.findLast((m) => m.role === "user")?.content ?? "";
+    const userMsg = [...opts.messages].reverse().find((m: { role: string; content: string }) => m.role === "user")?.content ?? "";
     bridge.runs.start({
       sessionId: opts.sessionId ?? "default",
       mode:      opts.mode,

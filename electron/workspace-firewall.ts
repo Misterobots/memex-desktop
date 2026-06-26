@@ -9,8 +9,8 @@
  *
  * All audit decisions are appended to userData/audit.jsonl.
  */
-import { join, resolve, normalize, isAbsolute } from "path";
-import { appendFileSync, existsSync } from "fs";
+import { join, normalize, isAbsolute } from "path";
+import { appendFileSync } from "fs";
 import { BrowserWindow, dialog } from "electron";
 
 // ---------------------------------------------------------------------------
