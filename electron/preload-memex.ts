@@ -71,7 +71,9 @@ contextBridge.exposeInMainWorld("memex", {
 
   // Chrome extension browser bridge
   browser: {
-    send:      (msg: Record<string, unknown>) => ipcRenderer.invoke("browser:send", msg),
+    send:              (msg: Record<string, unknown>) => ipcRenderer.invoke("browser:send", msg),
+    getExtensionIds:   () => ipcRenderer.invoke("browser:getExtensionIds") as Promise<string[]>,
+    setExtensionIds:   (ids: string[]) => ipcRenderer.invoke("browser:setExtensionIds", ids),
     onMessage: (cb: (msg: Record<string, unknown>) => void) => {
       ipcRenderer.on("browser:message", (_e, msg) => cb(msg));
       return () => ipcRenderer.removeAllListeners("browser:message");

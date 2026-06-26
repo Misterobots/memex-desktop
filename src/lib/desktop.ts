@@ -68,8 +68,10 @@ export interface MemexBridge {
   };
 
   browser: {
-    send:      (msg: Record<string, unknown>) => Promise<void>;
-    onMessage: (cb: (msg: Record<string, unknown>) => void) => () => void;
+    send:            (msg: Record<string, unknown>) => Promise<void>;
+    getExtensionIds: () => Promise<string[]>;
+    setExtensionIds: (ids: string[]) => Promise<void>;
+    onMessage:       (cb: (msg: Record<string, unknown>) => void) => () => void;
   };
 
   lsp: {

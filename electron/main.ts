@@ -11,7 +11,7 @@ import { promisify } from "util";
 import * as pty from "node-pty";
 import { autoUpdater }  from "electron-updater";
 import { LspManager }       from "./lsp-manager";
-import { BrowserBridge, registerNativeHost } from "./browser-bridge";
+import { BrowserBridge, registerNativeHost, setBridgeAllowedIds, updateNativeHostManifest } from "./browser-bridge";
 import { ConfigStore } from "./config-store";
 import { WorkspaceFirewall } from "./workspace-firewall";
 
@@ -285,6 +285,7 @@ ipcMain.handle("health:getLast", () => lastHealth);
 app.whenReady().then(() => {
   configStore       = new ConfigStore(app.getPath("userData"));
   workspaceFirewall = new WorkspaceFirewall(app.getPath("userData"));
+  setBridgeAllowedIds(configStore.getAllowedExtensionIds());
   createMainWindow();
   startHealthLoop();
   createTray();
@@ -415,7 +416,12 @@ ipcMain.on("lsp:notify",      (_e, lang: string, rootUri: string, method: string
 // ---------------------------------------------------------------------------
 // Browser bridge
 // ---------------------------------------------------------------------------
-ipcMain.handle("browser:send", (_e, msg: Record<string, unknown>) => browser.send(msg));
+ipcMain.handle("browser:send",             (_e, msg: Record<string, unknown>) => browser.send(msg));
+ipcMain.handle("browser:getExtensionIds",  () => configStore.getAllowedExtensionIds());
+ipcMain.handle("browser:setExtensionIds",  (_e, ids: string[]) => {
+  configStore.setAllowedExtensionIds(ids);
+  updateNativeHostManifest(configStore.getAllowedExtensionIds());
+});
 
 // ---------------------------------------------------------------------------
 // Permission prompts

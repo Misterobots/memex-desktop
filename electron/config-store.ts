@@ -16,8 +16,9 @@ export interface RuntimeProfile {
 }
 
 export interface AppConfig {
-  activeProfileId: string;
-  profiles:        RuntimeProfile[];
+  activeProfileId:     string;
+  profiles:            RuntimeProfile[];
+  allowedExtensionIds: string[]; // Chrome extension IDs for the browser bridge
 }
 
 // Seed profiles — installed on first run if config.json doesn't exist
@@ -65,7 +66,7 @@ export class ConfigStore {
       } catch {}
     }
     // First run — write seeds
-    const config: AppConfig = { activeProfileId: DEFAULT_ACTIVE, profiles: [...SEED_PROFILES] };
+    const config: AppConfig = { activeProfileId: DEFAULT_ACTIVE, profiles: [...SEED_PROFILES], allowedExtensionIds: [] };
     this.persist(config);
     return config;
   }
@@ -116,6 +117,13 @@ export class ConfigStore {
     }
     this.save();
     return this.config.profiles.length < before;
+  }
+
+  // Extension IDs for the browser bridge
+  getAllowedExtensionIds(): string[] { return this.config.allowedExtensionIds ?? []; }
+  setAllowedExtensionIds(ids: string[]): void {
+    this.config.allowedExtensionIds = ids.filter((id) => /^[a-z]{32}$/.test(id)); // Chrome IDs are 32 lowercase letters
+    this.save();
   }
 
   /** Convenience: URLs for the active profile (used in main.ts) */
