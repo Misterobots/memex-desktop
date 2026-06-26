@@ -13,6 +13,7 @@ import { autoUpdater }  from "electron-updater";
 import { LspManager }       from "./lsp-manager";
 import { BrowserBridge, registerNativeHost } from "./browser-bridge";
 import { ConfigStore } from "./config-store";
+import { WorkspaceFirewall } from "./workspace-firewall";
 
 const execAsync = promisify(exec);
 
@@ -22,7 +23,8 @@ const execAsync = promisify(exec);
 const isDev         = process.env.NODE_ENV === "development";
 const IDENTITY_FILE = join(app.getPath("userData"), "identity.enc");
 // Initialised after app.whenReady so userData path is available
-let configStore: ConfigStore;
+let configStore:    ConfigStore;
+let workspaceFirewall: WorkspaceFirewall;
 
 let mainWindow:  BrowserWindow | null = null;
 let quickWindow: BrowserWindow | null = null;
@@ -251,7 +253,8 @@ async function runHealth() {
 // App lifecycle
 // ---------------------------------------------------------------------------
 app.whenReady().then(() => {
-  configStore = new ConfigStore(app.getPath("userData"));
+  configStore       = new ConfigStore(app.getPath("userData"));
+  workspaceFirewall = new WorkspaceFirewall(app.getPath("userData"));
   createMainWindow();
   createTray();
   setupUpdater();
@@ -292,20 +295,35 @@ ipcMain.on("shell:retry",    () => isDev
   : mainWindow?.webContents.loadFile(join(__dirname, "../dist/index.html")));
 
 // ---------------------------------------------------------------------------
-// File system
+// File system (workspace-gated)
 // ---------------------------------------------------------------------------
-ipcMain.handle("fs:readFile",  (_e, path: string)                   => readFileSync(path, "utf-8"));
-ipcMain.handle("fs:writeFile", (_e, path: string, content: string)  => writeFileSync(path, content, "utf-8"));
-ipcMain.handle("fs:readDir",   (_e, path: string)                   => readdirSync(path).map((name) => {
-  const full = join(path, name);
-  return { name, path: full, isDir: statSync(full).isDirectory() };
-}));
-ipcMain.handle("fs:mkdir",     (_e, path: string)                   => mkdirSync(path, { recursive: true }));
+ipcMain.handle("fs:readFile", async (_e, path: string) => {
+  if (!await workspaceFirewall.checkRead(path, mainWindow)) throw new Error("Permission denied");
+  return readFileSync(path, "utf-8");
+});
+ipcMain.handle("fs:writeFile", async (_e, path: string, content: string) => {
+  if (!await workspaceFirewall.checkWrite(path, mainWindow)) throw new Error("Permission denied");
+  writeFileSync(path, content, "utf-8");
+});
+ipcMain.handle("fs:readDir", async (_e, path: string) => {
+  if (!await workspaceFirewall.checkRead(path, mainWindow)) throw new Error("Permission denied");
+  return readdirSync(path).map((name) => {
+    const full = join(path, name);
+    return { name, path: full, isDir: statSync(full).isDirectory() };
+  });
+});
+ipcMain.handle("fs:mkdir", async (_e, path: string) => {
+  if (!await workspaceFirewall.checkMkdir(path, mainWindow)) throw new Error("Permission denied");
+  mkdirSync(path, { recursive: true });
+});
 
 // ---------------------------------------------------------------------------
-// Shell exec
+// Shell exec (workspace-gated)
 // ---------------------------------------------------------------------------
 ipcMain.handle("shell:exec", async (_e, cmd: string, cwd?: string) => {
+  if (!await workspaceFirewall.checkShell(cmd, cwd, mainWindow)) {
+    return { stdout: "", stderr: "Permission denied by workspace firewall", code: 126 };
+  }
   try {
     const { stdout, stderr } = await execAsync(cmd, { cwd, timeout: 30000 });
     return { stdout, stderr, code: 0 };
@@ -315,11 +333,12 @@ ipcMain.handle("shell:exec", async (_e, cmd: string, cwd?: string) => {
 });
 
 // ---------------------------------------------------------------------------
-// PTY
+// PTY (workspace-gated)
 // ---------------------------------------------------------------------------
 const ptyProcesses = new Map<string, pty.IPty>();
 
-ipcMain.handle("pty:create", (_e, id: string, cwd?: string) => {
+ipcMain.handle("pty:create", async (_e, id: string, cwd?: string) => {
+  if (!await workspaceFirewall.checkPty(cwd, mainWindow)) throw new Error("Permission denied");
   const sh = process.platform === "win32" ? "powershell.exe" : (process.env.SHELL ?? "bash");
   const p  = pty.spawn(sh, [], { name: "xterm-color", cols: 120, rows: 36,
     cwd: cwd ?? process.env.HOME ?? process.cwd(), env: process.env as Record<string, string> });
@@ -386,6 +405,14 @@ ipcMain.handle("permission:request", async (_e, opts: { toolName: string; toolIn
   const chosen  = scopes[response] ?? "deny";
   return { approved: chosen !== "deny", scope: chosen === "deny" ? "once" : chosen };
 });
+
+// ---------------------------------------------------------------------------
+// Workspace firewall
+// ---------------------------------------------------------------------------
+ipcMain.handle("workspace:getPolicy",    () => workspaceFirewall.getPolicy());
+ipcMain.handle("workspace:setPolicy",    (_e, policy) => { workspaceFirewall.setPolicy(policy); });
+ipcMain.handle("workspace:addRoot",      (_e, root: string) => { workspaceFirewall.addRoot(root); });
+ipcMain.handle("workspace:clearSession", () => { workspaceFirewall.clearSessionApprovals(); });
 
 // ---------------------------------------------------------------------------
 // Runtime configuration profiles

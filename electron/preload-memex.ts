@@ -92,6 +92,14 @@ contextBridge.exposeInMainWorld("memex", {
     },
   },
 
+  // Workspace capability firewall
+  workspace: {
+    getPolicy:    () => ipcRenderer.invoke("workspace:getPolicy"),
+    setPolicy:    (policy: unknown) => ipcRenderer.invoke("workspace:setPolicy", policy),
+    addRoot:      (root: string) => ipcRenderer.invoke("workspace:addRoot", root),
+    clearSession: () => ipcRenderer.invoke("workspace:clearSession"),
+  },
+
   // Runtime configuration profiles
   config: {
     getAll:    () => ipcRenderer.invoke("config:getAll"),

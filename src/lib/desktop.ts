@@ -84,6 +84,13 @@ export interface MemexBridge {
       Promise<{ approved: boolean; scope: "once" | "session" | "workspace" }>;
   };
 
+  workspace: {
+    getPolicy:    () => Promise<{ roots: string[]; mode: string; allowShell: boolean; allowWrite: boolean }>;
+    setPolicy:    (policy: { roots?: string[]; mode?: string; allowShell?: boolean; allowWrite?: boolean }) => Promise<void>;
+    addRoot:      (root: string) => Promise<void>;
+    clearSession: () => Promise<void>;
+  };
+
   config: {
     getAll:    () => Promise<RuntimeProfile[]>;
     getActive: () => Promise<RuntimeProfile>;
