@@ -12,6 +12,8 @@ export interface StreamOptions {
   messages: Array<{ role: string; content: string }>;
   mode: MemexMode;
   modeFlags: Record<string, boolean>;
+  /** Ollama model id to route to (e.g. "qwen3-coder:30b"). Defaults to "swarm". */
+  model?: string;
   sessionId?: string;
   alreadySteered?: boolean;
   onEvent: (event: SSEEvent) => void;
@@ -23,7 +25,7 @@ export function streamChat(opts: StreamOptions): () => void {
   const controller = new AbortController();
 
   const body = JSON.stringify({
-    model: "swarm",
+    model: opts.model || "swarm",
     messages: opts.messages,
     stream: true,
     session_id: opts.sessionId ?? "default_session",

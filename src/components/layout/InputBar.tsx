@@ -30,7 +30,7 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarPro
   const {
     mode: globalMode, setMode, activeSessionId, createSession,
     addMessage, appendEvent, updateMessageContent,
-    setStreaming, streaming, stopStream, activeSession,
+    setStreaming, streaming, stopStream, activeSession, selectedModel,
   } = useStore();
 
   const mode = lockMode ?? globalMode;
@@ -73,6 +73,7 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarPro
     const stop = streamChat({
       messages: history,
       mode,
+      model: selectedModel,
       modeFlags: { ...MODE_FLAGS[mode], ...extraFlags },
       sessionId,
       onEvent: (event) => {
