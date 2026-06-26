@@ -5,6 +5,7 @@ import { ChatView } from "../views/ChatView";
 import { GoalsView } from "../views/GoalsView";
 import { ArtView } from "../views/ArtView";
 import { DevView } from "../views/DevView";
+import { SettingsView } from "../views/SettingsView";
 
 export function AppShell() {
   const { activeTab } = useStore();
@@ -14,10 +15,11 @@ export function AppShell() {
       <StatusBar />
       <TabBar />
       <div className="flex flex-1 min-h-0">
-        {activeTab === "chat"  && <ChatView />}
-        {activeTab === "goals" && <GoalsView />}
-        {activeTab === "art"   && <ArtView />}
-        {activeTab === "dev"   && <DevView />}
+        {activeTab === "chat"     && <ChatView />}
+        {activeTab === "goals"    && <GoalsView />}
+        {activeTab === "art"      && <ArtView />}
+        {activeTab === "dev"      && <DevView />}
+        {activeTab === "settings" && <SettingsView />}
       </div>
     </div>
   );
