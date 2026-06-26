@@ -5,73 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Memex Desktop</title>
     <style>
-      * { box-sizing: border-box; margin: 0; padding: 0; }
-      html, body { height: 100%; overflow: hidden; background: transparent; }
-
-      /* Transparent drag region sits above the WebContentsView */
-      #titlebar {
-        position: fixed;
-        top: 0; left: 0; right: 0;
-        height: 40px;
-        -webkit-app-region: drag;
-        background: transparent;
-        z-index: 10;
-      }
-
-      /* Error overlay — shown when Memex UI fails to load */
-      #error {
-        display: none;
-        position: fixed;
-        inset: 0;
-        background: #262624;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 14px;
-        font-family: ui-sans-serif, system-ui, sans-serif;
-        color: #f5f4ef;
-        z-index: 200;
-      }
-      #error.visible { display: flex; }
-      #error .icon { font-size: 40px; color: #d97757; }
-      #error h2    { font-size: 17px; font-weight: 600; }
-      #error p     { font-size: 13px; color: #a3a096; max-width: 300px; text-align: center; line-height: 1.5; }
-      #error button {
-        padding: 8px 22px;
-        background: #d97757;
-        color: #262624;
-        border: none;
-        border-radius: 8px;
-        font-size: 13px;
-        font-weight: 600;
-        cursor: pointer;
-      }
+      /* Pre-paint background to avoid any flash before index.css loads.
+         Window backgroundColor (#262624) matches; index.css owns the rest. */
+      html, body, #root { height: 100%; margin: 0; background: #262624; }
     </style>
   </head>
   <body>
-    <div id="titlebar"></div>
-
-    <div id="error">
-      <div class="icon">◈</div>
-      <h2>Couldn't connect to Memex</h2>
-      <p id="error-detail">Unable to reach memex.shivelymedia.com. Check your connection and try again.</p>
-      <div style="display:flex;gap:8px;margin-top:4px">
-        <button onclick="window.shell?.retry()">Retry</button>
-        <button id="btn-local" style="background:#3a3937;color:#f5f4ef" onclick="window.shell?.useLocal()">
-          Use local (no auth)
-        </button>
-      </div>
-    </div>
-
-    <script>
-      const errorEl  = document.getElementById('error');
-      const detailEl = document.getElementById('error-detail');
-
-      window.shell?.onLoadError((info) => {
-        errorEl.classList.add('visible');
-        if (info?.desc) detailEl.textContent = info.desc;
-      });
-      window.shell?.onLoadOk(() => errorEl.classList.remove('visible'));
-    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
