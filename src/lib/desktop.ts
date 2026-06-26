@@ -113,13 +113,15 @@ export interface MemexBridge {
   };
 
   config: {
-    getAll:    () => Promise<RuntimeProfile[]>;
-    getActive: () => Promise<RuntimeProfile>;
-    setActive: (id: string) => Promise<boolean>;
-    save:      (profile: Partial<RuntimeProfile> & { name: string; agentRuntime: string; mempalace: string }) => Promise<RuntimeProfile>;
-    delete:    (id: string) => Promise<boolean>;
-    getUrls:   () => Promise<{ agentRuntime: string; mempalace: string; ollama: string }>;
-    onChange:  (cb: (profile: RuntimeProfile) => void) => () => void;
+    getAll:        () => Promise<RuntimeProfile[]>;
+    getActive:     () => Promise<RuntimeProfile>;
+    setActive:     (id: string) => Promise<boolean>;
+    save:          (profile: Partial<RuntimeProfile> & { name: string; agentRuntime: string; mempalace: string }) => Promise<RuntimeProfile>;
+    delete:        (id: string) => Promise<boolean>;
+    getUrls:       () => Promise<{ agentRuntime: string; mempalace: string; ollama: string }>;
+    getWizardDone: () => Promise<boolean>;
+    setWizardDone: () => Promise<void>;
+    onChange:      (cb: (profile: RuntimeProfile) => void) => () => void;
   };
 
   runs: {

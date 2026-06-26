@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { AppShell } from "./components/layout/AppShell";
 import { CommandPalette } from "./components/shared/CommandPalette";
+import { SetupWizard } from "./components/onboarding/SetupWizard";
 import { useStore } from "./lib/store";
 import { checkHealth } from "./lib/memex-client";
 import { desktop, isDesktop } from "./lib/desktop";
@@ -11,6 +12,14 @@ export default function App() {
     setConnections, setCwd, createSession, activeSessionId,
     setCommandPalette, commandPaletteOpen,
   } = useStore();
+  const [wizardDone, setWizardDone] = useState<boolean | null>(null); // null = loading
+
+  // Check wizard completion state on startup
+  useEffect(() => {
+    const bridge = desktop();
+    if (!bridge) { setWizardDone(true); return; } // web mode — skip wizard
+    bridge.config.getWizardDone().then((done) => setWizardDone(done)).catch(() => setWizardDone(true));
+  }, []);
 
   useEffect(() => {
     if (!activeSessionId) createSession();
@@ -102,8 +111,17 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler);
   }, [commandPaletteOpen]);
 
+  const handleWizardComplete = () => {
+    desktop()?.config.setWizardDone();
+    setWizardDone(true);
+  };
+
+  // Show nothing while wizard completion state is loading
+  if (wizardDone === null) return null;
+
   return (
     <>
+      {!wizardDone && <SetupWizard onComplete={handleWizardComplete} />}
       <AppShell />
       {commandPaletteOpen && <CommandPalette />}
     </>

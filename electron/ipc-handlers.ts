@@ -175,9 +175,11 @@ export function registerAllIpc(ctx: IpcContext): void {
     }
     return ok;
   });
-  ipcMain.handle("config:save",    (_e, profile) => config.saveProfile(profile));
-  ipcMain.handle("config:delete",  (_e, id)      => config.deleteProfile(id));
-  ipcMain.handle("config:getUrls", ()            => config.getUrls());
+  ipcMain.handle("config:save",            (_e, profile) => config.saveProfile(profile));
+  ipcMain.handle("config:delete",          (_e, id)      => config.deleteProfile(id));
+  ipcMain.handle("config:getUrls",         ()            => config.getUrls());
+  ipcMain.handle("config:getWizardDone",   ()            => config.getWizardComplete());
+  ipcMain.handle("config:setWizardDone",   ()            => { config.setWizardComplete(); });
 
   // ── Run store ─────────────────────────────────────────────────────────────
   ipcMain.handle("runs:start",      (_e, opts)   => runs.startRun(opts));

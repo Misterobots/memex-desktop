@@ -19,6 +19,7 @@ export interface AppConfig {
   activeProfileId:     string;
   profiles:            RuntimeProfile[];
   allowedExtensionIds: string[]; // Chrome extension IDs for the browser bridge
+  wizardComplete?:     boolean;
 }
 
 // Seed profiles — installed on first run if config.json doesn't exist
@@ -125,6 +126,10 @@ export class ConfigStore {
     this.config.allowedExtensionIds = ids.filter((id) => /^[a-z]{32}$/.test(id)); // Chrome IDs are 32 lowercase letters
     this.save();
   }
+
+  // Setup wizard completion
+  getWizardComplete(): boolean { return this.config.wizardComplete ?? false; }
+  setWizardComplete(): void    { this.config.wizardComplete = true; this.save(); }
 
   /** Convenience: URLs for the active profile (used in main.ts) */
   getUrls(): { agentRuntime: string; mempalace: string; ollama: string } {
