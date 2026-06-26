@@ -17,8 +17,9 @@ import {
   registerShortcuts, routeFilePath, toggleQuickWindow,
 } from "./windows";
 import { registerAllIpc } from "./ipc-handlers";
-import { RunStore }       from "./run-store";
-import { EvalStore }      from "./eval-store";
+import { RunStore }        from "./run-store";
+import { EvalStore }       from "./eval-store";
+import { ArtifactStore }   from "./artifact-store";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -31,6 +32,7 @@ let config:     ConfigStore;
 let firewall:   WorkspaceFirewall;
 let runs:       RunStore;
 let evals:      EvalStore;
+let artifacts:  ArtifactStore;
 const lsp     = new LspManager(() => mainWindow);
 const browser = new BrowserBridge();
 
@@ -46,8 +48,9 @@ app.whenReady().then(() => {
   initIdentity(userData);
   config   = new ConfigStore(userData);
   firewall = new WorkspaceFirewall(userData);
-  runs     = new RunStore(userData);
-  evals    = new EvalStore(userData);
+  runs      = new RunStore(userData);
+  evals     = new EvalStore(userData);
+  artifacts = new ArtifactStore(userData);
   setBridgeAllowedIds(config.getAllowedExtensionIds());
 
   mainWindow = createMainWindow(config, getTray);
@@ -64,7 +67,7 @@ app.whenReady().then(() => {
   registerNativeHost();
   browser.start((msg) => mainWindow?.webContents.send("browser:message", msg));
 
-  registerAllIpc({ config, firewall, lsp, browser, runs, evals, getMain, startHealthLoop: doStartHealthLoop });
+  registerAllIpc({ config, firewall, lsp, browser, runs, evals, artifacts, getMain, startHealthLoop: doStartHealthLoop });
 
   app.on("activate", () => {
     if (mainWindow) { mainWindow.show(); mainWindow.focus(); }

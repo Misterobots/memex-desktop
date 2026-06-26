@@ -8,6 +8,19 @@ export type { RunRecord, RunEvent, EvalCase, EvalResult };
 
 export type PermissionMode = "trusted" | "workspace" | "ask";
 
+export type ArtifactType = "file" | "diff" | "diagram" | "report" | "log";
+export interface ArtifactRecord {
+  id:        string;
+  runId?:    string;
+  sessionId: string;
+  type:      ArtifactType;
+  name:      string;
+  path?:     string;
+  content?:  string;
+  createdAt: string;
+  sizeBytes?: number;
+}
+
 export interface OllamaModel {
   name:          string;
   parameterSize: string;
@@ -130,6 +143,13 @@ export interface MemexBridge {
     addEvent:  (id: string, type: string, payload: unknown) => Promise<void>;
     getRecent: (limit?: number) => Promise<RunRecord[]>;
     getEvents: (id: string) => Promise<RunEvent[]>;
+  };
+
+  artifacts: {
+    add:        (rec: Omit<ArtifactRecord, "id" | "createdAt">)  => Promise<ArtifactRecord>;
+    forRun:     (runId: string)                                   => Promise<ArtifactRecord[]>;
+    forSession: (sessionId: string)                               => Promise<ArtifactRecord[]>;
+    recent:     (limit?: number)                                  => Promise<ArtifactRecord[]>;
   };
 
   ollama: {

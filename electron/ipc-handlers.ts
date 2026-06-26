@@ -20,6 +20,7 @@ import { getCurrentUid, setCurrentUid } from "./identity";
 import { updateNativeHostManifest }     from "./browser-bridge";
 import type { RunStore }               from "./run-store";
 import type { EvalStore }              from "./eval-store";
+import type { ArtifactStore }          from "./artifact-store";
 
 const execAsync = promisify(exec);
 
@@ -30,12 +31,13 @@ export interface IpcContext {
   browser:   BrowserBridge;
   runs:      RunStore;
   evals:     EvalStore;
+  artifacts: ArtifactStore;
   getMain:   () => BrowserWindow | null;
   startHealthLoop: () => void;
 }
 
 export function registerAllIpc(ctx: IpcContext): void {
-  const { config, firewall, lsp, browser, runs, evals, getMain, startHealthLoop } = ctx;
+  const { config, firewall, lsp, browser, runs, evals, artifacts, getMain, startHealthLoop } = ctx;
 
   // ── Identity ──────────────────────────────────────────────────────────────
   ipcMain.handle("identity:get", () => getCurrentUid());
@@ -187,6 +189,12 @@ export function registerAllIpc(ctx: IpcContext): void {
   ipcMain.handle("runs:addEvent",   (_e, id, type, payload) => runs.addEvent(id, type, payload));
   ipcMain.handle("runs:getRecent",  (_e, limit)  => runs.getRecentRuns(limit));
   ipcMain.handle("runs:getEvents",  (_e, id)     => runs.getEventsForRun(id));
+
+  // ── Artifact store ────────────────────────────────────────────────────────
+  ipcMain.handle("artifact:add",        (_e, rec)        => artifacts.addArtifact(rec));
+  ipcMain.handle("artifact:forRun",     (_e, runId)      => artifacts.getForRun(runId));
+  ipcMain.handle("artifact:forSession", (_e, sessionId)  => artifacts.getForSession(sessionId));
+  ipcMain.handle("artifact:recent",     (_e, limit)      => artifacts.getRecent(limit));
 
   // ── Ollama model list ─────────────────────────────────────────────────────
   ipcMain.handle("ollama:listModels", async () => {

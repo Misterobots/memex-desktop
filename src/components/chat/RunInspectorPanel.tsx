@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { desktop }               from "../../lib/desktop";
+import type { ArtifactRecord }   from "../../lib/desktop";
 import type { RunRecord, RunEvent, RunEventType } from "../../types/memex";
 import { AgentGraph } from "./AgentGraph";
 
@@ -55,9 +56,10 @@ interface Props {
 }
 
 export function RunInspectorPanel({ runId, onClose }: Props) {
-  const [run,    setRun]    = useState<RunRecord | null>(null);
-  const [events, setEvents] = useState<RunEvent[]>([]);
-  const [tab,    setTab]    = useState<"timeline" | "graph" | "payload">("timeline");
+  const [run,       setRun]       = useState<RunRecord | null>(null);
+  const [events,    setEvents]    = useState<RunEvent[]>([]);
+  const [artifs,    setArtifs]    = useState<ArtifactRecord[]>([]);
+  const [tab,       setTab]       = useState<"timeline" | "graph" | "payload" | "artifacts">("timeline");
 
   const bridge = desktop();
 
@@ -67,14 +69,16 @@ export function RunInspectorPanel({ runId, onClose }: Props) {
     let cancelled = false;
 
     const load = async () => {
-      const [recent, evts] = await Promise.all([
+      const [recent, evts, arts] = await Promise.all([
         bridge.runs.getRecent(200),
         bridge.runs.getEvents(runId),
+        bridge.artifacts?.forRun(runId) ?? Promise.resolve([]),
       ]);
       if (cancelled) return;
       const found = recent.find((r) => r.id === runId) ?? null;
       setRun(found);
       setEvents(evts);
+      setArtifs(arts);
     };
 
     load();
@@ -168,12 +172,14 @@ export function RunInspectorPanel({ runId, onClose }: Props) {
 
           {/* Tab bar */}
           <div className="flex border-b border-border/40 flex-shrink-0">
-            {(["timeline", "graph", "payload"] as const).map((t) => (
+            {(["timeline", "graph", "artifacts", "payload"] as const).map((t) => (
               <button key={t}
                 onClick={() => setTab(t)}
-                className={`flex-1 py-1.5 text-xs capitalize transition-colors
+                className={`flex-1 py-1.5 text-[11px] capitalize transition-colors
                   ${tab === t ? "text-accent border-b border-accent" : "text-muted hover:text-text"}`}
-              >{t}</button>
+              >
+                {t}{t === "artifacts" && artifs.length > 0 ? ` (${artifs.length})` : ""}
+              </button>
             ))}
           </div>
 
@@ -203,6 +209,15 @@ export function RunInspectorPanel({ runId, onClose }: Props) {
             {tab === "graph" && (
               <AgentGraph events={events} />
             )}
+            {tab === "artifacts" && (
+              <div className="py-2">
+                {artifs.length === 0 ? (
+                  <p className="px-4 py-6 text-center text-xs text-muted">No artifacts for this run</p>
+                ) : (
+                  artifs.map((a) => <ArtifactRow key={a.id} artifact={a} />)
+                )}
+              </div>
+            )}
             {tab === "payload" && (
               <div className="p-4">
                 <pre className="text-[10px] text-text/70 font-mono whitespace-pre-wrap break-all">
@@ -225,6 +240,34 @@ function Chip({ label, color }: { label: string; color: string }) {
     <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border border-current/20 bg-current/10 ${color}`}>
       {label}
     </span>
+  );
+}
+
+const ARTIFACT_ICON: Record<string, string> = {
+  file: "📄", diff: "±", diagram: "⬡", report: "📋", log: "📜",
+};
+
+function ArtifactRow({ artifact: a }: { artifact: ArtifactRecord }) {
+  const bridge = desktop();
+  const label = a.path ? a.path.split(/[/\\]/).pop() ?? a.name : a.name;
+  const meta = [
+    a.type,
+    a.sizeBytes ? `${(a.sizeBytes / 1024).toFixed(1)} KB` : null,
+  ].filter(Boolean).join(" · ");
+  return (
+    <div className="flex items-start gap-2 px-4 py-2 hover:bg-surface2/20 group">
+      <span className="text-base flex-shrink-0 mt-0.5">{ARTIFACT_ICON[a.type] ?? "📦"}</span>
+      <div className="flex-1 min-w-0">
+        <div className="text-xs text-text/80 truncate font-medium">{label}</div>
+        <div className="text-[10px] text-muted">{meta}</div>
+        {a.path && (
+          <button
+            onClick={() => bridge?.shell.openExternal(`file://${a.path}`)}
+            className="text-[10px] text-accent hover:underline mt-0.5"
+          >Open file</button>
+        )}
+      </div>
+    </div>
   );
 }
 

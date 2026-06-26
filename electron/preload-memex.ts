@@ -151,6 +151,14 @@ contextBridge.exposeInMainWorld("memex", {
     getEvents: (id: string)     => ipcRenderer.invoke("runs:getEvents", id),
   },
 
+  // Artifact store
+  artifacts: {
+    add:        (rec: unknown)       => ipcRenderer.invoke("artifact:add", rec),
+    forRun:     (runId: string)      => ipcRenderer.invoke("artifact:forRun", runId),
+    forSession: (sessionId: string)  => ipcRenderer.invoke("artifact:forSession", sessionId),
+    recent:     (limit?: number)     => ipcRenderer.invoke("artifact:recent", limit),
+  },
+
   // Ollama model list
   ollama: {
     listModels: () => ipcRenderer.invoke("ollama:listModels"),
