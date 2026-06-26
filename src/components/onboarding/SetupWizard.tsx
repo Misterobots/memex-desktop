@@ -59,6 +59,21 @@ function Step({
 }
 
 // ---------------------------------------------------------------------------
+// Connection status line
+// ---------------------------------------------------------------------------
+function StatusLine({ label, ok, required }: { label: string; ok: boolean; required?: boolean }) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${ok ? "bg-green" : required ? "bg-red" : "bg-faint"}`} />
+      <span className="font-mono text-text/80">{label}</span>
+      <span className={`ml-auto text-xs ${ok ? "text-green" : required ? "text-red" : "text-muted"}`}>
+        {ok ? "connected" : required ? "not reachable" : "optional · offline"}
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // SetupWizard
 // ---------------------------------------------------------------------------
 interface Props { onComplete: () => void }
@@ -72,6 +87,7 @@ export function SetupWizard({ onComplete }: Props) {
   const [profiles, setProfiles] = useState<RuntimeProfile[]>([]);
   const [activeId, setActiveId] = useState<string>("");
   const [mpStatus, setMpStatus] = useState<"idle" | "testing" | "ok" | "fail">("idle");
+  const [health,   setHealth]   = useState<{ agentRuntime: string; mempalace: string; ollama: string } | null>(null);
   const [root,     setRoot]     = useState("");
   const [mode,     setMode]     = useState<"trusted" | "workspace" | "ask">("workspace");
   const [uid,      setUid]      = useState("");
@@ -88,13 +104,18 @@ export function SetupWizard({ onComplete }: Props) {
   const next = () => setStep((s) => Math.min(s + 1, TOTAL - 1) as WizardStep);
   const back = () => setStep((s) => Math.max(s - 1, 0) as WizardStep);
 
-  const testMemPalace = async () => {
+  const testConnection = async () => {
     if (!bridge) return;
     setMpStatus("testing");
+    setHealth(null);
     try {
-      const urls = await bridge.config.getUrls();
-      const res  = await fetch(`${urls.mempalace}/health`, { signal: AbortSignal.timeout(4000) });
-      setMpStatus(res.ok ? "ok" : "fail");
+      // Route through the main process: the renderer can't probe the backends
+      // directly because they send no CORS headers. health.check() probes the
+      // active profile's agent_runtime, MemPalace, and Ollama from main.
+      const h = await bridge.health.check();
+      setHealth(h);
+      // agent_runtime is the required service; MemPalace/Ollama are optional.
+      setMpStatus(h.agentRuntime === "connected" ? "ok" : "fail");
     } catch {
       setMpStatus("fail");
     }
@@ -130,19 +151,31 @@ export function SetupWizard({ onComplete }: Props) {
           </Step>
         )}
 
-        {/* Step 1: MemPalace test */}
+        {/* Step 1: Connection test */}
         {step === 1 && (
-          <Step index={1} total={TOTAL} title="Test MemPalace" onNext={next} onBack={back}>
+          <Step index={1} total={TOTAL} title="Test connection" onNext={next} onBack={back}>
             <p className="text-sm text-muted">
-              MemPalace stores long-term memory for the agent. Testing ensures the connection is reachable.
+              Verify the desktop app can reach your Memex backend. <span className="text-text/80">agent_runtime</span> is
+              required; MemPalace (long-term memory) and Ollama are optional and can be set up later.
             </p>
-            <button onClick={testMemPalace}
+            <button onClick={testConnection}
               disabled={mpStatus === "testing"}
               className="w-full py-2.5 rounded-xl border border-border/60 text-sm hover:bg-surface2/60 disabled:opacity-50">
               {mpStatus === "testing" ? "Testing…" : "Test connection"}
             </button>
-            {mpStatus === "ok"   && <p className="text-sm text-green-400">✓ MemPalace reachable</p>}
-            {mpStatus === "fail" && <p className="text-sm text-red-400">✕ Not reachable — you can continue and fix this later</p>}
+            {health && (
+              <div className="space-y-1.5 rounded-xl border border-border/40 bg-surface2/40 p-3">
+                <StatusLine label="agent_runtime" ok={health.agentRuntime === "connected"} required />
+                <StatusLine label="MemPalace"     ok={health.mempalace    === "connected"} />
+                <StatusLine label="Ollama"        ok={health.ollama       === "connected"} />
+              </div>
+            )}
+            {mpStatus === "fail" && (
+              <p className="text-xs text-muted">
+                agent_runtime isn't reachable on this profile. Go back to check the URL,
+                or continue and adjust it later in Settings.
+              </p>
+            )}
           </Step>
         )}
 

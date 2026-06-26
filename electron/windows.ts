@@ -34,6 +34,14 @@ export function createMainWindow(
       preload:          join(__dirname, "preload-memex.js"),
       contextIsolation: true,
       nodeIntegration:  false,
+      // The renderer talks directly to the user's own agent_runtime / MemPalace
+      // over the LAN. Those services send no CORS headers, so with the default
+      // same-origin policy every cross-origin fetch from the renderer (dev:
+      // http://localhost:5173, prod: file://) is blocked — breaking chat and the
+      // setup connection test. We load only our own bundled code here (no remote
+      // content), and the backends are trusted local hosts, so relaxing this is
+      // an acceptable trade-off for a local-first desktop app.
+      webSecurity:      false,
     },
   });
 
