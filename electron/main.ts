@@ -12,16 +12,17 @@ import * as pty from "node-pty";
 import { autoUpdater }  from "electron-updater";
 import { LspManager }       from "./lsp-manager";
 import { BrowserBridge, registerNativeHost } from "./browser-bridge";
+import { ConfigStore } from "./config-store";
 
 const execAsync = promisify(exec);
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
-const AGENT_RUNTIME = "http://192.168.2.101:8008";
-const MEMPALACE     = "http://192.168.2.102:8200";
 const isDev         = process.env.NODE_ENV === "development";
 const IDENTITY_FILE = join(app.getPath("userData"), "identity.enc");
+// Initialised after app.whenReady so userData path is available
+let configStore: ConfigStore;
 
 let mainWindow:  BrowserWindow | null = null;
 let quickWindow: BrowserWindow | null = null;
@@ -86,17 +87,25 @@ function createMainWindow() {
     mainWindow.loadFile(join(__dirname, "../dist/index.html"));
   }
 
-  // Inject identity + client marker on all requests to agent_runtime / MemPalace
+  // Inject identity + client marker on requests to the active profile's endpoints.
+  // We use a broad http:// filter and check URL prefixes dynamically so that
+  // profile switches take effect without restarting the webRequest listener.
   mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
-    { urls: [`${AGENT_RUNTIME}/*`, `${MEMPALACE}/*`, "http://192.168.2.101:*/*", "http://192.168.2.102:*/*"] },
+    { urls: ["http://*/*"] },
     (details, callback) => {
-      callback({
-        requestHeaders: {
-          ...details.requestHeaders,
-          "X-authentik-uid":   currentUid,
-          "X-desktop-client":  "memex-desktop",
-        },
-      });
+      const { agentRuntime, mempalace } = configStore.getUrls();
+      const u = details.url;
+      if (u.startsWith(agentRuntime) || u.startsWith(mempalace)) {
+        callback({
+          requestHeaders: {
+            ...details.requestHeaders,
+            "X-authentik-uid":  currentUid,
+            "X-desktop-client": "memex-desktop",
+          },
+        });
+      } else {
+        callback({ requestHeaders: details.requestHeaders });
+      }
     }
   );
 
@@ -230,7 +239,8 @@ function scheduleHealth() {
 }
 async function runHealth() {
   try {
-    const r = await fetch(`${AGENT_RUNTIME}/`, { signal: AbortSignal.timeout(5000) });
+    const { agentRuntime } = configStore.getUrls();
+    const r = await fetch(`${agentRuntime}/`, { signal: AbortSignal.timeout(5000) });
     if (r.ok) { healthAttempt = 0; return; }
   } catch {}
   healthAttempt++;
@@ -241,6 +251,7 @@ async function runHealth() {
 // App lifecycle
 // ---------------------------------------------------------------------------
 app.whenReady().then(() => {
+  configStore = new ConfigStore(app.getPath("userData"));
   createMainWindow();
   createTray();
   setupUpdater();
@@ -375,6 +386,20 @@ ipcMain.handle("permission:request", async (_e, opts: { toolName: string; toolIn
   const chosen  = scopes[response] ?? "deny";
   return { approved: chosen !== "deny", scope: chosen === "deny" ? "once" : chosen };
 });
+
+// ---------------------------------------------------------------------------
+// Runtime configuration profiles
+// ---------------------------------------------------------------------------
+ipcMain.handle("config:getAll",    () => configStore.getAll());
+ipcMain.handle("config:getActive", () => configStore.getActive());
+ipcMain.handle("config:setActive", (_e, id: string) => {
+  const ok = configStore.setActive(id);
+  if (ok) mainWindow?.webContents.send("config:changed", configStore.getActive());
+  return ok;
+});
+ipcMain.handle("config:save",   (_e, profile) => configStore.saveProfile(profile));
+ipcMain.handle("config:delete", (_e, id: string) => configStore.deleteProfile(id));
+ipcMain.handle("config:getUrls", () => configStore.getUrls());
 
 // ---------------------------------------------------------------------------
 // File type handlers

@@ -1,5 +1,8 @@
-export const AGENT_RUNTIME = "http://192.168.2.101:8008";
-export const MEMPALACE     = "http://192.168.2.102:8200";
+import { getAgentRuntime, getMempalace } from "./runtime-urls";
+
+// Re-exported for any legacy imports still using these constants.
+// Prefer getAgentRuntime() / getMempalace() for fresh requests.
+export { getAgentRuntime as AGENT_RUNTIME_FN, getMempalace as MEMPALACE_FN };
 
 export async function checkHealth(): Promise<{
   agentRuntime: boolean;
@@ -15,15 +18,18 @@ export async function checkHealth(): Promise<{
     }
   };
 
+  const ar = getAgentRuntime();
+  const mp = getMempalace();
+
   const [agentRuntime, mempalace] = await Promise.all([
-    check(`${AGENT_RUNTIME}/`),
-    check(`${MEMPALACE}/health`),
+    check(`${ar}/`),
+    check(`${mp}/health`),
   ]);
 
   // Ollama reachable via agent_runtime health node endpoint
   let ollama = false;
   try {
-    const r = await fetch(`${AGENT_RUNTIME}/api/v1/health/nodes`, { signal: AbortSignal.timeout(3000) });
+    const r = await fetch(`${ar}/api/v1/health/nodes`, { signal: AbortSignal.timeout(3000) });
     if (r.ok) {
       const data = await r.json();
       ollama = Array.isArray(data.nodes) && data.nodes.length > 0;
@@ -35,7 +41,7 @@ export async function checkHealth(): Promise<{
 
 export async function listModels(): Promise<string[]> {
   try {
-    const r = await fetch(`${AGENT_RUNTIME}/v1/models/ollama`);
+    const r = await fetch(`${getAgentRuntime()}/v1/models/ollama`);
     const data = await r.json();
     const models = data.models ?? data;
     return models.map((m: any) => m.name ?? m.id ?? String(m));
@@ -46,7 +52,7 @@ export async function listModels(): Promise<string[]> {
 
 export async function recallMemory(query: string, limit = 5): Promise<string[]> {
   try {
-    const r = await fetch(`${MEMPALACE}/v1/memories/search`, {
+    const r = await fetch(`${getMempalace()}/v1/memories/search`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query, limit }),
@@ -59,7 +65,7 @@ export async function recallMemory(query: string, limit = 5): Promise<string[]> 
 }
 
 export async function storeMemory(content: string): Promise<void> {
-  await fetch(`${MEMPALACE}/v1/memories`, {
+  await fetch(`${getMempalace()}/v1/memories`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content, memory_type: "semantic", domain: "general" }),

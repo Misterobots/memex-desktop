@@ -4,8 +4,23 @@
  * Gracefully no-ops when not running in Electron.
  */
 
-export const AGENT_RUNTIME = "http://192.168.2.101:8008";
-export const MEMPALACE     = "http://192.168.2.102:8200";
+// Fallback constants used when not running inside Electron (e.g. browser dev).
+// In Electron, the active RuntimeProfile's URLs are used instead via config.getUrls().
+export const AGENT_RUNTIME_DEFAULT = "http://192.168.2.101:8008";
+export const MEMPALACE_DEFAULT     = "http://192.168.2.102:8200";
+
+/** @deprecated import from the runtime-urls store instead */
+export const AGENT_RUNTIME = AGENT_RUNTIME_DEFAULT;
+export const MEMPALACE     = MEMPALACE_DEFAULT;
+
+export interface RuntimeProfile {
+  id:           string;
+  name:         string;
+  agentRuntime: string;
+  mempalace:    string;
+  ollama?:      string;
+  readonly?:    boolean;
+}
 
 export interface MemexBridge {
   isDesktop: boolean;
@@ -67,6 +82,16 @@ export interface MemexBridge {
   permissions: {
     request: (opts: { toolName: string; toolInput: Record<string, unknown>; callId: string }) =>
       Promise<{ approved: boolean; scope: "once" | "session" | "workspace" }>;
+  };
+
+  config: {
+    getAll:    () => Promise<RuntimeProfile[]>;
+    getActive: () => Promise<RuntimeProfile>;
+    setActive: (id: string) => Promise<boolean>;
+    save:      (profile: Partial<RuntimeProfile> & { name: string; agentRuntime: string; mempalace: string }) => Promise<RuntimeProfile>;
+    delete:    (id: string) => Promise<boolean>;
+    getUrls:   () => Promise<{ agentRuntime: string; mempalace: string; ollama: string }>;
+    onChange:  (cb: (profile: RuntimeProfile) => void) => () => void;
   };
 
   onQuickSubmit: (cb: (text: string) => void) => void;

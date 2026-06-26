@@ -1,4 +1,4 @@
-import { AGENT_RUNTIME } from "./memex-client";
+import { getAgentRuntime } from "./runtime-urls";
 import type { EventType, MemexMode } from "../types/memex";
 
 export interface SSEEvent {
@@ -33,7 +33,7 @@ export function streamChat(opts: StreamOptions): () => void {
     ...opts.modeFlags,
   });
 
-  fetch(`${AGENT_RUNTIME}/v1/chat/completions`, {
+  fetch(`${getAgentRuntime()}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body,

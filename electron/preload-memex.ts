@@ -92,6 +92,20 @@ contextBridge.exposeInMainWorld("memex", {
     },
   },
 
+  // Runtime configuration profiles
+  config: {
+    getAll:    () => ipcRenderer.invoke("config:getAll"),
+    getActive: () => ipcRenderer.invoke("config:getActive"),
+    setActive: (id: string) => ipcRenderer.invoke("config:setActive", id),
+    save:      (profile: unknown) => ipcRenderer.invoke("config:save", profile),
+    delete:    (id: string) => ipcRenderer.invoke("config:delete", id),
+    getUrls:   () => ipcRenderer.invoke("config:getUrls"),
+    onChange:  (cb: (profile: unknown) => void) => {
+      ipcRenderer.on("config:changed", (_e, p) => cb(p));
+      return () => ipcRenderer.removeAllListeners("config:changed");
+    },
+  },
+
   // Permission prompts
   permissions: {
     request: (opts: { toolName: string; toolInput: Record<string, unknown>; callId: string }) =>

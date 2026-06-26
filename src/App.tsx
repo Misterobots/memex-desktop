@@ -4,6 +4,7 @@ import { CommandPalette } from "./components/shared/CommandPalette";
 import { useStore } from "./lib/store";
 import { checkHealth } from "./lib/memex-client";
 import { desktop } from "./lib/desktop";
+import { initRuntimeUrls } from "./lib/runtime-urls";
 
 export default function App() {
   const {
@@ -13,6 +14,8 @@ export default function App() {
 
   useEffect(() => {
     if (!activeSessionId) createSession();
+    // Load active profile URLs before any requests fire
+    initRuntimeUrls();
 
     // Health check on mount and every 30s
     const poll = async () => {
