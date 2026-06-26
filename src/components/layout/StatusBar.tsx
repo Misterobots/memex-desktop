@@ -41,6 +41,15 @@ export function StatusBar() {
         <span className="text-xs text-faint px-2 py-1 rounded-md bg-surface border border-border/60">
           {selectedModel}
         </span>
+        <button
+          onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "e", ctrlKey: true, shiftKey: true, bubbles: true }))}
+          title="Export session (Ctrl+Shift+E)"
+          className="p-1.5 rounded-md text-faint hover:text-text hover:bg-surface transition-colors"
+        >
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M7 1v8M4 6l3 3 3-3M1 10v1.5A1.5 1.5 0 002.5 13h9a1.5 1.5 0 001.5-1.5V10" />
+          </svg>
+        </button>
       </div>
     </div>
   );

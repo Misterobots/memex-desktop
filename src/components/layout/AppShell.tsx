@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useStore } from "../../lib/store";
 import { StatusBar } from "./StatusBar";
 import { TabBar } from "./TabBar";
@@ -8,11 +9,25 @@ import { DevView } from "../views/DevView";
 import { SettingsView }   from "../views/SettingsView";
 import { EvalBenchView }  from "../views/EvalBenchView";
 import { DiffReviewModal } from "../shared/DiffReviewModal";
+import { ExportPanel }     from "../shared/ExportPanel";
 import { DiffReviewContext, useDiffReviewStore } from "../../hooks/useDiffReview";
 
 function AppShellInner() {
   const { activeTab } = useStore();
   const diffReview = useDiffReviewStore();
+  const [exportOpen, setExportOpen] = useState(false);
+
+  // Ctrl+Shift+E → open export dialog
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "e") {
+        e.preventDefault();
+        setExportOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   return (
     <DiffReviewContext.Provider value={diffReview}>
@@ -37,6 +52,7 @@ function AppShellInner() {
           onReject={diffReview.reject}
         />
       )}
+      {exportOpen && <ExportPanel onClose={() => setExportOpen(false)} />}
     </DiffReviewContext.Provider>
   );
 }
