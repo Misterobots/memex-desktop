@@ -185,18 +185,34 @@ export function registerQuickIpc(getMain: () => BrowserWindow | null): void {
 // Global shortcuts
 // ---------------------------------------------------------------------------
 export function registerShortcuts(
+  config:      ConfigStore,
   getMain:     () => BrowserWindow | null,
   toggleQuick: () => void,
 ): void {
-  const mac = process.platform === "darwin";
+  globalShortcut.unregisterAll(); // idempotent — safe to call on every (re)register
+  const sc = config.getShortcuts();
   [
-    { key: mac ? "Option+Space"      : "Ctrl+Shift+Space", fn: toggleQuick },
-    { key: mac ? "Command+Shift+M"   : "Ctrl+Shift+M",    fn: () => { getMain()?.show(); getMain()?.focus(); } },
-    { key: mac ? "Command+Shift+N"   : "Ctrl+Shift+N",    fn: () => {
+    { key: sc.toggleQuick, fn: toggleQuick },
+    { key: sc.showWindow,  fn: () => { getMain()?.show(); getMain()?.focus(); } },
+    { key: sc.newChat,     fn: () => {
       getMain()?.show(); getMain()?.focus();
       getMain()?.webContents.executeJavaScript("window.__memexNewConversation && window.__memexNewConversation()");
     }},
-  ].forEach(({ key, fn }) => { try { globalShortcut.register(key, fn); } catch {} });
+  ].forEach(({ key, fn }) => { if (key) { try { globalShortcut.register(key, fn); } catch {} } });
+}
+
+/** IPC for reading/updating global shortcuts; re-registers on change. */
+export function registerShortcutIpc(
+  config:      ConfigStore,
+  getMain:     () => BrowserWindow | null,
+  toggleQuick: () => void,
+): void {
+  ipcMain.handle("shortcuts:get", () => config.getShortcuts());
+  ipcMain.handle("shortcuts:set", (_e, sc) => {
+    const next = config.setShortcuts(sc);
+    registerShortcuts(config, getMain, toggleQuick);
+    return next;
+  });
 }
 
 // ---------------------------------------------------------------------------

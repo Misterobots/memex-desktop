@@ -15,11 +15,27 @@ export interface RuntimeProfile {
   readonly?:    boolean; // seed profiles are read-only by convention (UI hint only)
 }
 
+export interface ShortcutConfig {
+  toggleQuick: string;  // global quick-entry window
+  showWindow:  string;  // bring main window to front
+  newChat:     string;  // new conversation
+}
+
 export interface AppConfig {
   activeProfileId:     string;
   profiles:            RuntimeProfile[];
   allowedExtensionIds: string[]; // Chrome extension IDs for the browser bridge
   wizardComplete?:     boolean;
+  shortcuts?:          Partial<ShortcutConfig>;
+}
+
+function defaultShortcuts(): ShortcutConfig {
+  const mac = process.platform === "darwin";
+  return {
+    toggleQuick: mac ? "Option+Space"    : "Control+Shift+Space",
+    showWindow:  mac ? "Command+Shift+M"  : "Control+Shift+M",
+    newChat:     mac ? "Command+Shift+N"  : "Control+Shift+N",
+  };
 }
 
 // Seed profiles — installed on first run if config.json doesn't exist
@@ -130,6 +146,16 @@ export class ConfigStore {
   // Setup wizard completion
   getWizardComplete(): boolean { return this.config.wizardComplete ?? false; }
   setWizardComplete(): void    { this.config.wizardComplete = true; this.save(); }
+
+  // Global keyboard shortcuts (merged over platform defaults)
+  getShortcuts(): ShortcutConfig {
+    return { ...defaultShortcuts(), ...(this.config.shortcuts ?? {}) };
+  }
+  setShortcuts(sc: Partial<ShortcutConfig>): ShortcutConfig {
+    this.config.shortcuts = { ...this.getShortcuts(), ...sc };
+    this.save();
+    return this.getShortcuts();
+  }
 
   /** Convenience: URLs for the active profile (used in main.ts) */
   getUrls(): { agentRuntime: string; mempalace: string; ollama: string } {

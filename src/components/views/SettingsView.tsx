@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
-import { desktop, type RuntimeProfile } from "../../lib/desktop";
+import { desktop, type RuntimeProfile, type ShortcutConfig } from "../../lib/desktop";
 import { SkillRegistry } from "../settings/SkillRegistry";
+import { ShortcutCapture } from "../settings/ShortcutCapture";
 import { MemoryView } from "./MemoryView";
 
 // ---------------------------------------------------------------------------
@@ -133,6 +134,9 @@ export function SettingsView() {
   const [newExtId,         setNewExtId]        = useState("");
   const [extIdError,       setExtIdError]      = useState("");
 
+  // ── Keyboard shortcuts ──────────────────────────────────────────────────────
+  const [shortcuts,        setShortcuts]        = useState<ShortcutConfig | null>(null);
+
   const load = useCallback(async () => {
     if (!bridge) return;
     const [all, active] = await Promise.all([
@@ -151,7 +155,14 @@ export function SettingsView() {
 
     const ids = await bridge.browser.getExtensionIds();
     setExtensionIds(ids);
+
+    setShortcuts(await bridge.shortcuts.get());
   }, [bridge]);
+
+  const updateShortcut = async (key: keyof ShortcutConfig, value: string) => {
+    if (!bridge) return;
+    setShortcuts(await bridge.shortcuts.set({ [key]: value }));
+  };
 
   useEffect(() => {
     load();
@@ -392,6 +403,24 @@ export function SettingsView() {
           >Add</button>
         </div>
       </Section>
+
+      {/* ── Keyboard Shortcuts ── */}
+      {shortcuts && (
+        <Section title="Keyboard Shortcuts">
+          <Row label="Quick entry">
+            <ShortcutCapture value={shortcuts.toggleQuick} onChange={(v) => updateShortcut("toggleQuick", v)} />
+          </Row>
+          <Row label="Show window">
+            <ShortcutCapture value={shortcuts.showWindow} onChange={(v) => updateShortcut("showWindow", v)} />
+          </Row>
+          <Row label="New conversation">
+            <ShortcutCapture value={shortcuts.newChat} onChange={(v) => updateShortcut("newChat", v)} />
+          </Row>
+          <p className="text-[11px] text-muted pt-1">
+            Global shortcuts work system-wide. Click a binding and press the new key combination.
+          </p>
+        </Section>
+      )}
 
       {/* ── Skill Registry ── */}
       <Section title="Skill Registry">

@@ -14,7 +14,7 @@ import { startHealthLoop, registerHealthIpc } from "./health";
 import { setupUpdater, registerUpdaterIpc }   from "./updater";
 import {
   createMainWindow, createTray, registerQuickIpc,
-  registerShortcuts, routeFilePath, toggleQuickWindow,
+  registerShortcuts, registerShortcutIpc, routeFilePath, toggleQuickWindow,
 } from "./windows";
 import { registerAllIpc } from "./ipc-handlers";
 import { RunStore }        from "./run-store";
@@ -63,7 +63,8 @@ app.whenReady().then(() => {
   registerUpdaterIpc();
   registerHealthIpc(config, getMain);
   registerQuickIpc(getMain);
-  registerShortcuts(getMain, toggleQuickWindow);
+  registerShortcuts(config, getMain, toggleQuickWindow);
+  registerShortcutIpc(config, getMain, toggleQuickWindow);
   registerNativeHost();
   browser.start((msg) => mainWindow?.webContents.send("browser:message", msg));
 

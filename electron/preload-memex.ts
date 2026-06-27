@@ -165,6 +165,12 @@ contextBridge.exposeInMainWorld("memex", {
     contextLength: (model: string) => ipcRenderer.invoke("ollama:contextLength", model) as Promise<number | null>,
   },
 
+  // Global keyboard shortcuts
+  shortcuts: {
+    get: () => ipcRenderer.invoke("shortcuts:get"),
+    set: (sc: unknown) => ipcRenderer.invoke("shortcuts:set", sc),
+  },
+
   // Eval bench
   evals: {
     getCases:     ()                            => ipcRenderer.invoke("eval:getCases"),

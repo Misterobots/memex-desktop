@@ -8,6 +8,12 @@ export type { RunRecord, RunEvent, EvalCase, EvalResult };
 
 export type PermissionMode = "trusted" | "workspace" | "ask";
 
+export interface ShortcutConfig {
+  toggleQuick: string;
+  showWindow:  string;
+  newChat:     string;
+}
+
 export type ArtifactType = "file" | "diff" | "diagram" | "report" | "log";
 export interface ArtifactRecord {
   id:        string;
@@ -155,6 +161,11 @@ export interface MemexBridge {
   ollama: {
     listModels:    () => Promise<OllamaModel[]>;
     contextLength: (model: string) => Promise<number | null>;
+  };
+
+  shortcuts: {
+    get: () => Promise<ShortcutConfig>;
+    set: (sc: Partial<ShortcutConfig>) => Promise<ShortcutConfig>;
   };
 
   evals: {
