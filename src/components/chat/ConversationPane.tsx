@@ -40,23 +40,46 @@ function WelcomeScreen() {
 export function ConversationPane() {
   const { activeSession, streaming } = useStore();
   const session = activeSession();
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const pinnedRef    = useRef(true);              // is the user parked at the bottom?
+  const prevLenRef   = useRef(0);
+
+  const messages = session?.messages ?? [];
+  const last = messages[messages.length - 1];
+  // Grows as the assistant streams (content chars + event count) so the view
+  // follows the live response, not just new-message boundaries.
+  const streamSignal = (last?.content?.length ?? 0) + (last?.events?.length ?? 0);
+
+  // Track whether the user is near the bottom; if they scroll up to read, we
+  // stop auto-following so we don't yank them back down.
+  const handleScroll = () => {
+    const el = containerRef.current;
+    if (!el) return;
+    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  };
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [session?.messages.length, streaming]);
+    const el = containerRef.current;
+    if (!el) return;
+    const isNewMessage = messages.length !== prevLenRef.current;
+    prevLenRef.current = messages.length;
+    // A new message (your send, or the assistant bubble) always pulls the view
+    // down; streaming growth only follows when already pinned to the bottom.
+    if (isNewMessage) pinnedRef.current = true;
+    if (isNewMessage || pinnedRef.current) el.scrollTop = el.scrollHeight;
+  }, [messages.length, streamSignal, streaming]);
 
-  if (!session || session.messages.length === 0) {
+  if (!session || messages.length === 0) {
     return <WelcomeScreen />;
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
       <div className="max-w-conversation mx-auto px-6 py-8 space-y-7">
-        {session.messages.map((msg) => (
+        {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />
         ))}
-        <div ref={bottomRef} className="h-4" />
+        <div className="h-4" />
       </div>
     </div>
   );

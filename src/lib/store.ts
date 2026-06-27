@@ -142,15 +142,23 @@ export const useStore = create<AppState>()(
     }),
     {
       name: "memex-desktop",
+      version: 1,
+      // mode is intentionally NOT persisted — it's a per-session intent, and a
+      // sticky "swarm" silently turned greetings into build orchestration.
+      // Each launch starts in the default "chat" mode.
       partialize: (s) => ({
         sessions: s.sessions.slice(0, 50),
         activeSessionId: s.activeSessionId,
         activeTab: s.activeTab,
-        mode: s.mode,
         cwd: s.cwd,
         sidebarOpen: s.sidebarOpen,
         selectedModel: s.selectedModel,
       }),
+      // Drop any previously-persisted mode so existing installs reset to chat.
+      migrate: (persisted: any) => {
+        if (persisted && "mode" in persisted) delete persisted.mode;
+        return persisted;
+      },
     }
   )
 );
