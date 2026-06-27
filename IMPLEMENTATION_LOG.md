@@ -112,29 +112,25 @@ None — pure bug fix; no API surface changes.
 
 ## HR-2: Add Runtime Configuration Profiles
 
-**Rollback tag:** _pending_
-**Commit:** _pending_
+**Commit:** `599f21e4`
 
 ---
 
 ## HR-3: Add Workspace Capability Firewall
 
-**Rollback tag:** _pending_
-**Commit:** _pending_
+**Commit:** `ac865489`
 
 ---
 
 ## HR-4: Wire Native Health Loop
 
-**Rollback tag:** _pending_
-**Commit:** _pending_
+**Commit:** `93f79a67`
 
 ---
 
 ## HR-6: Rework Browser Bridge Contract
 
-**Rollback tag:** _pending_
-**Commit:** harden browser native bridge — `93f79a67`
+**Commit:** `c6509e06` (harden browser native bridge)
 
 ---
 
@@ -211,3 +207,24 @@ None — pure bug fix; no API surface changes.
 ## FA-10: Share and Export Flow
 
 **Commit:** `ae301770`
+
+---
+
+## Post-launch review fixes
+
+Bugs found by actually running the packaged app end-to-end (first real launch).
+
+- **Renderer entry + Tailwind pipeline** (`83f1b18d`) — `index.html` was still the
+  old website-wrapper shell (no `#root`, no module script) and `postcss.config.js`
+  had no plugins → blank, unstyled window. Both fixed; `vite build` now emits assets.
+- **Memex brand theme** (`bde4c3a2`) — replaced inherited Claude coral/warm-dark
+  palette with Memex teal `#00cca8` on near-black, purple secondary `#9580ff`.
+- **CORS / connection + setup test** (`452e6dd6`) — `webSecurity:false` so the
+  renderer can reach the no-CORS LAN backends; wizard test routed through the
+  main-process `health.check()`.
+- **Enter to send** (`13a5347a`) — was Shift/Ctrl+Enter only; now Enter sends,
+  Shift+Enter inserts a newline.
+- **Default to chat mode + stream autoscroll** (`bc46d83a`) — stop persisting a
+  sticky `swarm` mode (migrate to chat); conversation view now follows streaming.
+- **Streaming cursor** (`0cb36613`) — blinking cursor now only on the actively
+  streaming message, not every past response.
