@@ -34,6 +34,10 @@ export function StatusBar() {
   const { connections, selectedModel, toggleSidebar, sidebarOpen } = useStore();
 
   const allConnected = Object.values(connections).every((c) => c === "connected");
+  // On Windows/Linux the native window-controls overlay sits at the top-right;
+  // reserve space so the right cluster isn't hidden beneath it. (Mac controls
+  // are top-left via trafficLightPosition, so no right padding needed there.)
+  const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.userAgent);
 
   return (
     <div className="drag-region flex items-center justify-between h-11 px-4 bg-canvas border-b border-border/60 flex-shrink-0">
@@ -54,7 +58,7 @@ export function StatusBar() {
         </div>
       </div>
 
-      <div className="no-drag flex items-center gap-3">
+      <div className={`no-drag flex items-center gap-3 ${isMac ? "" : "pr-[140px]"}`}>
         <div
           className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-surface transition-colors cursor-default"
           title={`runtime: ${connections.agentRuntime} · memory: ${connections.mempalace} · ollama: ${connections.ollama}`}
