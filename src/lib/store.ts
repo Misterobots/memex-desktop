@@ -25,6 +25,7 @@ interface AppState {
   // Actions — sessions
   createSession: () => string;
   setActiveSession: (id: string) => void;
+  deleteSession: (id: string) => void;
   addMessage: (sessionId: string, msg: ChatMessage) => void;
   mergeRemoteSessions: (remote: Session[]) => void;
   appendEvent: (sessionId: string, msgId: string, event: MessageEvent) => void;
@@ -84,6 +85,14 @@ export const useStore = create<AppState>()(
       },
 
       setActiveSession: (id) => set({ activeSessionId: id }),
+
+      deleteSession: (id) =>
+        set((s) => {
+          const sessions = s.sessions.filter((x) => x.id !== id);
+          const activeSessionId =
+            s.activeSessionId === id ? (sessions[0]?.id ?? null) : s.activeSessionId;
+          return { sessions, activeSessionId };
+        }),
 
       addMessage: (sessionId, msg) =>
         set((s) => ({

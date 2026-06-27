@@ -1,7 +1,8 @@
 import { useStore } from "../../lib/store";
+import { deleteRemoteSession } from "../../lib/conv-sync";
 
 export function SessionList() {
-  const { sessions, activeSessionId, setActiveSession, createSession } = useStore();
+  const { sessions, activeSessionId, setActiveSession, createSession, deleteSession } = useStore();
 
   return (
     <div className="py-3">
@@ -22,17 +23,30 @@ export function SessionList() {
 
       <div className="px-2">
         {sessions.slice(0, 20).map((s) => (
-          <button
+          <div
             key={s.id}
-            onClick={() => setActiveSession(s.id)}
-            className={`w-full text-left px-3 py-2 rounded-lg text-sm truncate transition-colors mb-0.5 ${
-              s.id === activeSessionId
-                ? "text-text bg-surface2"
-                : "text-muted hover:text-text hover:bg-surface2/60"
+            className={`group relative flex items-center rounded-lg mb-0.5 transition-colors ${
+              s.id === activeSessionId ? "bg-surface2" : "hover:bg-surface2/60"
             }`}
           >
-            {s.title}
-          </button>
+            <button
+              onClick={() => setActiveSession(s.id)}
+              className={`flex-1 min-w-0 text-left pl-3 pr-7 py-2 text-sm truncate ${
+                s.id === activeSessionId ? "text-text" : "text-muted group-hover:text-text"
+              }`}
+            >
+              {s.title}
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); deleteSession(s.id); deleteRemoteSession(s.id); }}
+              title="Delete conversation"
+              className="absolute right-1 p-1 rounded opacity-0 group-hover:opacity-100 text-faint hover:text-red hover:bg-red/10 transition-opacity"
+            >
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M2.5 4h11M6 4V2.5h4V4M5 4l.5 9a1 1 0 001 1h3a1 1 0 001-1L11 4" />
+              </svg>
+            </button>
+          </div>
         ))}
         {sessions.length === 0 && (
           <p className="px-3 py-2 text-xs text-faint">No conversations yet</p>
