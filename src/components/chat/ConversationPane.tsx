@@ -76,8 +76,12 @@ export function ConversationPane() {
   return (
     <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
       <div className="max-w-conversation mx-auto px-6 py-8 space-y-7">
-        {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
+        {messages.map((msg, i) => (
+          <MessageBubble
+            key={msg.id}
+            message={msg}
+            isActive={streaming && i === messages.length - 1 && msg.role === "assistant"}
+          />
         ))}
         <div className="h-4" />
       </div>

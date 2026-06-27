@@ -1,4 +1,3 @@
-import { useStore }    from "../../lib/store";
 import type { ChatMessage } from "../../types/memex";
 import { StatusEvent }  from "./StatusEvent";
 import { AgentTrace }   from "./AgentTrace";
@@ -7,7 +6,11 @@ import { SteeringCard } from "./SteeringCard";
 // Lazy import to avoid hard dep on ChatView context when used outside it
 import { useInspector } from "../views/ChatView";
 
-interface Props { message: ChatMessage; }
+interface Props {
+  message: ChatMessage;
+  /** True only for the single message currently being streamed. */
+  isActive?: boolean;
+}
 
 function RunButton({ runId }: { runId: string }) {
   const inspector = useInspector(); // returns null when outside ChatView
@@ -34,10 +37,10 @@ function RunButton({ runId }: { runId: string }) {
   );
 }
 
-export function MessageBubble({ message }: Props) {
-  const { streaming } = useStore();
+export function MessageBubble({ message, isActive = false }: Props) {
   const isUser = message.role === "user";
-  const isStreaming = streaming && message.role === "assistant" && !message.content;
+  // Waiting for the first token on the message that's actively streaming.
+  const isWaiting = isActive && !message.content;
 
   const statusEvents = message.events.filter(
     (e) => e.type === "status" || e.type === "thought" || e.type === "log"
@@ -79,15 +82,15 @@ export function MessageBubble({ message }: Props) {
           <SteeringCard content={clarification.content} messageId={message.id} />
         )}
 
-        {(message.content || isStreaming) && (
-          <div className={`text-text text-[15px] leading-relaxed whitespace-pre-wrap ${isStreaming ? "cursor-blink" : ""}`}>
+        {(message.content || isWaiting) && (
+          <div className={`text-text text-[15px] leading-relaxed whitespace-pre-wrap ${isWaiting ? "cursor-blink" : ""}`}>
             {message.content}
-            {streaming && message.content && <span className="cursor-blink" />}
+            {isActive && message.content && <span className="cursor-blink" />}
           </div>
         )}
 
-        {/* Run inspector button — only shown when run is attached */}
-        {message.runId && !isStreaming && (
+        {/* Run inspector button — only shown when run is attached and not mid-stream */}
+        {message.runId && !isActive && (
           <div className="pt-0.5">
             <RunButton runId={message.runId} />
           </div>
