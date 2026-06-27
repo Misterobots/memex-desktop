@@ -114,6 +114,7 @@ export interface Session {
   id: string;
   title: string;
   createdAt: number;
+  updatedAt?: number;   // last activity — used for cross-device sync ordering
   messages: ChatMessage[];
 }
 

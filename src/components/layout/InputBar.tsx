@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { useStore } from "../../lib/store";
 import { streamChat } from "../../lib/sse-stream";
+import { pushSession } from "../../lib/conv-sync";
 import { MODE_FLAGS, MODE_LABELS, type MemexMode, type ChatMessage, type MessageEvent } from "../../types/memex";
 import { ModelPickerPopover } from "./ModelPickerPopover";
 import { ContextMeter } from "./ContextMeter";
@@ -88,7 +89,12 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarPro
           updateMessageContent(sessionId, assistantId, accumulated);
         }
       },
-      onDone: () => setStreaming(false),
+      onDone: () => {
+        setStreaming(false);
+        // Sync the completed conversation to the backend for resume / cross-device.
+        const sess = useStore.getState().sessions.find((x) => x.id === sessionId);
+        if (sess) pushSession(sess);
+      },
       onError: (err) => {
         appendEvent(sessionId, assistantId, { type: "log", content: `Error: ${err.message}` });
         setStreaming(false);

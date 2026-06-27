@@ -6,6 +6,7 @@ import { useStore } from "./lib/store";
 import { checkHealth } from "./lib/memex-client";
 import { desktop, isDesktop } from "./lib/desktop";
 import { initRuntimeUrls } from "./lib/runtime-urls";
+import { fetchRemoteSessions } from "./lib/conv-sync";
 
 export default function App() {
   const {
@@ -23,8 +24,14 @@ export default function App() {
 
   useEffect(() => {
     if (!activeSessionId) createSession();
-    // Load active profile URLs before any requests fire
-    initRuntimeUrls();
+    // Load active profile URLs before any requests fire, then resume sessions
+    // from the backend (cross-device / fresh-install continuity).
+    initRuntimeUrls().then(() => {
+      if (!isDesktop()) return;
+      fetchRemoteSessions().then((remote) => {
+        if (remote.length) useStore.getState().mergeRemoteSessions(remote);
+      });
+    });
 
     // Health status — prefer native push events in Electron, fall back to JS polling
     let id: ReturnType<typeof setInterval> | undefined;

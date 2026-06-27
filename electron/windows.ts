@@ -64,8 +64,10 @@ export function createMainWindow(
         callback({
           requestHeaders: {
             ...details.requestHeaders,
-            "X-authentik-uid":  getCurrentUid(),
-            "X-desktop-client": "memex-desktop",
+            "X-authentik-uid":      getCurrentUid(),
+            // Owner key for server-side conversation sync (/v1/conversations).
+            "X-authentik-username": getCurrentUid(),
+            "X-desktop-client":     "memex-desktop",
           },
         });
       } else {

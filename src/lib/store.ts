@@ -26,6 +26,7 @@ interface AppState {
   createSession: () => string;
   setActiveSession: (id: string) => void;
   addMessage: (sessionId: string, msg: ChatMessage) => void;
+  mergeRemoteSessions: (remote: Session[]) => void;
   appendEvent: (sessionId: string, msgId: string, event: MessageEvent) => void;
   updateMessageContent: (sessionId: string, msgId: string, content: string) => void;
   updateMessageRunId: (sessionId: string, msgId: string, runId: string) => void;
@@ -67,10 +68,12 @@ export const useStore = create<AppState>()(
 
       createSession: () => {
         const id = `session-${Date.now()}`;
+        const now = Date.now();
         const session: Session = {
           id,
           title: "New conversation",
-          createdAt: Date.now(),
+          createdAt: now,
+          updatedAt: now,
           messages: [],
         };
         set((s) => ({
@@ -86,10 +89,24 @@ export const useStore = create<AppState>()(
         set((s) => ({
           sessions: s.sessions.map((sess) =>
             sess.id === sessionId
-              ? { ...sess, messages: [...sess.messages, msg] }
+              ? { ...sess, messages: [...sess.messages, msg], updatedAt: Date.now() }
               : sess
           ),
         })),
+
+      mergeRemoteSessions: (remote) =>
+        set((s) => {
+          const byId = new Map(s.sessions.map((x) => [x.id, x] as const));
+          for (const r of remote) {
+            const local = byId.get(r.id);
+            // Take remote only when it's newer (or unseen) — local edits win otherwise.
+            if (!local || (r.updatedAt ?? 0) > (local.updatedAt ?? 0)) byId.set(r.id, r);
+          }
+          const merged = [...byId.values()].sort(
+            (a, b) => (b.updatedAt ?? b.createdAt ?? 0) - (a.updatedAt ?? a.createdAt ?? 0)
+          );
+          return { sessions: merged };
+        }),
 
       appendEvent: (sessionId, msgId, event) =>
         set((s) => ({
