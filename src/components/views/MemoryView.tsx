@@ -9,12 +9,19 @@ import { desktop } from "../../lib/desktop";
 // Types (matches MemPalace API)
 // ---------------------------------------------------------------------------
 interface MemRecord {
-  id:          string;
-  content:     string;
-  score?:      number;
-  metadata?:   Record<string, string | number | boolean>;
-  created_at?: string;
-  pinned?:     boolean;
+  id:           string;
+  content:      string;
+  score?:       number;
+  memory_type?: string;
+  domain?:      string;
+  metadata?:    Record<string, string | number | boolean>;
+  created_at?:  string;
+  pinned?:      boolean;
+}
+
+interface MemStats {
+  total:     number;
+  breakdown: Array<{ type: string; domain: string; count: number }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -36,35 +43,51 @@ export function MemoryView() {
   const [selected, setSelected] = useState<MemRecord | null>(null);
   const [status,   setStatus]   = useState<"idle" | "loading" | "error">("idle");
   const [msg,      setMsg]      = useState<string | null>(null);
+  const [stats,    setStats]    = useState<MemStats | null>(null);
+  const [searched, setSearched] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const search = useCallback(async (q: string) => {
     if (!bridge) return;
     setStatus("loading");
     setMsg(null);
+    setSearched(true);
     try {
-      const res = await mpFetch(bridge, "/search", {
+      const res = await mpFetch(bridge, "/v1/memories/search", {
         method: "POST",
         body: JSON.stringify({ query: q || "*", limit: 30 }),
-        signal: AbortSignal.timeout(6000),
+        signal: AbortSignal.timeout(12000),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json() as { results?: MemRecord[] };
-      setResults(data.results ?? []);
+      const data = await res.json();
+      const arr: MemRecord[] = Array.isArray(data) ? data : (data.results ?? []);
+      // MemPalace stores the "pinned" flag inside metadata.
+      setResults(arr.map((m) => ({ ...m, pinned: !!(m.metadata && (m.metadata as Record<string, unknown>).pinned) })));
       setStatus("idle");
     } catch (e: any) {
       setStatus("error");
-      setMsg(e.message);
+      setMsg(e?.name === "TimeoutError" || e?.name === "AbortError"
+        ? "Search timed out — MemPalace's embedding backend may be down."
+        : `Search failed: ${e.message}`);
     }
   }, [bridge]);
 
-  // Load recent memories on mount
-  useEffect(() => { search(""); }, [search]);
+  // Load the (fast, GET) stats overview on mount. Search is explicit so a slow
+  // embedding backend doesn't stall every open.
+  const loadStats = useCallback(async () => {
+    if (!bridge) return;
+    try {
+      const res = await mpFetch(bridge, "/v1/memories/stats", { signal: AbortSignal.timeout(6000) });
+      if (res.ok) setStats(await res.json());
+    } catch { /* stats are best-effort */ }
+  }, [bridge]);
+
+  useEffect(() => { loadStats(); }, [loadStats]);
 
   const deleteMemory = async (id: string) => {
     if (!bridge) return;
     try {
-      await mpFetch(bridge, `/memory/${id}`, { method: "DELETE" });
+      await mpFetch(bridge, `/v1/memories/${id}`, { method: "DELETE" });
       setResults((r) => r.filter((m) => m.id !== id));
       if (selected?.id === id) setSelected(null);
       setMsg("Memory deleted");
@@ -75,7 +98,7 @@ export function MemoryView() {
     if (!bridge) return;
     try {
       const pinned = !rec.pinned;
-      await mpFetch(bridge, `/memory/${rec.id}`, {
+      await mpFetch(bridge, `/v1/memories/${rec.id}`, {
         method: "PATCH",
         body: JSON.stringify({ metadata: { ...rec.metadata, pinned } }),
       });
@@ -116,7 +139,17 @@ export function MemoryView() {
           </div>
         </div>
 
-        {msg && (
+        {stats && (
+          <div className="px-3 py-2 border-b border-border/40 text-[10px] text-muted">
+            <span className="text-text/70 font-medium">{stats.total.toLocaleString()}</span> memories
+            {stats.breakdown?.length > 0 && (
+              <> · {[...stats.breakdown].sort((a, b) => b.count - a.count).slice(0, 3)
+                .map((b) => `${b.domain} (${b.count})`).join(" · ")}</>
+            )}
+          </div>
+        )}
+
+        {msg && status !== "error" && (
           <div className="px-3 py-1.5 text-xs text-muted border-b border-border/40 bg-surface2/40 flex justify-between">
             <span>{msg}</span>
             <button onClick={() => setMsg(null)} className="text-muted hover:text-text">✕</button>
@@ -124,7 +157,7 @@ export function MemoryView() {
         )}
 
         {status === "error" && (
-          <div className="px-3 py-2 text-xs text-red-400 border-b border-border/40">MemPalace unreachable</div>
+          <div className="px-3 py-2 text-xs text-red-400 border-b border-border/40">{msg ?? "Search failed"}</div>
         )}
 
         <div className="flex-1 overflow-y-auto">
@@ -151,7 +184,9 @@ export function MemoryView() {
             </button>
           ))}
           {results.length === 0 && status === "idle" && (
-            <p className="px-3 py-6 text-center text-xs text-muted">No memories found</p>
+            <p className="px-3 py-6 text-center text-xs text-muted">
+              {searched ? "No memories found" : "Search to explore stored memories"}
+            </p>
           )}
         </div>
 
