@@ -51,6 +51,12 @@ export interface StreamChunk {
   choices: Array<{ delta: StreamDelta; finish_reason: string | null }>;
 }
 
+export interface TokenUsage {
+  promptTokens:     number;
+  completionTokens: number;
+  totalTokens:      number;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -59,6 +65,7 @@ export interface ChatMessage {
   timestamp: number;
   mode: MemexMode;
   runId?: string;
+  usage?: TokenUsage;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type {
-  ChatMessage, Session, ConnectionStatus, MemexMode, MessageEvent, AppTab,
+  ChatMessage, Session, ConnectionStatus, MemexMode, MessageEvent, AppTab, TokenUsage,
 } from "../types/memex";
 
 interface AppState {
@@ -29,6 +29,7 @@ interface AppState {
   appendEvent: (sessionId: string, msgId: string, event: MessageEvent) => void;
   updateMessageContent: (sessionId: string, msgId: string, content: string) => void;
   updateMessageRunId: (sessionId: string, msgId: string, runId: string) => void;
+  setMessageUsage: (sessionId: string, msgId: string, usage: TokenUsage) => void;
 
   // Actions — UI
   setActiveTab: (tab: AppTab) => void;
@@ -121,6 +122,18 @@ export const useStore = create<AppState>()(
               ...sess,
               messages: sess.messages.map((m) =>
                 m.id !== msgId ? m : { ...m, runId }
+              ),
+            }
+          ),
+        })),
+
+      setMessageUsage: (sessionId, msgId, usage) =>
+        set((s) => ({
+          sessions: s.sessions.map((sess) =>
+            sess.id !== sessionId ? sess : {
+              ...sess,
+              messages: sess.messages.map((m) =>
+                m.id !== msgId ? m : { ...m, usage }
               ),
             }
           ),

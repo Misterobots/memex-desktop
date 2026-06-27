@@ -161,7 +161,8 @@ contextBridge.exposeInMainWorld("memex", {
 
   // Ollama model list
   ollama: {
-    listModels: () => ipcRenderer.invoke("ollama:listModels"),
+    listModels:    () => ipcRenderer.invoke("ollama:listModels"),
+    contextLength: (model: string) => ipcRenderer.invoke("ollama:contextLength", model) as Promise<number | null>,
   },
 
   // Eval bench

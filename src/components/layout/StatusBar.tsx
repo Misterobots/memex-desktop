@@ -1,10 +1,34 @@
 import { useStore } from "../../lib/store";
+import { fmtTokens } from "../../lib/tokens";
 
 const DOT: Record<string, string> = {
   connected:    "bg-green",
   disconnected: "bg-red",
   checking:     "bg-yellow status-dot-active",
 };
+
+/** Session token total — sum of per-message usage. Local models, so no USD cost. */
+function SessionUsage() {
+  const { activeSession } = useStore();
+  const session = activeSession();
+  if (!session) return null;
+
+  let inTok = 0, outTok = 0;
+  for (const m of session.messages) {
+    if (m.usage) { inTok += m.usage.promptTokens; outTok += m.usage.completionTokens; }
+  }
+  const total = inTok + outTok;
+  if (total === 0) return null;
+
+  return (
+    <span
+      className="text-xs text-faint px-2 py-1 rounded-md bg-surface border border-border/60"
+      title={`${inTok.toLocaleString()} in · ${outTok.toLocaleString()} out · local model (no API cost)`}
+    >
+      {fmtTokens(total)} tok
+    </span>
+  );
+}
 
 export function StatusBar() {
   const { connections, selectedModel, toggleSidebar, sidebarOpen } = useStore();
@@ -38,6 +62,7 @@ export function StatusBar() {
           <span className={`w-2 h-2 rounded-full ${allConnected ? DOT.connected : connections.agentRuntime === "checking" ? DOT.checking : DOT.disconnected}`} />
           <span className="text-muted text-xs">{allConnected ? "Connected" : "Degraded"}</span>
         </div>
+        <SessionUsage />
         <span className="text-xs text-faint px-2 py-1 rounded-md bg-surface border border-border/60">
           {selectedModel}
         </span>

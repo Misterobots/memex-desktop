@@ -1,6 +1,6 @@
 import { getAgentRuntime } from "./runtime-urls";
 import { desktop }         from "./desktop";
-import type { EventType, MemexMode } from "../types/memex";
+import type { EventType, MemexMode, TokenUsage } from "../types/memex";
 
 export interface SSEEvent {
   type: EventType;
@@ -22,6 +22,8 @@ export interface StreamOptions {
   /** Called as soon as the run record is created, with its ID. */
   onRunStarted?: (runId: string) => void;
   onEvent: (event: SSEEvent) => void;
+  /** Token usage for the turn (OpenAI-style, arrives at end of stream). */
+  onUsage?: (usage: TokenUsage) => void;
   onDone: () => void;
   onError: (err: Error) => void;
 }
@@ -85,6 +87,16 @@ export function streamChat(opts: StreamOptions): () => void {
 
           try {
             const chunk = JSON.parse(data);
+
+            // Token usage rides at the top level (OpenAI-style), not in delta.
+            if (chunk.usage) {
+              opts.onUsage?.({
+                promptTokens:     chunk.usage.prompt_tokens     ?? 0,
+                completionTokens: chunk.usage.completion_tokens ?? 0,
+                totalTokens:      chunk.usage.total_tokens      ?? 0,
+              });
+            }
+
             const delta = chunk?.choices?.[0]?.delta;
             if (!delta?.content) continue;
 

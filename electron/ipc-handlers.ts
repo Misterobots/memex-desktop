@@ -216,6 +216,29 @@ export function registerAllIpc(ctx: IpcContext): void {
     }
   });
 
+  // Model context window (max tokens) — read from Ollama /api/show model_info.
+  ipcMain.handle("ollama:contextLength", async (_e, model: string) => {
+    try {
+      const urls = config.getUrls();
+      const base = urls.ollama ?? "http://localhost:11434";
+      const res  = await fetch(`${base}/api/show`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: model }),
+        signal: AbortSignal.timeout(4000),
+      });
+      if (!res.ok) return null;
+      const data = await res.json() as { model_info?: Record<string, unknown> };
+      const mi = data.model_info ?? {};
+      for (const k of Object.keys(mi)) {
+        if (k.endsWith(".context_length") && typeof mi[k] === "number") return mi[k] as number;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  });
+
   // ── Eval store ────────────────────────────────────────────────────────────
   ipcMain.handle("eval:getCases",       ()               => evals.getCases());
   ipcMain.handle("eval:saveCase",       (_e, c)          => evals.saveCase(c));

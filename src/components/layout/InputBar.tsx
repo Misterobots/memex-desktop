@@ -3,6 +3,7 @@ import { useStore } from "../../lib/store";
 import { streamChat } from "../../lib/sse-stream";
 import { MODE_FLAGS, MODE_LABELS, type MemexMode, type ChatMessage, type MessageEvent } from "../../types/memex";
 import { ModelPickerPopover } from "./ModelPickerPopover";
+import { ContextMeter } from "./ContextMeter";
 
 const MODES: MemexMode[] = ["chat", "swarm", "research", "design", "think", "plan"];
 
@@ -30,7 +31,7 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarPro
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const {
     mode: globalMode, setMode, activeSessionId, createSession,
-    addMessage, appendEvent, updateMessageContent, updateMessageRunId,
+    addMessage, appendEvent, updateMessageContent, updateMessageRunId, setMessageUsage,
     setStreaming, streaming, stopStream, activeSession, selectedModel,
   } = useStore();
 
@@ -79,6 +80,7 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarPro
       sessionId,
       runMeta: { profile: "default" },
       onRunStarted: (runId) => updateMessageRunId(sessionId, assistantId, runId),
+      onUsage: (usage) => setMessageUsage(sessionId, assistantId, usage),
       onEvent: (event) => {
         appendEvent(sessionId, assistantId, event as MessageEvent);
         if (event.type === "message" || event.type === "response") {
@@ -140,6 +142,7 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarPro
                 </button>
               )}
               <ModelPickerPopover />
+              <ContextMeter />
             </div>
 
             <button

@@ -153,7 +153,8 @@ export interface MemexBridge {
   };
 
   ollama: {
-    listModels: () => Promise<OllamaModel[]>;
+    listModels:    () => Promise<OllamaModel[]>;
+    contextLength: (model: string) => Promise<number | null>;
   };
 
   evals: {
