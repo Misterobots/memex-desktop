@@ -1,5 +1,10 @@
 import { useStore } from "../../lib/store";
+import { isDesktop } from "../../lib/desktop";
 import type { AppTab } from "../../types/memex";
+
+// Tabs requiring the Electron native bridge (local terminal/editor/FS, local
+// run store) — hidden when running as a web app.
+const DESKTOP_ONLY: AppTab[] = ["dev", "eval"];
 
 interface TabDef {
   id: AppTab;
@@ -71,23 +76,25 @@ const TABS: TabDef[] = [
 
 export function TabBar() {
   const { activeTab, setActiveTab } = useStore();
+  const web = !isDesktop();
+  const tabs = web ? TABS.filter((t) => !DESKTOP_ONLY.includes(t.id)) : TABS;
 
   return (
-    <div className="flex items-center gap-1 px-3 h-12 bg-canvas border-b border-border/60 flex-shrink-0">
-      {TABS.map((tab) => {
+    <div className="flex items-center gap-1 px-2 sm:px-3 h-12 bg-canvas border-b border-border/60 flex-shrink-0 overflow-x-auto no-scrollbar">
+      {tabs.map((tab) => {
         const active = activeTab === tab.id;
         return (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-sm transition-colors ${
+            className={`flex items-center gap-2 px-3 sm:px-3.5 py-1.5 rounded-lg text-sm transition-colors flex-shrink-0 whitespace-nowrap ${
               active
                 ? "bg-surface2 text-text"
                 : "text-muted hover:text-text hover:bg-surface/60"
             }`}
           >
             <span className={active ? "text-accent" : ""}>{tab.icon}</span>
-            {tab.label}
+            <span className={active ? "" : "hidden sm:inline"}>{tab.label}</span>
           </button>
         );
       })}

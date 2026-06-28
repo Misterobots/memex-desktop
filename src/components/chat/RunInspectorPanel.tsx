@@ -111,7 +111,7 @@ export function RunInspectorPanel({ runId, onClose }: Props) {
   const errors      = counts.error       ?? 0;
 
   return (
-    <div className="flex flex-col h-full w-80 border-l border-border/40 bg-canvas flex-shrink-0">
+    <div className="flex flex-col h-full w-full md:w-80 border-l border-border/40 bg-canvas flex-shrink-0">
 
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 flex-shrink-0">

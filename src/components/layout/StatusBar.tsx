@@ -1,4 +1,5 @@
 import { useStore } from "../../lib/store";
+import { isDesktop } from "../../lib/desktop";
 import { fmtTokens } from "../../lib/tokens";
 
 const DOT: Record<string, string> = {
@@ -34,10 +35,10 @@ export function StatusBar() {
   const { connections, selectedModel, toggleSidebar, sidebarOpen } = useStore();
 
   const allConnected = Object.values(connections).every((c) => c === "connected");
-  // On Windows/Linux the native window-controls overlay sits at the top-right;
-  // reserve space so the right cluster isn't hidden beneath it. (Mac controls
-  // are top-left via trafficLightPosition, so no right padding needed there.)
+  // Reserve space for the native window-controls overlay (Electron, Win/Linux
+  // only — Mac controls are top-left, and the web app has no native controls).
   const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.userAgent);
+  const reserveForWindowControls = isDesktop() && !isMac;
 
   return (
     <div className="drag-region flex items-center justify-between h-11 px-4 bg-canvas border-b border-border/60 flex-shrink-0">
@@ -58,7 +59,7 @@ export function StatusBar() {
         </div>
       </div>
 
-      <div className={`no-drag flex items-center gap-3 ${isMac ? "" : "pr-[140px]"}`}>
+      <div className={`no-drag flex items-center gap-2 sm:gap-3 ${reserveForWindowControls ? "pr-[140px]" : ""}`}>
         <div
           className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-surface transition-colors cursor-default"
           title={`runtime: ${connections.agentRuntime} · memory: ${connections.mempalace} · ollama: ${connections.ollama}`}
@@ -67,7 +68,7 @@ export function StatusBar() {
           <span className="text-muted text-xs">{allConnected ? "Connected" : "Degraded"}</span>
         </div>
         <SessionUsage />
-        <span className="text-xs text-faint px-2 py-1 rounded-md bg-surface border border-border/60">
+        <span className="hidden sm:inline-block text-xs text-faint px-2 py-1 rounded-md bg-surface border border-border/60 max-w-[160px] truncate">
           {selectedModel}
         </span>
         <button
