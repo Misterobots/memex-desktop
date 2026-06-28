@@ -5,11 +5,17 @@
  *
  * Call initRuntimeUrls() once at app boot before any fetch calls.
  */
-import { desktop, AGENT_RUNTIME_DEFAULT, MEMPALACE_DEFAULT } from "./desktop";
+import { desktop, isDesktop, AGENT_RUNTIME_DEFAULT, MEMPALACE_DEFAULT } from "./desktop";
 
-let _agentRuntime = AGENT_RUNTIME_DEFAULT;
-let _mempalace    = MEMPALACE_DEFAULT;
-let _ollama       = "http://192.168.2.101:11434";
+// When served as a web app (no Electron bridge), the app sits behind a reverse
+// proxy that forwards these prefixes to the backends same-origin — this avoids
+// browser CORS and lets Authentik gate every request. In Electron we keep the
+// absolute LAN URLs from the active RuntimeProfile.
+const WEB = !isDesktop();
+
+let _agentRuntime = WEB ? ""        : AGENT_RUNTIME_DEFAULT; // "" => same-origin (/v1/…)
+let _mempalace    = WEB ? "/mp"     : MEMPALACE_DEFAULT;
+let _ollama       = WEB ? "/ollama" : "http://192.168.2.101:11434";
 
 export const getAgentRuntime = (): string => _agentRuntime;
 export const getMempalace    = (): string => _mempalace;
