@@ -5,6 +5,7 @@ import { TabBar } from "./TabBar";
 import { ChatView } from "../views/ChatView";
 import { GoalsView } from "../views/GoalsView";
 import { ArtView } from "../views/ArtView";
+import { MemoryView } from "../views/MemoryView";
 import { DevView } from "../views/DevView";
 import { SettingsView }   from "../views/SettingsView";
 import { EvalBenchView }  from "../views/EvalBenchView";
@@ -38,6 +39,7 @@ function AppShellInner() {
           {activeTab === "chat"     && <ChatView />}
           {activeTab === "goals"    && <GoalsView />}
           {activeTab === "art"      && <ArtView />}
+          {activeTab === "memory"   && <MemoryView />}
           {activeTab === "dev"      && <DevView />}
           {activeTab === "eval"     && <EvalBenchView />}
           {activeTab === "settings" && <SettingsView />}

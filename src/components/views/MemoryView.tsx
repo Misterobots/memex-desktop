@@ -1,9 +1,11 @@
 /**
  * MemoryView — search, inspect, delete, and pin memories in MemPalace.
- * Accessible via the "memory" tab (future) or as a panel in SettingsView.
+ * Works in both Electron and the web app: getMempalace() resolves to the active
+ * profile's MemPalace URL on desktop and the same-origin "/mp" proxy on the web,
+ * so no Electron bridge is required.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { desktop } from "../../lib/desktop";
+import { getMempalace } from "../../lib/runtime-urls";
 
 // ---------------------------------------------------------------------------
 // Types (matches MemPalace API)
@@ -25,11 +27,10 @@ interface MemStats {
 }
 
 // ---------------------------------------------------------------------------
-// MemPalace fetch helpers — all go directly to the active profile URL
+// MemPalace fetch helper — same-origin "/mp" proxy on web, profile URL on desktop
 // ---------------------------------------------------------------------------
-async function mpFetch(bridge: NonNullable<ReturnType<typeof desktop>>, path: string, init?: RequestInit) {
-  const urls = await bridge.config.getUrls();
-  const base = urls.mempalace ?? "http://localhost:8200";
+async function mpFetch(path: string, init?: RequestInit) {
+  const base = getMempalace();
   return fetch(`${base}${path}`, { headers: { "Content-Type": "application/json" }, ...init });
 }
 
@@ -37,7 +38,6 @@ async function mpFetch(bridge: NonNullable<ReturnType<typeof desktop>>, path: st
 // Component
 // ---------------------------------------------------------------------------
 export function MemoryView() {
-  const bridge = desktop();
   const [query,    setQuery]    = useState("");
   const [results,  setResults]  = useState<MemRecord[]>([]);
   const [selected, setSelected] = useState<MemRecord | null>(null);
@@ -48,12 +48,11 @@ export function MemoryView() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const search = useCallback(async (q: string) => {
-    if (!bridge) return;
     setStatus("loading");
     setMsg(null);
     setSearched(true);
     try {
-      const res = await mpFetch(bridge, "/v1/memories/search", {
+      const res = await mpFetch("/v1/memories/search", {
         method: "POST",
         body: JSON.stringify({ query: q || "*", limit: 30 }),
         signal: AbortSignal.timeout(12000),
@@ -70,24 +69,22 @@ export function MemoryView() {
         ? "Search timed out — MemPalace's embedding backend may be down."
         : `Search failed: ${e.message}`);
     }
-  }, [bridge]);
+  }, []);
 
   // Load the (fast, GET) stats overview on mount. Search is explicit so a slow
   // embedding backend doesn't stall every open.
   const loadStats = useCallback(async () => {
-    if (!bridge) return;
     try {
-      const res = await mpFetch(bridge, "/v1/memories/stats", { signal: AbortSignal.timeout(6000) });
+      const res = await mpFetch("/v1/memories/stats", { signal: AbortSignal.timeout(6000) });
       if (res.ok) setStats(await res.json());
     } catch { /* stats are best-effort */ }
-  }, [bridge]);
+  }, []);
 
   useEffect(() => { loadStats(); }, [loadStats]);
 
   const deleteMemory = async (id: string) => {
-    if (!bridge) return;
     try {
-      await mpFetch(bridge, `/v1/memories/${id}`, { method: "DELETE" });
+      await mpFetch(`/v1/memories/${id}`, { method: "DELETE" });
       setResults((r) => r.filter((m) => m.id !== id));
       if (selected?.id === id) setSelected(null);
       setMsg("Memory deleted");
@@ -95,10 +92,9 @@ export function MemoryView() {
   };
 
   const pinMemory = async (rec: MemRecord) => {
-    if (!bridge) return;
     try {
       const pinned = !rec.pinned;
-      await mpFetch(bridge, `/v1/memories/${rec.id}`, {
+      await mpFetch(`/v1/memories/${rec.id}`, {
         method: "PATCH",
         body: JSON.stringify({ metadata: { ...rec.metadata, pinned } }),
       });
@@ -108,18 +104,10 @@ export function MemoryView() {
     } catch (e: any) { setMsg(`Pin failed: ${e.message}`); }
   };
 
-  if (!bridge) {
-    return (
-      <div className="flex items-center justify-center h-full text-muted text-sm">
-        Memory management is only available in Memex Desktop.
-      </div>
-    );
-  }
-
   return (
     <div className="flex h-full overflow-hidden">
-      {/* Left: search + list */}
-      <div className="w-80 flex flex-col border-r border-border/40 flex-shrink-0">
+      {/* Left: search + list — full width on mobile, fixed rail on desktop */}
+      <div className="w-full md:w-80 flex flex-col border-r border-border/40 flex-shrink-0">
         <div className="p-3 border-b border-border/40">
           <div className="flex gap-2">
             <input
@@ -195,9 +183,9 @@ export function MemoryView() {
         </div>
       </div>
 
-      {/* Right: detail pane */}
+      {/* Right: detail pane — full-screen overlay on mobile, side pane on desktop */}
       {selected ? (
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-40 bg-canvas flex flex-col overflow-hidden md:static md:z-auto md:flex-1">
           <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 flex-shrink-0">
             <span className="text-xs font-semibold text-muted uppercase tracking-wide">Memory detail</span>
             <div className="flex items-center gap-2">
@@ -246,7 +234,7 @@ export function MemoryView() {
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center text-muted text-sm">
+        <div className="hidden md:flex flex-1 items-center justify-center text-muted text-sm">
           Select a memory to inspect
         </div>
       )}

@@ -45,6 +45,17 @@ const TABS: TabDef[] = [
     ),
   },
   {
+    id: "memory",
+    label: "Memory",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <ellipse cx="8" cy="4" rx="5.5" ry="2" />
+        <path d="M2.5 4v8c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2V4" />
+        <path d="M2.5 8c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2" />
+      </svg>
+    ),
+  },
+  {
     id: "dev",
     label: "Code",
     icon: (

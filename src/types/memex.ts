@@ -1,4 +1,4 @@
-export type AppTab = "chat" | "goals" | "art" | "dev" | "eval" | "settings";
+export type AppTab = "chat" | "goals" | "art" | "memory" | "dev" | "eval" | "settings";
 
 export type MemexMode =
   | "chat"

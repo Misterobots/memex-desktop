@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { desktop, type OllamaModel } from "../../lib/desktop";
+import { fetchOllamaModels } from "../../lib/memex-client";
 import { useStore } from "../../lib/store";
 
 // ---------------------------------------------------------------------------
@@ -27,8 +28,8 @@ export function ModelPickerPopover() {
   const ref = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
-    if (!bridge) return;
-    const list = await bridge.ollama.listModels();
+    // Desktop: Electron bridge. Web: same-origin /v1/models/ollama proxy.
+    const list = bridge ? await bridge.ollama.listModels() : await fetchOllamaModels();
     setModels(list);
   }, [bridge]);
 
@@ -92,12 +93,11 @@ export function ModelPickerPopover() {
           </div>
 
           <div className="max-h-64 overflow-y-auto py-1">
-            {!bridge && (
-              <p className="px-3 py-4 text-xs text-muted text-center">Available in Memex Desktop only</p>
-            )}
-            {bridge && filtered.length === 0 && (
+            {filtered.length === 0 && (
               <p className="px-3 py-4 text-xs text-muted text-center">
-                {ollamaOk ? "No models match" : "Ollama not reachable — type a model name manually"}
+                {query
+                  ? "No models match"
+                  : "No models available — type a model name manually below"}
               </p>
             )}
             {filtered.map((m) => (
