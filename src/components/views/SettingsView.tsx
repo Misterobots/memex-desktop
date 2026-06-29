@@ -1,5 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { desktop, type RuntimeProfile, type ShortcutConfig } from "../../lib/desktop";
+import { useStore } from "../../lib/store";
+import { getAgentRuntime } from "../../lib/runtime-urls";
 import { SkillRegistry } from "../settings/SkillRegistry";
 import { ShortcutCapture } from "../settings/ShortcutCapture";
 import { MemoryView } from "./MemoryView";
@@ -107,6 +109,101 @@ function ProfileEditor({
           Cancel
         </button>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Web Settings-lite — shown when there is no Electron bridge (mobile/web app).
+// Surfaces identity + connection instead of a dead "Desktop only" screen.
+// ---------------------------------------------------------------------------
+interface CallerIdentity {
+  username?:       string;
+  email?:          string;
+  name?:           string;
+  groups?:         string[];
+  security_level?: string;
+}
+
+function WebSettings() {
+  const { connections, selectedModel } = useStore();
+  const [identity, setIdentity] = useState<CallerIdentity | null>(null);
+  const [idStatus, setIdStatus] = useState<"loading" | "ok" | "error">("loading");
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch(`${getAgentRuntime()}/api/v1/identity`, { signal: AbortSignal.timeout(6000) });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = await r.json();
+        if (alive) { setIdentity(data?.caller_identity ?? null); setIdStatus("ok"); }
+      } catch {
+        if (alive) setIdStatus("error");
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const backends: Array<[string, string]> = [
+    ["Agent Runtime",       connections.agentRuntime],
+    ["Memory (MemPalace)",  connections.mempalace],
+    ["Ollama",              connections.ollama],
+  ];
+
+  return (
+    <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5 max-w-2xl">
+      <Section title="Account">
+        {idStatus === "loading" && <p className="text-sm text-muted">Loading identity…</p>}
+        {idStatus === "error"   && <p className="text-sm text-muted">Identity unavailable.</p>}
+        {identity && (
+          <div className="space-y-2">
+            <Row label="Signed in as">
+              <span className="text-sm text-text">{identity.name || identity.username || "—"}</span>
+            </Row>
+            {identity.email && (
+              <Row label="Email"><span className="text-sm text-text/80">{identity.email}</span></Row>
+            )}
+            {identity.username && identity.username !== identity.name && (
+              <Row label="Username"><span className="text-sm font-mono text-text/80">{identity.username}</span></Row>
+            )}
+            {identity.groups && identity.groups.length > 0 && (
+              <Row label="Groups"><span className="text-sm text-text/80">{identity.groups.join(", ")}</span></Row>
+            )}
+            {identity.security_level && (
+              <Row label="Access">
+                <span className="text-[11px] px-2 py-0.5 rounded-full border border-accent/30 text-accent">
+                  {identity.security_level}
+                </span>
+              </Row>
+            )}
+          </div>
+        )}
+        <p className="text-[11px] text-muted pt-1">Authenticated via Authentik SSO at the gateway.</p>
+      </Section>
+
+      <Section title="Connection">
+        <div className="space-y-1.5">
+          {backends.map(([label, state]) => (
+            <Row key={label} label={label}>
+              <span className="flex items-center gap-2 text-sm">
+                <span className={`w-2 h-2 rounded-full ${
+                  state === "connected" ? "bg-green" : state === "checking" ? "bg-yellow" : "bg-red"
+                }`} />
+                <span className="text-text/80 capitalize">{state}</span>
+              </span>
+            </Row>
+          ))}
+          <Row label="Model"><span className="text-sm font-mono text-text/80">{selectedModel}</span></Row>
+        </div>
+      </Section>
+
+      <Section title="Desktop App">
+        <p className="text-sm text-muted">
+          Runtime profiles, permission modes, workspace roots, keyboard shortcuts, and the
+          skill registry are managed in the Memex Desktop app.
+        </p>
+      </Section>
     </div>
   );
 }
@@ -241,13 +338,7 @@ export function SettingsView() {
     setExtensionIds(next);
   };
 
-  if (!bridge) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-muted text-sm">
-        Settings are only available inside Memex Desktop.
-      </div>
-    );
-  }
+  if (!bridge) return <WebSettings />;
 
   return (
     <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5 max-w-2xl">

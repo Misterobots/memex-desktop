@@ -3,6 +3,7 @@
  * Context windows are read live from Ollama (/api/show) and cached per model.
  */
 import { desktop } from "./desktop";
+import { getOllama } from "./runtime-urls";
 
 const windowCache = new Map<string, number | null>();
 
@@ -20,6 +21,23 @@ export async function contextWindowFor(model: string): Promise<number | null> {
   const b = desktop();
   if (b?.ollama?.contextLength) {
     try { win = await b.ollama.contextLength(model); } catch { win = null; }
+  } else {
+    // Web: ask Ollama directly via the same-origin /ollama proxy. The context
+    // length lives under an architecture-prefixed key (e.g. "qwen3.context_length").
+    try {
+      const r = await fetch(`${getOllama()}/api/show`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: model }),
+        signal: AbortSignal.timeout(6000),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        const info: Record<string, unknown> = data?.model_info ?? {};
+        const key = Object.keys(info).find((k) => k.endsWith(".context_length"));
+        if (key && typeof info[key] === "number") win = info[key] as number;
+      }
+    } catch { win = null; }
   }
   windowCache.set(model, win);
   return win;

@@ -10,31 +10,26 @@ export async function checkHealth(): Promise<{
   mempalace: boolean;
   ollama: boolean;
 }> {
-  const check = async (url: string) => {
-    try {
-      const r = await fetch(url, { signal: AbortSignal.timeout(3000) });
-      return r.ok;
-    } catch {
-      return false;
-    }
-  };
-
   const ar = getAgentRuntime();
   const mp = getMempalace();
 
-  const [agentRuntime, mempalace] = await Promise.all([
-    check(`${ar}/`),
-    check(`${mp}/health`),
-  ]);
-
-  // Ollama reachable via agent_runtime health node endpoint
+  // agent_runtime liveness AND Ollama node health both come from one endpoint —
+  // a real probe (not the SPA root), so the badge reflects the actual backend.
+  let agentRuntime = false;
   let ollama = false;
   try {
     const r = await fetch(`${ar}/api/v1/health/nodes`, { signal: AbortSignal.timeout(3000) });
     if (r.ok) {
+      agentRuntime = true;
       const data = await r.json();
-      ollama = Array.isArray(data.nodes) && data.nodes.length > 0;
+      ollama = Array.isArray(data.nodes) && data.nodes.some((n: any) => n?.healthy);
     }
+  } catch {}
+
+  let mempalace = false;
+  try {
+    const r = await fetch(`${mp}/health`, { signal: AbortSignal.timeout(3000) });
+    mempalace = r.ok;
   } catch {}
 
   return { agentRuntime, mempalace, ollama };
