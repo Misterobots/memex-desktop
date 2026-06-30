@@ -18,6 +18,18 @@ const MODE_DOT: Record<MemexMode, string> = {
   workshop: "bg-accent",
 };
 
+// One-line descriptions so the picker makes clear which mode does what — e.g.
+// code tasks belong in Swarm, not Research (which forces a research pipeline).
+const MODE_DESC: Record<MemexMode, string> = {
+  chat:     "General conversation & Q&A",
+  swarm:    "Build & write code with agents",
+  research: "Web/doc research & synthesis",
+  design:   "Generate UI / HTML mockups",
+  think:    "Extended step-by-step reasoning",
+  plan:     "Plan a build before executing",
+  workshop: "Refine an idea into a brief",
+};
+
 interface InputBarProps {
   /** Extra request flags merged into every send (e.g. { dev_mode: true }). */
   extraFlags?: Record<string, boolean>;
@@ -156,21 +168,26 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarPro
                     </svg>
                   </button>
                   {modeOpen && (
-                    <div className="absolute bottom-full mb-2 left-0 w-44 bg-canvas border border-border/60 rounded-xl shadow-2xl z-50 overflow-hidden py-1">
+                    <div className="absolute bottom-full mb-2 left-0 w-60 bg-canvas border border-border/60 rounded-xl shadow-2xl z-50 overflow-hidden py-1">
                       {MODES.map((m) => (
                         <button
                           key={m}
                           onClick={() => { setMode(m); setModeOpen(false); }}
-                          className={`w-full text-left flex items-center gap-2 px-3 py-1.5 text-xs transition-colors
+                          className={`w-full text-left flex items-start gap-2 px-3 py-1.5 text-xs transition-colors
                             ${m === globalMode ? "bg-accent/10 text-text" : "text-text/80 hover:bg-surface2/60"}`}
                         >
-                          <span className={`w-1.5 h-1.5 rounded-full ${MODE_DOT[m]}`} />
-                          <span className="flex-1">{MODE_LABELS[m]}</span>
-                          {m === globalMode && (
-                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" className="text-accent">
-                              <path d="M1.5 5l3 3 4-5" />
-                            </svg>
-                          )}
+                          <span className={`mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0 ${MODE_DOT[m]}`} />
+                          <span className="flex-1 min-w-0">
+                            <span className="flex items-center gap-1.5">
+                              <span className="font-medium">{MODE_LABELS[m]}</span>
+                              {m === globalMode && (
+                                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" className="text-accent">
+                                  <path d="M1.5 5l3 3 4-5" />
+                                </svg>
+                              )}
+                            </span>
+                            <span className="block text-[10px] text-muted leading-snug">{MODE_DESC[m]}</span>
+                          </span>
                         </button>
                       ))}
                     </div>
