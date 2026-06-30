@@ -32,6 +32,7 @@ interface AppState {
   updateMessageContent: (sessionId: string, msgId: string, content: string) => void;
   updateMessageRunId: (sessionId: string, msgId: string, runId: string) => void;
   setMessageUsage: (sessionId: string, msgId: string, usage: TokenUsage) => void;
+  replaceMessages: (sessionId: string, messages: ChatMessage[]) => void;
 
   // Actions — UI
   setActiveTab: (tab: AppTab) => void;
@@ -162,6 +163,13 @@ export const useStore = create<AppState>()(
                 m.id !== msgId ? m : { ...m, usage }
               ),
             }
+          ),
+        })),
+
+      replaceMessages: (sessionId, messages) =>
+        set((s) => ({
+          sessions: s.sessions.map((sess) =>
+            sess.id === sessionId ? { ...sess, messages, updatedAt: Date.now() } : sess
           ),
         })),
 

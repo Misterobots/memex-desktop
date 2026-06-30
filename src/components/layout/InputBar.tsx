@@ -29,7 +29,9 @@ interface InputBarProps {
 
 export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarProps) {
   const [text, setText] = useState("");
+  const [modeOpen, setModeOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const modeRef = useRef<HTMLDivElement>(null);
   const {
     mode: globalMode, setMode, activeSessionId, createSession,
     addMessage, appendEvent, updateMessageContent, updateMessageRunId, setMessageUsage,
@@ -45,10 +47,12 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarPro
     ta.style.height = Math.min(ta.scrollHeight, 220) + "px";
   }, [text]);
 
-  const cycleMode = () => {
-    const idx = MODES.indexOf(globalMode);
-    setMode(MODES[(idx + 1) % MODES.length]);
-  };
+  useEffect(() => {
+    if (!modeOpen) return;
+    const h = (e: MouseEvent) => { if (!modeRef.current?.contains(e.target as Node)) setModeOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [modeOpen]);
 
   const submit = useCallback(() => {
     const content = text.trim();
@@ -138,14 +142,40 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarPro
                   {MODE_LABELS[mode]}
                 </span>
               ) : (
-                <button
-                  onClick={cycleMode}
-                  className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-muted hover:text-text hover:bg-surface2 transition-colors"
-                  title="Click to cycle mode"
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${MODE_DOT[mode]}`} />
-                  {MODE_LABELS[mode]}
-                </button>
+                <div ref={modeRef} className="relative">
+                  <button
+                    onClick={() => setModeOpen((o) => !o)}
+                    className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-colors
+                      ${modeOpen ? "bg-surface2 text-text" : "text-muted hover:text-text hover:bg-surface2"}`}
+                    title="Select mode"
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${MODE_DOT[mode]}`} />
+                    {MODE_LABELS[mode]}
+                    <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <path d="M2 3.5l3 3 3-3" />
+                    </svg>
+                  </button>
+                  {modeOpen && (
+                    <div className="absolute bottom-full mb-2 left-0 w-44 bg-canvas border border-border/60 rounded-xl shadow-2xl z-50 overflow-hidden py-1">
+                      {MODES.map((m) => (
+                        <button
+                          key={m}
+                          onClick={() => { setMode(m); setModeOpen(false); }}
+                          className={`w-full text-left flex items-center gap-2 px-3 py-1.5 text-xs transition-colors
+                            ${m === globalMode ? "bg-accent/10 text-text" : "text-text/80 hover:bg-surface2/60"}`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${MODE_DOT[m]}`} />
+                          <span className="flex-1">{MODE_LABELS[m]}</span>
+                          {m === globalMode && (
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" className="text-accent">
+                              <path d="M1.5 5l3 3 4-5" />
+                            </svg>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
               <ModelPickerPopover />
               <ContextMeter />
