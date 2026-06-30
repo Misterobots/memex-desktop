@@ -1,4 +1,43 @@
-export type AppTab = "chat" | "goals" | "art" | "memory" | "dev" | "eval" | "settings";
+export type AppTab = "chat" | "goals" | "art" | "memory" | "tasks" | "dev" | "eval" | "settings";
+
+// ---------------------------------------------------------------------------
+// Task board types (mobile Codex loop — mirrors agent_runtime /v1/tasks)
+// ---------------------------------------------------------------------------
+export type TaskStatus = "running" | "completed" | "failed" | "cancelled";
+export type ApprovalState = "none" | "pending" | "approved" | "denied";
+
+export interface Task {
+  coordination_id:   string;
+  session_id?:       string;
+  title?:            string;
+  status:            TaskStatus;
+  phase:             number;        // 0..5
+  phase_name?:       string;
+  workers_total:     number;
+  workers_completed: number;
+  workers_failed:    number;
+  scope?:            string;
+  approval_state:    ApprovalState;
+  preview_url?:      string;
+  started_at:        number;
+  updated_at?:       number;
+  ended_at?:         number;
+  has_diff?:         boolean;
+  summary?:          string;        // detail only
+  error?:            string;        // detail only
+}
+
+export interface TaskWorker {
+  worker_id:     string;
+  role?:         string;
+  task?:         string;
+  phase?:        string;
+  pioneer_name?: string;
+  status:        string;
+  output?:       string;
+  started_at?:   number;
+  completed_at?: number;
+}
 
 export type MemexMode =
   | "chat"
