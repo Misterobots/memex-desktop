@@ -1,10 +1,11 @@
 import type { Task } from "../../types/memex";
 
 const STATUS_STYLE: Record<string, string> = {
-  running:   "text-yellow border-yellow/30 bg-yellow/10",
-  completed: "text-green border-green/30 bg-green/10",
-  failed:    "text-red-400 border-red-400/30 bg-red-400/10",
-  cancelled: "text-muted border-border/40 bg-surface2/40",
+  running:     "text-yellow border-yellow/30 bg-yellow/10",
+  completed:   "text-green border-green/30 bg-green/10",
+  failed:      "text-red-400 border-red-400/30 bg-red-400/10",
+  cancelled:   "text-muted border-border/40 bg-surface2/40",
+  needs_input: "text-accent2 border-accent2/30 bg-accent2/10",
 };
 
 function timeAgo(sec?: number): string {
@@ -46,7 +47,7 @@ export function TaskCard({ task, active, onClick }: { task: Task; active: boolea
         <div className="flex flex-col items-end gap-1 flex-shrink-0">
           <span className={`text-[10px] px-1.5 py-0.5 rounded-full border inline-flex items-center ${STATUS_STYLE[task.status] ?? STATUS_STYLE.cancelled}`}>
             {running && <span className="inline-block w-1.5 h-1.5 rounded-full bg-yellow mr-1 status-dot-active" />}
-            {task.status}
+            {task.status === "needs_input" ? "needs input" : task.status}
           </span>
           {task.approval_state === "approved" && <span className="text-[10px] text-green">✓ approved</span>}
           {task.approval_state === "denied"   && <span className="text-[10px] text-red-400">✕ denied</span>}
@@ -55,7 +56,11 @@ export function TaskCard({ task, active, onClick }: { task: Task; active: boolea
       </div>
       <div className="mt-2 h-1 rounded-full bg-surface2 overflow-hidden">
         <span
-          className={`block h-full rounded-full ${task.status === "failed" ? "bg-red-400" : running ? "bg-yellow" : "bg-green"}`}
+          className={`block h-full rounded-full ${
+            task.status === "failed" ? "bg-red-400"
+              : task.status === "needs_input" ? "bg-accent2"
+              : running ? "bg-yellow" : "bg-green"
+          }`}
           style={{ width: `${Math.max(4, pct)}%` }}
         />
       </div>

@@ -3,7 +3,7 @@ export type AppTab = "chat" | "goals" | "art" | "memory" | "tasks" | "dev" | "ev
 // ---------------------------------------------------------------------------
 // Task board types (mobile Codex loop — mirrors agent_runtime /v1/tasks)
 // ---------------------------------------------------------------------------
-export type TaskStatus = "running" | "completed" | "failed" | "cancelled";
+export type TaskStatus = "running" | "completed" | "failed" | "cancelled" | "needs_input";
 export type ApprovalState = "none" | "pending" | "approved" | "denied";
 
 export interface Task {
@@ -147,6 +147,8 @@ export interface MessageEvent {
   content: string;
   agent_name?: string;
   pioneer_name?: string;
+  /** Structured payload for clarification_card events (rides outside `content`). */
+  clarification?: ClarificationCard;
 }
 
 export interface Session {
@@ -173,6 +175,8 @@ export interface ClarificationCard {
   question: string;
   context?: string;
   options?: Array<{ label: string; value: string; description?: string }>;
+  allow_freetext?: boolean;
+  card_type?: string;
 }
 
 // ---------------------------------------------------------------------------

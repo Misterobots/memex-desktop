@@ -78,8 +78,8 @@ export function MessageBubble({ message, isActive = false }: Props) {
           </div>
         )}
 
-        {clarification && (
-          <SteeringCard content={clarification.content} messageId={message.id} />
+        {clarification?.clarification && (
+          <SteeringCard card={clarification.clarification} messageId={message.id} />
         )}
 
         {(message.content || isWaiting) && (

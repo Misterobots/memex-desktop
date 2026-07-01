@@ -1,12 +1,14 @@
 import { getAgentRuntime } from "./runtime-urls";
 import { desktop }         from "./desktop";
-import type { EventType, MemexMode, TokenUsage } from "../types/memex";
+import type { EventType, MemexMode, TokenUsage, ClarificationCard } from "../types/memex";
 
 export interface SSEEvent {
   type: EventType;
   content: string;
   agent_name?: string;
   pioneer_name?: string;
+  /** Structured payload for clarification_card events (rides outside `content`). */
+  clarification?: ClarificationCard;
 }
 
 export interface StreamOptions {
@@ -98,7 +100,9 @@ export function streamChat(opts: StreamOptions): () => void {
             }
 
             const delta = chunk?.choices?.[0]?.delta;
-            if (!delta?.content) continue;
+            // Most events carry `content`; rich events (e.g. clarification_card)
+            // carry structured data instead — keep those too, don't drop them.
+            if (!delta || (!delta.content && !delta.clarification)) continue;
 
             const rawType   = (delta.type as string) ?? "message";
             const eventType = rawType as EventType;
@@ -120,10 +124,11 @@ export function streamChat(opts: StreamOptions): () => void {
             }
 
             opts.onEvent({
-              type:         eventType,
-              content:      delta.content,
-              agent_name:   delta.agent_name,
-              pioneer_name: delta.pioneer_name,
+              type:          eventType,
+              content:       delta.content ?? "",
+              agent_name:    delta.agent_name,
+              pioneer_name:  delta.pioneer_name,
+              clarification: delta.clarification,
             });
           } catch {}
         }

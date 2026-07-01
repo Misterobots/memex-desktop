@@ -59,7 +59,8 @@ export function TaskDetailPanel({ id, onClose, onChange }: {
     );
   }
 
-  const done = run.status !== "running";
+  const needsInput = run.status === "needs_input";
+  const done = run.status === "completed" || run.status === "failed" || run.status === "cancelled";
   const decided = run.approval_state === "approved" || run.approval_state === "denied";
 
   return (
@@ -80,6 +81,12 @@ export function TaskDetailPanel({ id, onClose, onChange }: {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {needsInput && (
+          <div className="rounded-lg border border-accent2/40 bg-accent2/10 px-3 py-2.5 text-xs text-text/90 leading-relaxed">
+            ⏳ <span className="font-medium">Waiting for your input.</span> This build asked a clarifying
+            question — open the <span className="text-accent2">Chat</span> tab and answer the card to let it proceed.
+          </div>
+        )}
         <div>
           <div className="text-[10px] text-muted uppercase tracking-wide mb-1.5">Pioneers</div>
           <div className="space-y-1.5">
