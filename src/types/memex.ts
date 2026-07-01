@@ -149,6 +149,9 @@ export interface MessageEvent {
   pioneer_name?: string;
   /** Structured payload for clarification_card events (rides outside `content`). */
   clarification?: ClarificationCard;
+  /** Full raw delta for rich (non-text) events — generic escape hatch so new
+   *  structured event types are available to renderers without a parser change. */
+  data?: Record<string, unknown>;
 }
 
 export interface Session {

@@ -9,6 +9,9 @@ export interface SSEEvent {
   pioneer_name?: string;
   /** Structured payload for clarification_card events (rides outside `content`). */
   clarification?: ClarificationCard;
+  /** Full raw delta for rich (non-text) events — lets new structured event types
+   *  reach the UI without a parser change. Undefined for plain text tokens. */
+  data?: Record<string, unknown>;
 }
 
 export interface StreamOptions {
@@ -100,9 +103,11 @@ export function streamChat(opts: StreamOptions): () => void {
             }
 
             const delta = chunk?.choices?.[0]?.delta;
-            // Most events carry `content`; rich events (e.g. clarification_card)
-            // carry structured data instead — keep those too, don't drop them.
-            if (!delta || (!delta.content && !delta.clarification)) continue;
+            // Forward EVERY typed event. Only skip deltas with neither a `type` nor
+            // `content` (OpenAI role-only openers, empty keepalives). Rich events
+            // carry their payload in structured fields, not text — never drop a typed
+            // event just because it has no `content` (that was the silent-drop bug).
+            if (!delta || (!delta.type && !delta.content)) continue;
 
             const rawType   = (delta.type as string) ?? "message";
             const eventType = rawType as EventType;
@@ -123,12 +128,16 @@ export function streamChat(opts: StreamOptions): () => void {
               }
             }
 
+            const isText = rawType === "message" || rawType === "response";
             opts.onEvent({
               type:          eventType,
               content:       delta.content ?? "",
               agent_name:    delta.agent_name,
               pioneer_name:  delta.pioneer_name,
               clarification: delta.clarification,
+              // Carry the full payload for rich events so a new structured type
+              // reaches the UI with no parser edit; text tokens skip it (no bloat).
+              data:          isText ? undefined : (delta as Record<string, unknown>),
             });
           } catch {}
         }
