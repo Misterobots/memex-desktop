@@ -4,6 +4,7 @@ import { useStore } from "../../lib/store";
 import { getAgentRuntime } from "../../lib/runtime-urls";
 import { SkillRegistry } from "../settings/SkillRegistry";
 import { ShortcutCapture } from "../settings/ShortcutCapture";
+import { GitHubPushConnect } from "../settings/GitHubPushConnect";
 import { MemoryView } from "./MemoryView";
 
 // ---------------------------------------------------------------------------
@@ -516,6 +517,11 @@ export function SettingsView() {
       {/* ── Skill Registry ── */}
       <Section title="Skill Registry">
         <SkillRegistry />
+      </Section>
+
+      {/* ── GitHub — Pull Requests ── */}
+      <Section title="GitHub — Pull Requests">
+        <GitHubPushConnect />
       </Section>
 
       {/* ── Memory Management ── */}

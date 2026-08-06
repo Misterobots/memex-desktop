@@ -3,7 +3,7 @@ export type AppTab = "chat" | "goals" | "art" | "memory" | "tasks" | "dev" | "ev
 // ---------------------------------------------------------------------------
 // Task board types (mobile Codex loop — mirrors agent_runtime /v1/tasks)
 // ---------------------------------------------------------------------------
-export type TaskStatus = "running" | "completed" | "failed" | "cancelled" | "needs_input";
+export type TaskStatus = "queued" | "running" | "completed" | "failed" | "cancelled" | "needs_input";
 export type ApprovalState = "none" | "pending" | "approved" | "denied";
 
 export interface Task {
@@ -25,6 +25,10 @@ export interface Task {
   has_diff?:         boolean;
   summary?:          string;        // detail only
   error?:            string;        // detail only
+  /** Present only for tasks created against a linked repo (New Task composer /
+   *  POST /v1/tasks with dev_project_id). */
+  repo_url?:         string;
+  branch?:           string;
 }
 
 export interface TaskWorker {

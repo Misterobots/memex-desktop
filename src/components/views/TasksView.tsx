@@ -9,12 +9,14 @@ import type { Task } from "../../types/memex";
 import { listTasks } from "../../lib/tasks-api";
 import { TaskCard } from "../tasks/TaskCard";
 import { TaskDetailPanel } from "../tasks/TaskDetailPanel";
+import { NewTaskComposer } from "../tasks/NewTaskComposer";
 
 export function TasksView() {
   const [tasks,    setTasks]    = useState<Task[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading,  setLoading]  = useState(true);
   const [filter,   setFilter]   = useState<"all" | "running">("all");
+  const [composerOpen, setComposerOpen] = useState(false);
 
   const load = useCallback(async () => {
     const list = await listTasks(filter);
@@ -47,6 +49,10 @@ export function TasksView() {
                 }`}
               >{f}</button>
             ))}
+            <button
+              onClick={() => { setComposerOpen(true); setSelected(null); }}
+              className="px-2 py-1 rounded-md text-accent hover:bg-accent/10"
+            >+ New Task</button>
             <button onClick={load} title="Refresh" className="px-2 py-1 rounded-md text-muted hover:text-text">↻</button>
           </div>
         </div>
@@ -60,7 +66,7 @@ export function TasksView() {
               key={t.coordination_id}
               task={t}
               active={selected === t.coordination_id}
-              onClick={() => setSelected(t.coordination_id)}
+              onClick={() => { setSelected(t.coordination_id); setComposerOpen(false); }}
             />
           ))}
           {!loading && tasks.length === 0 && (
@@ -72,7 +78,16 @@ export function TasksView() {
         </div>
       </div>
 
-      {selected ? (
+      {composerOpen ? (
+        <NewTaskComposer
+          onClose={() => setComposerOpen(false)}
+          onCreated={(coordinationId) => {
+            setComposerOpen(false);
+            setSelected(coordinationId);
+            load();
+          }}
+        />
+      ) : selected ? (
         <TaskDetailPanel id={selected} onClose={() => setSelected(null)} onChange={load} />
       ) : (
         <div className="hidden md:flex flex-1 items-center justify-center text-muted text-sm">

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Task, TaskWorker } from "../../types/memex";
 import { getTask, getTaskDiff, setTaskApproval, type TaskDiff } from "../../lib/tasks-api";
 import { WebDiffViewer } from "./WebDiffViewer";
+import { PushPreviewModal } from "./PushPreviewModal";
 
 const WORKER_DOT: Record<string, string> = {
   running: "bg-yellow", completed: "bg-green", failed: "bg-red-400", pending: "bg-muted",
@@ -16,12 +17,23 @@ export function TaskDetailPanel({ id, onClose, onChange }: {
   const [diffMsg,  setDiffMsg]  = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
 
+  // Gated GitHub push/PR (Phase F). Local-only: a page refresh losing the
+  // shown PR link is acceptable — push/status exists for a defensive re-fetch
+  // but isn't needed for the core flow since confirmPush's own response
+  // already carries pr_url.
+  const [pushModalOpen, setPushModalOpen] = useState(false);
+  const [pushedPrUrl,   setPushedPrUrl]   = useState<string | null>(null);
+
   const load = useCallback(async () => {
     const res = await getTask(id);
     if (res) { setRun(res.run); setWorkers(res.workers); }
   }, [id]);
 
-  useEffect(() => { setRun(null); setDiff(null); setDiffMsg(null); load(); }, [load]);
+  useEffect(() => {
+    setRun(null); setDiff(null); setDiffMsg(null);
+    setPushModalOpen(false); setPushedPrUrl(null);
+    load();
+  }, [load]);
 
   // Poll detail while the run is still in flight.
   useEffect(() => {
@@ -143,6 +155,40 @@ export function TaskDetailPanel({ id, onClose, onChange }: {
             </div>
           )}
         </div>
+      )}
+
+      {/* Gated push/PR — only for tasks created against a linked repo
+         (New Task composer). Chat-originated tasks have no repo_url and this
+         renders nothing, gracefully. */}
+      {run.approval_state === "approved" && run.repo_url && (
+        <div className="flex-shrink-0 border-t border-border/40 p-3">
+          {pushedPrUrl ? (
+            <a
+              href={pushedPrUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="block text-center text-xs text-accent2 hover:text-accent2/80 underline truncate"
+            >
+              ✓ Pull request opened — {pushedPrUrl}
+            </a>
+          ) : (
+            <button
+              onClick={() => setPushModalOpen(true)}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-accent2/40 text-accent2 hover:bg-accent2/10 transition-colors"
+            >
+              Open Pull Request →
+            </button>
+          )}
+        </div>
+      )}
+
+      {pushModalOpen && (
+        <PushPreviewModal
+          coordinationId={id}
+          diff={diff}
+          onClose={() => setPushModalOpen(false)}
+          onPushed={(prUrl) => { setPushedPrUrl(prUrl); setPushModalOpen(false); }}
+        />
       )}
     </div>
   );

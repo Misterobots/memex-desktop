@@ -63,3 +63,34 @@ export async function setTaskApproval(id: string, decision: "approve" | "deny"):
     return false;
   }
 }
+
+/**
+ * Direct task creation for the "New Task" composer (NewTaskComposer.tsx) —
+ * bypasses chat entirely. POST /v1/tasks returns 202 on success (the run is
+ * created and drained in the background), 404 if the server-side
+ * TASKS_DIRECT_CREATE_ENABLED flag is off.
+ *
+ * Returns `status` alongside the result (same shape as getTaskDiff above)
+ * rather than collapsing every failure to a bare null — the composer needs
+ * to tell "not enabled" (404) apart from a generic failure to show a useful
+ * message instead of a dead end.
+ */
+export async function createTask(body: {
+  prompt: string;
+  dev_project_id?: string;
+  branch?: string;
+}): Promise<{ coordination_id?: string; status: number }> {
+  try {
+    const r = await fetch(`${getAgentRuntime()}/v1/tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return { status: r.status };
+    const data = await r.json();
+    return { coordination_id: data?.coordination_id, status: r.status };
+  } catch {
+    return { status: 0 };
+  }
+}

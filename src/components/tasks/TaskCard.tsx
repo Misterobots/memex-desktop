@@ -1,6 +1,7 @@
 import type { Task } from "../../types/memex";
 
 const STATUS_STYLE: Record<string, string> = {
+  queued:      "text-muted border-border/40 bg-surface2/40",
   running:     "text-yellow border-yellow/30 bg-yellow/10",
   completed:   "text-green border-green/30 bg-green/10",
   failed:      "text-red-400 border-red-400/30 bg-red-400/10",
@@ -15,6 +16,12 @@ function timeAgo(sec?: number): string {
   if (d < 3600)  return `${Math.floor(d / 60)}m ago`;
   if (d < 86400) return `${Math.floor(d / 3600)}h ago`;
   return `${Math.floor(d / 86400)}d ago`;
+}
+
+/** "https://github.com/owner/repo.git" (or .../owner/repo) -> "owner/repo". Falls back to the raw url on a shape miss. */
+function ownerRepo(url: string): string {
+  const m = url.match(/[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/);
+  return m ? `${m[1]}/${m[2]}` : url;
 }
 
 export function TaskCard({ task, active, onClick }: { task: Task; active: boolean; onClick: () => void }) {
@@ -42,6 +49,14 @@ export function TaskCard({ task, active, onClick }: { task: Task; active: boolea
                 <span>{timeAgo(task.ended_at || task.started_at)}</span>
               </>
             )}
+            {task.repo_url && (
+              <>
+                <span>·</span>
+                <span className="text-[10px] text-muted">
+                  {ownerRepo(task.repo_url)}{task.branch ? ` · ${task.branch}` : ""}
+                </span>
+              </>
+            )}
           </div>
         </div>
         <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -59,6 +74,7 @@ export function TaskCard({ task, active, onClick }: { task: Task; active: boolea
           className={`block h-full rounded-full ${
             task.status === "failed" ? "bg-red-400"
               : task.status === "needs_input" ? "bg-accent2"
+              : task.status === "queued" ? "bg-muted"
               : running ? "bg-yellow" : "bg-green"
           }`}
           style={{ width: `${Math.max(4, pct)}%` }}
