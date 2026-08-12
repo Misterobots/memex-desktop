@@ -1,18 +1,51 @@
 /**
- * Runtime configuration profiles.
- * Persisted as userData/config.json. No encryption — these are LAN URLs, not secrets.
+ * Runtime configuration profiles (Routing).
+ * Persisted as userData/config.json. LAN URLs are stored in plaintext, as before.
+ * apiKey is the one secret-grade field here — it's encrypted at rest via Electron's
+ * safeStorage (OS keychain-backed) and only ever held in plaintext in memory.
  */
 import { join } from "path";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { randomUUID } from "crypto";
+import { safeStorage } from "electron";
+
+export type ProviderType = "internal" | "external";
 
 export interface RuntimeProfile {
   id:           string;
   name:         string;
+  providerType: ProviderType; // "internal" = trusted LAN host, "external" = 3rd-party API
   agentRuntime: string;
   mempalace:    string;
   ollama?:      string;
+  apiKey?:      string;   // plaintext in memory/IPC; encrypted only in the persisted file
   readonly?:    boolean; // seed profiles are read-only by convention (UI hint only)
+}
+
+// Internal-only persisted shape — apiKey is base64 ciphertext on disk, never plaintext.
+type PersistedProfile = Omit<RuntimeProfile, "apiKey"> & { apiKey?: string };
+
+function encryptProfilesForDisk(profiles: RuntimeProfile[]): PersistedProfile[] {
+  return profiles.map((p) => {
+    if (!p.apiKey) return { ...p, apiKey: undefined };
+    if (!safeStorage.isEncryptionAvailable()) return p; // best effort — no OS keychain available
+    return { ...p, apiKey: safeStorage.encryptString(p.apiKey).toString("base64") };
+  });
+}
+
+// Profiles saved before Routing shipped won't have providerType on disk yet.
+type LegacyPersistedProfile = Omit<PersistedProfile, "providerType"> & { providerType?: ProviderType };
+
+function decryptProfilesFromDisk(profiles: LegacyPersistedProfile[]): RuntimeProfile[] {
+  return profiles.map((p) => {
+    const migrated: PersistedProfile = { providerType: "internal", ...p };
+    if (!migrated.apiKey || !safeStorage.isEncryptionAvailable()) return migrated as RuntimeProfile;
+    try {
+      return { ...migrated, apiKey: safeStorage.decryptString(Buffer.from(migrated.apiKey, "base64")) };
+    } catch {
+      return { ...migrated, apiKey: undefined }; // undecryptable (e.g. moved machines) — drop, don't expose garbage
+    }
+  });
 }
 
 export interface ShortcutConfig {
@@ -27,6 +60,7 @@ export interface AppConfig {
   allowedExtensionIds: string[]; // Chrome extension IDs for the browser bridge
   wizardComplete?:     boolean;
   shortcuts?:          Partial<ShortcutConfig>;
+  trayHintShown?:      boolean;
 }
 
 function defaultShortcuts(): ShortcutConfig {
@@ -43,6 +77,7 @@ const SEED_PROFILES: RuntimeProfile[] = [
   {
     id:           "home-lan",
     name:         "Home LAN",
+    providerType: "internal",
     agentRuntime: "http://192.168.2.101:8008",
     mempalace:    "http://192.168.2.102:8200",
     ollama:       "http://192.168.2.101:11434",
@@ -51,6 +86,7 @@ const SEED_PROFILES: RuntimeProfile[] = [
   {
     id:           "localhost",
     name:         "Localhost",
+    providerType: "internal",
     agentRuntime: "http://localhost:8008",
     mempalace:    "http://localhost:8200",
     ollama:       "http://localhost:11434",
@@ -73,6 +109,7 @@ export class ConfigStore {
     if (existsSync(this.configPath)) {
       try {
         const raw = JSON.parse(readFileSync(this.configPath, "utf-8")) as AppConfig;
+        raw.profiles = decryptProfilesFromDisk(raw.profiles as unknown as LegacyPersistedProfile[]);
         // Ensure seed profiles are always present (add if missing from stored config)
         for (const seed of SEED_PROFILES) {
           if (!raw.profiles.find((p) => p.id === seed.id)) {
@@ -89,7 +126,10 @@ export class ConfigStore {
   }
 
   private persist(config: AppConfig): void {
-    try { writeFileSync(this.configPath, JSON.stringify(config, null, 2), "utf-8"); } catch {}
+    try {
+      const toWrite = { ...config, profiles: encryptProfilesForDisk(config.profiles) };
+      writeFileSync(this.configPath, JSON.stringify(toWrite, null, 2), "utf-8");
+    } catch {}
   }
 
   private save(): void { this.persist(this.config); }
@@ -114,6 +154,7 @@ export class ConfigStore {
 
   saveProfile(profile: RuntimeProfile): RuntimeProfile {
     if (!profile.id) profile = { ...profile, id: randomUUID() };
+    if (!profile.providerType) profile = { ...profile, providerType: "internal" };
     const idx = this.config.profiles.findIndex((p) => p.id === profile.id);
     if (idx >= 0) {
       this.config.profiles[idx] = profile;
@@ -146,6 +187,11 @@ export class ConfigStore {
   // Setup wizard completion
   getWizardComplete(): boolean { return this.config.wizardComplete ?? false; }
   setWizardComplete(): void    { this.config.wizardComplete = true; this.save(); }
+
+  // One-time "still running in the tray" notification, shown the first time
+  // the window is closed-to-tray rather than quit.
+  getTrayHintShown(): boolean { return this.config.trayHintShown ?? false; }
+  setTrayHintShown(): void    { this.config.trayHintShown = true; this.save(); }
 
   // Global keyboard shortcuts (merged over platform defaults)
   getShortcuts(): ShortcutConfig {

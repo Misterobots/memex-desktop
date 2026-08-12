@@ -44,6 +44,7 @@
   "build": {
     "appId": "com.memex.desktop",
     "productName": "Memex Desktop",
+    "icon": "public/icon.png",
     "directories": {
       "output": "release"
     },

@@ -9,15 +9,19 @@ import { createTask } from "../../lib/tasks-api";
  * as the way a task comes into existence. Deliberately standalone: does not
  * touch InputBar.tsx or any chat-session submit path.
  *
- * Renders in the same right-pane slot TaskDetailPanel occupies in TasksView.
+ * Renders in the same right-pane slot TaskDetailPanel occupies in ProjectTasksPane
+ * (the project-scoped Tasks pane inside DevView).
  */
-export function NewTaskComposer({ onCreated, onClose }: {
+export function NewTaskComposer({ onCreated, onClose, defaultProjectId }: {
   onCreated: (coordinationId: string) => void;
   onClose: () => void;
+  /** Pre-selects a repo — used when opened from a project-scoped context (DevView's
+   *  Tasks pane) so the composer already knows which project this task belongs to. */
+  defaultProjectId?: string;
 }) {
   const [projects,        setProjects]        = useState<DevProject[]>([]);
   const [loadingProjects, setLoadingProjects]  = useState(true);
-  const [projectId,       setProjectId]        = useState<string>("");
+  const [projectId,       setProjectId]        = useState<string>(defaultProjectId ?? "");
   const [branch,          setBranch]           = useState("");
   const [prompt,          setPrompt]           = useState("");
 
@@ -34,10 +38,15 @@ export function NewTaskComposer({ onCreated, onClose }: {
   useEffect(() => {
     (async () => {
       setLoadingProjects(true);
-      setProjects(await listDevProjects());
+      const loaded = await listDevProjects();
+      setProjects(loaded);
       setLoadingProjects(false);
+      if (defaultProjectId) {
+        const proj = loaded.find((p) => p.id === defaultProjectId);
+        if (proj) setBranch(proj.git_ref || "main");
+      }
     })();
-  }, []);
+  }, [defaultProjectId]);
 
   const selectProject = (id: string) => {
     setProjectId(id);
@@ -60,7 +69,12 @@ export function NewTaskComposer({ onCreated, onClose }: {
     setCreatingRepo(false);
     if (!project) { setNewRepoError("Could not create repo — check the git_url and try again."); return; }
     setProjects((prev) => [...prev, project]);
-    selectProject(project.id);
+    // Not selectProject(project.id) — `projects` in that closure is still last
+    // render's array (setProjects above hasn't re-rendered yet), so the lookup
+    // would miss the repo we just created and skip pre-filling the branch.
+    // We already have the object right here; use it directly.
+    setProjectId(project.id);
+    setBranch(project.git_ref || "main");
     setShowNewRepo(false);
     setNewRepoName("");
     setNewRepoUrl("");

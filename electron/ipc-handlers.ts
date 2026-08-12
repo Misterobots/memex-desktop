@@ -1,6 +1,17 @@
 /**
- * All IPC handler registrations except health, updater, and quick-window
- * (those live in their own modules to co-locate state).
+ * IPC handler registrations. NOT all of them, despite the name — health.ts,
+ * updater.ts, and windows.ts (shortcuts:get/set, shell:retry) each register
+ * their own to co-locate with the state they manage.
+ *
+ * Two kinds of handler live here, deliberately visible as separate sections:
+ *   - Hand-written: a permission check, an event broadcast, or state beyond
+ *     a single store (fs:*, shell:exec, pty:*, config:setActive, ...) — that
+ *     logic needs to stay readable, not get hidden behind a generic wrapper.
+ *   - autoWireStore() calls: pure "namespace:method calls one store method
+ *     and returns the result" passthroughs (workspace, hooks, eval,
+ *     artifact, most of config and runs) — see ipc-autowire.ts for why the
+ *     explicit per-namespace method list there is a safety property, not
+ *     boilerplate to trim further.
  */
 import {
   app, ipcMain, BrowserWindow, dialog, shell,
@@ -21,6 +32,10 @@ import { updateNativeHostManifest }     from "./browser-bridge";
 import type { RunStore }               from "./run-store";
 import type { EvalStore }              from "./eval-store";
 import type { ArtifactStore }          from "./artifact-store";
+import type { HooksStore }             from "./hooks-store";
+import { fireHooks }                   from "./hooks-runner";
+import { runOpenScad, type RenderParams } from "./openscad-runner";
+import { autoWireStore }                  from "./ipc-autowire";
 
 const execAsync = promisify(exec);
 
@@ -32,12 +47,13 @@ export interface IpcContext {
   runs:      RunStore;
   evals:     EvalStore;
   artifacts: ArtifactStore;
+  hooks:     HooksStore;
   getMain:   () => BrowserWindow | null;
   startHealthLoop: () => void;
 }
 
 export function registerAllIpc(ctx: IpcContext): void {
-  const { config, firewall, lsp, browser, runs, evals, artifacts, getMain, startHealthLoop } = ctx;
+  const { config, firewall, lsp, browser, runs, evals, artifacts, hooks, getMain, startHealthLoop } = ctx;
 
   // ── Identity ──────────────────────────────────────────────────────────────
   ipcMain.handle("identity:get", () => getCurrentUid());
@@ -83,6 +99,41 @@ export function registerAllIpc(ctx: IpcContext): void {
     } catch (err: any) {
       return { stdout: "", stderr: err.message, code: err.code ?? 1 };
     }
+  });
+
+  // ── OpenSCAD (workspace-gated) ────────────────────────────────────────────
+  // Gated on checkRead(scadPath)/checkWrite(outputPath) rather than
+  // checkShell(): this doesn't run a free-form shell string (it spawns the
+  // openscad.exe binary directly with an argv array), so the shell-command
+  // firewall check doesn't semantically apply. The two real filesystem touch
+  // points are the .scad source being read and the export file being
+  // written -- gating on those matches how fs:readFile/fs:writeFile already
+  // work in this file, and is the check that actually matters here.
+  ipcMain.handle("openscad:render", async (_e, params: RenderParams) => {
+    if (!await firewall.checkRead(params.scadPath, getMain())) {
+      return { ok: false, stdout: "", stderr: "Permission denied by workspace firewall (scadPath)", code: 126, warnings: [], durationMs: 0 };
+    }
+    if (!await firewall.checkWrite(params.outputPath, getMain())) {
+      return { ok: false, stdout: "", stderr: "Permission denied by workspace firewall (outputPath)", code: 126, warnings: [], durationMs: 0 };
+    }
+    return runOpenScad(params);
+  });
+
+  ipcMain.handle("openscad:export", async (_e, params: RenderParams) => {
+    if (!await firewall.checkRead(params.scadPath, getMain())) {
+      return { ok: false, stdout: "", stderr: "Permission denied by workspace firewall (scadPath)", code: 126, warnings: [], durationMs: 0 };
+    }
+    if (!await firewall.checkWrite(params.outputPath, getMain())) {
+      return { ok: false, stdout: "", stderr: "Permission denied by workspace firewall (outputPath)", code: 126, warnings: [], durationMs: 0 };
+    }
+    // export is render() with a manufacturable format required -- the
+    // renderer is expected to pass format: "stl" | "3mf", but a defensive
+    // check here means the IPC boundary itself refuses an accidental "png"
+    // rather than silently doing the wrong thing.
+    if (params.format !== "stl" && params.format !== "3mf") {
+      return { ok: false, stdout: "", stderr: `openscad:export requires format "stl" or "3mf", got "${params.format}"`, code: null, warnings: [], durationMs: 0 };
+    }
+    return runOpenScad(params);
   });
 
   // ── PTY (workspace-gated) ─────────────────────────────────────────────────
@@ -160,15 +211,21 @@ export function registerAllIpc(ctx: IpcContext): void {
     return { approved: chosen !== "deny", scope: chosen === "deny" ? "once" : chosen };
   });
 
-  // ── Workspace firewall ────────────────────────────────────────────────────
-  ipcMain.handle("workspace:getPolicy",    () => firewall.getPolicy());
-  ipcMain.handle("workspace:setPolicy",    (_e, policy) => { firewall.setPolicy(policy); });
-  ipcMain.handle("workspace:addRoot",      (_e, root)   => { firewall.addRoot(root); });
-  ipcMain.handle("workspace:clearSession", ()           => { firewall.clearSessionApprovals(); });
+  // ── Workspace firewall (pure passthrough) ─────────────────────────────────
+  autoWireStore("workspace", firewall, ["getPolicy", "setPolicy", "addRoot"]);
+  // Aliased on its own — "workspace:clearSession" (preload/desktop.ts's name)
+  // differs from the store's actual clearSessionApprovals() method name.
+  autoWireStore("workspace", firewall, { clearSession: "clearSessionApprovals" });
 
   // ── Runtime config profiles ───────────────────────────────────────────────
-  ipcMain.handle("config:getAll",    () => config.getAll());
-  ipcMain.handle("config:getActive", () => config.getActive());
+  // setActive stays hand-written: it broadcasts config:changed and restarts
+  // the health loop, neither of which is "call one method, return result".
+  // Aliased — existing channel names predate/differ from ConfigStore's
+  // actual method names (save/delete vs saveProfile/deleteProfile, etc.).
+  autoWireStore("config", config, {
+    getAll: "getAll", getActive: "getActive", save: "saveProfile", delete: "deleteProfile",
+    getUrls: "getUrls", getWizardDone: "getWizardComplete", setWizardDone: "setWizardComplete",
+  });
   ipcMain.handle("config:setActive", (_e, id: string) => {
     const ok = config.setActive(id);
     if (ok) {
@@ -177,24 +234,37 @@ export function registerAllIpc(ctx: IpcContext): void {
     }
     return ok;
   });
-  ipcMain.handle("config:save",            (_e, profile) => config.saveProfile(profile));
-  ipcMain.handle("config:delete",          (_e, id)      => config.deleteProfile(id));
-  ipcMain.handle("config:getUrls",         ()            => config.getUrls());
-  ipcMain.handle("config:getWizardDone",   ()            => config.getWizardComplete());
-  ipcMain.handle("config:setWizardDone",   ()            => { config.setWizardComplete(); });
 
   // ── Run store ─────────────────────────────────────────────────────────────
-  ipcMain.handle("runs:start",      (_e, opts)   => runs.startRun(opts));
-  ipcMain.handle("runs:end",        (_e, id, st) => runs.endRun(id, st));
-  ipcMain.handle("runs:addEvent",   (_e, id, type, payload) => runs.addEvent(id, type, payload));
-  ipcMain.handle("runs:getRecent",  (_e, limit)  => runs.getRecentRuns(limit));
-  ipcMain.handle("runs:getEvents",  (_e, id)     => runs.getEventsForRun(id));
+  // startRun/endRun stay hand-written — they also fireHooks(). fireHooks()
+  // is deliberately not awaited: a hook must never delay the response the
+  // renderer is waiting on to proceed with the chat turn.
+  // Aliased — existing channel names (getRecent/getEvents) differ from
+  // RunStore's actual method names (getRecentRuns/getEventsForRun).
+  autoWireStore("runs", runs, { addEvent: "addEvent", getRecent: "getRecentRuns", getEvents: "getEventsForRun" });
+  ipcMain.handle("runs:start", (_e, opts) => {
+    const run = runs.startRun(opts);
+    fireHooks("run:start", { hooks, firewall, getMain });
+    return run;
+  });
+  ipcMain.handle("runs:end", (_e, id, st) => {
+    runs.endRun(id, st);
+    fireHooks("run:end", { hooks, firewall, getMain });
+  });
 
-  // ── Artifact store ────────────────────────────────────────────────────────
-  ipcMain.handle("artifact:add",        (_e, rec)        => artifacts.addArtifact(rec));
-  ipcMain.handle("artifact:forRun",     (_e, runId)      => artifacts.getForRun(runId));
-  ipcMain.handle("artifact:forSession", (_e, sessionId)  => artifacts.getForSession(sessionId));
-  ipcMain.handle("artifact:recent",     (_e, limit)      => artifacts.getRecent(limit));
+  // ── Hooks (pure passthrough) ───────────────────────────────────────────────
+  // setApproval is intentionally NOT listed — internal-only, called by
+  // hooks-runner.ts in the main process. Renderer-reachable would let it
+  // self-approve a hook, bypassing the first-fire consent dialog entirely.
+  // Aliased — existing channel name is "hooks:list", not "hooks:getAll".
+  autoWireStore("hooks", hooks, { list: "getAll", save: "save", delete: "delete" });
+
+  // ── Artifact store (pure passthrough) ─────────────────────────────────────
+  // Aliased — existing channel names (add/forRun/forSession/recent) differ
+  // from ArtifactStore's actual method names.
+  autoWireStore("artifact", artifacts, {
+    add: "addArtifact", forRun: "getForRun", forSession: "getForSession", recent: "getRecent",
+  });
 
   // ── Ollama model list ─────────────────────────────────────────────────────
   ipcMain.handle("ollama:listModels", async () => {
@@ -239,11 +309,8 @@ export function registerAllIpc(ctx: IpcContext): void {
     }
   });
 
-  // ── Eval store ────────────────────────────────────────────────────────────
-  ipcMain.handle("eval:getCases",       ()               => evals.getCases());
-  ipcMain.handle("eval:saveCase",       (_e, c)          => evals.saveCase(c));
-  ipcMain.handle("eval:deleteCase",     (_e, id)         => evals.deleteCase(id));
-  ipcMain.handle("eval:getResults",     (_e, caseId)     => evals.getResults(caseId));
-  ipcMain.handle("eval:startResult",    (_e, caseId, runId) => evals.startResult(caseId, runId));
-  ipcMain.handle("eval:updateResult",   (_e, id, patch)  => evals.updateResult(id, patch));
+  // ── Eval store (pure passthrough) ─────────────────────────────────────────
+  autoWireStore("eval", evals, [
+    "getCases", "saveCase", "deleteCase", "getResults", "startResult", "updateResult",
+  ]);
 }

@@ -5,6 +5,7 @@ import { getAgentRuntime } from "../../lib/runtime-urls";
 import { SkillRegistry } from "../settings/SkillRegistry";
 import { ShortcutCapture } from "../settings/ShortcutCapture";
 import { GitHubPushConnect } from "../settings/GitHubPushConnect";
+import { Hooks } from "../settings/Hooks";
 import { MemoryView } from "./MemoryView";
 
 // ---------------------------------------------------------------------------
@@ -77,33 +78,77 @@ function ProfileEditor({
   onSave:  (p: Partial<RuntimeProfile>) => void;
   onCancel: () => void;
 }) {
+  const [type, setType]   = useState<"internal" | "external">(profile.providerType ?? "internal");
   const [name, setName]   = useState(profile.name ?? "");
   const [ar,   setAr]     = useState(profile.agentRuntime ?? "");
   const [mp,   setMp]     = useState(profile.mempalace ?? "");
   const [ol,   setOl]     = useState(profile.ollama ?? "");
+  const [key,  setKey]    = useState(profile.apiKey ?? "");
   const [errs, setErrs]   = useState<Record<string, string>>({});
 
   const validate = () => {
     const e: Record<string, string> = {};
     if (!name.trim())      e.name = "Name is required";
-    if (!ar.trim())        e.ar   = "Agent Runtime URL is required";
-    else try { new URL(ar); } catch { e.ar = "Must be a valid URL (e.g. http://…)"; }
-    if (!mp.trim())        e.mp   = "MemPalace URL is required";
-    else try { new URL(mp); } catch { e.mp = "Must be a valid URL"; }
-    if (ol) try { new URL(ol); } catch { e.ol = "Must be a valid URL or empty"; }
+    if (!ar.trim())        e.ar   = type === "external" ? "Base URL is required" : "Agent Runtime URL is required";
+    else try { new URL(ar); } catch { e.ar = "Must be a valid URL (e.g. https://…)"; }
+    if (type === "internal") {
+      if (!mp.trim())      e.mp   = "MemPalace URL is required";
+      else try { new URL(mp); } catch { e.mp = "Must be a valid URL"; }
+      if (ol) try { new URL(ol); } catch { e.ol = "Must be a valid URL or empty"; }
+    }
     setErrs(e);
     return Object.keys(e).length === 0;
   };
 
   return (
     <div className="space-y-2 p-3 border border-accent/30 rounded-lg bg-surface2/40">
+      <div className="flex gap-2 pb-1">
+        {(["internal", "external"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setType(t)}
+            className={`px-3 py-1 rounded-lg text-sm border capitalize transition-colors
+              ${type === t
+                ? "border-accent/50 bg-accent/10 text-accent"
+                : "border-border/40 bg-surface2/40 text-muted hover:text-text"}`}
+          >{t === "internal" ? "Internal (LAN)" : "External (API)"}</button>
+        ))}
+      </div>
       <Input value={name} onChange={setName} placeholder="Profile name" error={errs.name} />
-      <Input value={ar}   onChange={setAr}   placeholder="Agent Runtime URL (http://…:8008)" error={errs.ar} />
-      <Input value={mp}   onChange={setMp}   placeholder="MemPalace URL (http://…:8200)" error={errs.mp} />
-      <Input value={ol}   onChange={setOl}   placeholder="Ollama URL (optional)" error={errs.ol} />
+      {type === "internal" ? (
+        <>
+          <Input value={ar} onChange={setAr} placeholder="Agent Runtime URL (http://…:8008)" error={errs.ar} />
+          <Input value={mp} onChange={setMp} placeholder="MemPalace URL (http://…:8200)" error={errs.mp} />
+          <Input value={ol} onChange={setOl} placeholder="Ollama URL (optional)" error={errs.ol} />
+        </>
+      ) : (
+        <>
+          <Input value={ar} onChange={setAr} placeholder="Base URL (https://api.example.com)" error={errs.ar} />
+          <input
+            type="password"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder="API key"
+            className="w-full px-3 py-1.5 rounded-lg bg-surface2 border border-border/60 text-sm text-text
+              focus:outline-none focus:ring-1 focus:ring-accent/60"
+          />
+          <p className="text-[11px] text-muted">Stored encrypted at rest via your OS keychain.</p>
+        </>
+      )}
       <div className="flex gap-2 pt-1">
         <button
-          onClick={() => { if (validate()) onSave({ ...profile, name, agentRuntime: ar, mempalace: mp, ollama: ol || undefined }); }}
+          onClick={() => {
+            if (!validate()) return;
+            onSave({
+              ...profile,
+              name,
+              providerType: type,
+              agentRuntime: ar,
+              mempalace:    type === "internal" ? mp : "",
+              ollama:       type === "internal" ? (ol || undefined) : undefined,
+              apiKey:       type === "external" ? (key || undefined) : undefined,
+            });
+          }}
           className="px-3 py-1 rounded-lg bg-accent text-white text-sm hover:bg-accent/80"
         >Save</button>
         <button onClick={onCancel} className="px-3 py-1 rounded-lg bg-surface2 border border-border/60 text-sm hover:bg-surface2/80">
@@ -344,8 +389,8 @@ export function SettingsView() {
   return (
     <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5 max-w-2xl">
 
-      {/* ── Runtime Profiles ── */}
-      <Section title="Runtime Profiles">
+      {/* ── Routing ── */}
+      <Section title="Routing">
         <div className="space-y-2">
           {profiles.map((p) => (
             <div key={p.id}
@@ -358,7 +403,14 @@ export function SettingsView() {
                 onClick={() => handleActivate(p.id)}
                 className="flex-1 text-left"
               >
-                <div className="text-sm font-medium text-text">{p.name}</div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-text">{p.name}</span>
+                  <span className={`text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full border
+                    ${p.providerType === "external"
+                      ? "border-yellow/30 text-yellow"
+                      : "border-border/50 text-muted"}`}
+                  >{p.providerType === "external" ? "External" : "Internal"}</span>
+                </div>
                 <div className="text-xs text-muted truncate">{p.agentRuntime}</div>
               </button>
               {activeProfileId === p.id && (
@@ -448,6 +500,11 @@ export function SettingsView() {
             className="px-3 py-1.5 rounded-lg bg-surface2 border border-border/60 text-sm hover:bg-surface2/80"
           >Browse</button>
         </div>
+      </Section>
+
+      {/* ── Hooks ── */}
+      <Section title="Hooks">
+        <Hooks />
       </Section>
 
       {/* ── App ── */}

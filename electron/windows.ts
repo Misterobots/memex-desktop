@@ -1,7 +1,7 @@
 /** Window management — main window, system tray, quick-entry window, global shortcuts. */
 import {
   app, BrowserWindow, ipcMain, shell,
-  Tray, Menu, nativeImage,
+  Tray, Menu, nativeImage, Notification,
   globalShortcut, screen as electronScreen,
 } from "electron";
 import { join } from "path";
@@ -10,12 +10,23 @@ import { getCurrentUid } from "./identity";
 
 const isDev = process.env.NODE_ENV === "development";
 
+// The one brand icon source (public/icon.png, 512x512 — same Memex mark
+// already used by ui/'s web manifest/favicon). Vite copies public/* into
+// dist/ verbatim at build time, so this mirrors the existing isDev ?
+// loadURL : loadFile(join(__dirname, "../dist/...")) pattern already used
+// below: in dev, "../public/icon.png" is the source file sitting on disk;
+// in the packaged app, "../dist/icon.png" is what actually shipped (public/
+// itself is never packaged — only dist/**, dist-electron/**, quick.html are,
+// per package.json's build.files).
+const ICON_PATH = join(__dirname, isDev ? "../public/icon.png" : "../dist/icon.png");
+
 // ---------------------------------------------------------------------------
 // Main window
 // ---------------------------------------------------------------------------
 export function createMainWindow(
-  config:   ConfigStore,
-  getTray:  () => Tray | null,
+  config:      ConfigStore,
+  getTray:     () => Tray | null,
+  isQuitting:  () => boolean,
 ): BrowserWindow {
   const win = new BrowserWindow({
     width:     1400,
@@ -23,6 +34,7 @@ export function createMainWindow(
     minWidth:  900,
     minHeight: 600,
     backgroundColor: "#0a0a0d",
+    icon: ICON_PATH,
     titleBarStyle: "hidden",
     titleBarOverlay: process.platform !== "darwin" ? {
       color:       "#111114",
@@ -56,11 +68,19 @@ export function createMainWindow(
   // Uses a broad filter and checks URL prefixes at request time so profile switches
   // take effect without re-registering the listener.
   win.webContents.session.webRequest.onBeforeSendHeaders(
-    { urls: ["http://*/*"] },
+    { urls: ["http://*/*", "https://*/*"] },
     (details, callback) => {
       const { agentRuntime, mempalace } = config.getUrls();
       const u = details.url;
       if (u.startsWith(agentRuntime) || u.startsWith(mempalace)) {
+        // Routing: an "external" active profile carries its own API key, injected
+        // here rather than at each fetch call site — this hook already owns every
+        // outbound request to the active profile's endpoints.
+        const active = config.getActive();
+        const authHeaders: Record<string, string> =
+          active.providerType === "external" && active.apiKey
+            ? { Authorization: `Bearer ${active.apiKey}` }
+            : {};
         callback({
           requestHeaders: {
             ...details.requestHeaders,
@@ -68,6 +88,7 @@ export function createMainWindow(
             // Owner key for server-side conversation sync (/v1/conversations).
             "X-authentik-username": getCurrentUid(),
             "X-desktop-client":     "memex-desktop",
+            ...authHeaders,
           },
         });
       } else {
@@ -77,7 +98,29 @@ export function createMainWindow(
   );
 
   win.on("close", (e) => {
-    if (getTray()) { e.preventDefault(); win.hide(); }
+    // Real quit (tray "Quit", Cmd+Q on mac, app.quit() from the updater, ...)
+    // must be allowed to actually close the window -- otherwise this handler
+    // intercepts that close the same as any other and just re-hides to tray,
+    // so "Quit" silently does nothing and the tray icon never goes away.
+    if (isQuitting()) return;
+    if (!getTray()) return;
+    e.preventDefault();
+    win.hide();
+    // First time only — closing the window doesn't quit the app (it keeps
+    // running in the tray so Quick Entry / global shortcuts still work), and
+    // Windows puts new tray icons in the hidden overflow area by default, so
+    // without this the app can look like it vanished. No supported Windows
+    // API pins a tray icon on the taskbar's behalf; pointing the user at the
+    // drag-to-pin gesture is the honest fix, not a registry hack.
+    if (!config.getTrayHintShown()) {
+      config.setTrayHintShown();
+      if (Notification.isSupported()) {
+        new Notification({
+          title: "Memex Desktop is still running",
+          body:  "It moved to the system tray — look for it under the ^ arrow near the clock, and drag it out to keep it visible. Right-click the tray icon to quit.",
+        }).show();
+      }
+    }
   });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -100,9 +143,10 @@ export function createTray(
   getMain:       () => BrowserWindow | null,
   toggleQuick:   () => void,
 ): Tray {
-  const icon = nativeImage.createFromDataURL(
-    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABmJLR0QA/wD/AP+gvaeTAAAAN0lEQVQ4jWNgYGD4z0ABYBo1YNQAKjcABQAA//8DABbHAv8AAAAA"
-  );
+  // Downsampled from the same 512x512 brand mark ICON_PATH points at — this
+  // used to be a hand-inlined ~16x16 base64 placeholder with no real artwork
+  // in it, which is exactly why the tray icon showed up blank/generic.
+  const icon = nativeImage.createFromPath(ICON_PATH).resize({ width: 16, height: 16, quality: "best" });
   const tray = new Tray(icon);
   tray.setToolTip("Memex Desktop");
   tray.setContextMenu(Menu.buildFromTemplate([

@@ -3,6 +3,7 @@ import { desktop }               from "../../lib/desktop";
 import type { ArtifactRecord }   from "../../lib/desktop";
 import type { RunRecord, RunEvent, RunEventType } from "../../types/memex";
 import { AgentGraph } from "./AgentGraph";
+import { ArtifactViewer } from "../artifacts/ArtifactViewer";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -60,6 +61,7 @@ export function RunInspectorPanel({ runId, onClose }: Props) {
   const [events,    setEvents]    = useState<RunEvent[]>([]);
   const [artifs,    setArtifs]    = useState<ArtifactRecord[]>([]);
   const [tab,       setTab]       = useState<"timeline" | "graph" | "payload" | "artifacts">("timeline");
+  const [viewing,   setViewing]   = useState<ArtifactRecord | null>(null);
 
   const bridge = desktop();
 
@@ -214,7 +216,7 @@ export function RunInspectorPanel({ runId, onClose }: Props) {
                 {artifs.length === 0 ? (
                   <p className="px-4 py-6 text-center text-xs text-muted">No artifacts for this run</p>
                 ) : (
-                  artifs.map((a) => <ArtifactRow key={a.id} artifact={a} />)
+                  artifs.map((a) => <ArtifactRow key={a.id} artifact={a} onView={() => setViewing(a)} />)
                 )}
               </div>
             )}
@@ -228,6 +230,8 @@ export function RunInspectorPanel({ runId, onClose }: Props) {
           </div>
         </>
       )}
+
+      {viewing && <ArtifactViewer artifact={viewing} onClose={() => setViewing(null)} />}
     </div>
   );
 }
@@ -244,10 +248,10 @@ function Chip({ label, color }: { label: string; color: string }) {
 }
 
 const ARTIFACT_ICON: Record<string, string> = {
-  file: "📄", diff: "±", diagram: "⬡", report: "📋", log: "📜",
+  file: "📄", diff: "±", diagram: "⬡", report: "📋", log: "📜", image: "🖼",
 };
 
-function ArtifactRow({ artifact: a }: { artifact: ArtifactRecord }) {
+function ArtifactRow({ artifact: a, onView }: { artifact: ArtifactRecord; onView: () => void }) {
   const bridge = desktop();
   const label = a.path ? a.path.split(/[/\\]/).pop() ?? a.name : a.name;
   const meta = [
@@ -260,12 +264,17 @@ function ArtifactRow({ artifact: a }: { artifact: ArtifactRecord }) {
       <div className="flex-1 min-w-0">
         <div className="text-xs text-text/80 truncate font-medium">{label}</div>
         <div className="text-[10px] text-muted">{meta}</div>
-        {a.path && (
-          <button
-            onClick={() => bridge?.shell.openExternal(`file://${a.path}`)}
-            className="text-[10px] text-accent hover:underline mt-0.5"
-          >Open file</button>
-        )}
+        <div className="flex gap-3 mt-0.5">
+          {a.content && (
+            <button onClick={onView} className="text-[10px] text-accent hover:underline">View</button>
+          )}
+          {a.path && (
+            <button
+              onClick={() => bridge?.shell.openExternal(`file://${a.path}`)}
+              className="text-[10px] text-accent hover:underline"
+            >Open file</button>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -6,9 +6,10 @@ import { InputBar } from "../layout/InputBar";
 import { TerminalPane } from "../dev/TerminalPane";
 import { FileEditor } from "../dev/FileEditor";
 import { WorkspaceSafetyBadge } from "../dev/WorkspaceSafetyBadge";
+import { ProjectTasksPane } from "../dev/ProjectTasksPane";
 import { ipc } from "../../lib/ipc";
 
-type PrimaryPane = "chat" | "editor";
+type PrimaryPane = "chat" | "editor" | "tasks";
 type BottomPane  = "terminal" | "none";
 
 export function DevView() {
@@ -67,7 +68,7 @@ export function DevView() {
       <div className="flex flex-col flex-1 min-w-0">
         {/* Top toolbar */}
         <div className="flex items-center gap-1 px-3 h-9 border-b border-border/60 bg-surface flex-shrink-0">
-          {(["chat", "editor"] as PrimaryPane[]).map((p) => (
+          {(["chat", "editor", "tasks"] as PrimaryPane[]).map((p) => (
             <button
               key={p}
               onClick={() => setPrimary(p)}
@@ -75,7 +76,7 @@ export function DevView() {
                 primary === p ? "bg-surface2 text-text" : "text-faint hover:text-text"
               }`}
             >
-              {p === "editor" ? (openFile ? openFile.split(/[/\\]/).pop() : "Editor") : "Agent"}
+              {p === "editor" ? (openFile ? openFile.split(/[/\\]/).pop() : "Editor") : p === "tasks" ? "Tasks" : "Agent"}
             </button>
           ))}
           <div className="flex-1" />
@@ -100,7 +101,9 @@ export function DevView() {
           {/* Primary pane */}
           <div className={`flex flex-col flex-1 min-h-0 ${bottomPane !== "none" ? "border-b border-border/60" : ""}`}
                style={{ height: bottomPane !== "none" ? "60%" : "100%" }}>
-            {primary === "editor" && openFile ? (
+            {primary === "tasks" ? (
+              <ProjectTasksPane cwd={cwd} />
+            ) : primary === "editor" && openFile ? (
               <FileEditor
                 path={openFile}
                 onClose={() => { setOpenFile(null); setPrimary("chat"); }}

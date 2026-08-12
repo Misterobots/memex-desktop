@@ -6,7 +6,7 @@ import { ChatView } from "../views/ChatView";
 import { GoalsView } from "../views/GoalsView";
 import { ArtView } from "../views/ArtView";
 import { MemoryView } from "../views/MemoryView";
-import { TasksView } from "../views/TasksView";
+import { ScheduledTasksView } from "../views/ScheduledTasksView";
 import { DevView } from "../views/DevView";
 import { SettingsView }   from "../views/SettingsView";
 import { EvalBenchView }  from "../views/EvalBenchView";
@@ -37,14 +37,14 @@ function AppShellInner() {
         <StatusBar />
         <TabBar />
         <div className="flex flex-1 min-h-0">
-          {activeTab === "chat"     && <ChatView />}
-          {activeTab === "goals"    && <GoalsView />}
-          {activeTab === "art"      && <ArtView />}
-          {activeTab === "memory"   && <MemoryView />}
-          {activeTab === "tasks"    && <TasksView />}
-          {activeTab === "dev"      && <DevView />}
-          {activeTab === "eval"     && <EvalBenchView />}
-          {activeTab === "settings" && <SettingsView />}
+          {activeTab === "chat"      && <ChatView />}
+          {activeTab === "goals"     && <GoalsView />}
+          {activeTab === "art"       && <ArtView />}
+          {activeTab === "memory"    && <MemoryView />}
+          {activeTab === "scheduled" && <ScheduledTasksView />}
+          {activeTab === "dev"       && <DevView />}
+          {activeTab === "eval"      && <EvalBenchView />}
+          {activeTab === "settings"  && <SettingsView />}
         </div>
       </div>
       {diffReview.pending && (

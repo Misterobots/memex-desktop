@@ -56,13 +56,13 @@ const TABS: TabDef[] = [
     ),
   },
   {
-    id: "tasks",
-    label: "Tasks",
+    id: "scheduled",
+    label: "Scheduled",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-        <rect x="2" y="2.5" width="12" height="11" rx="1.5" />
-        <path d="M4.5 6h2M4.5 8.5h2M4.5 11h2" />
-        <path d="M8.5 6h3.5M8.5 8.5h3.5M8.5 11h3.5" />
+        <circle cx="8" cy="8.5" r="5.5" />
+        <path d="M8 5.5v3l2 1.5" />
+        <path d="M6 1.5h4" />
       </svg>
     ),
   },

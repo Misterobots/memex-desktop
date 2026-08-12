@@ -14,7 +14,7 @@ export interface ShortcutConfig {
   newChat:     string;
 }
 
-export type ArtifactType = "file" | "diff" | "diagram" | "report" | "log";
+export type ArtifactType = "file" | "diff" | "diagram" | "report" | "log" | "image";
 export interface ArtifactRecord {
   id:        string;
   runId?:    string;
@@ -25,6 +25,51 @@ export interface ArtifactRecord {
   content?:  string;
   createdAt: string;
   sizeBytes?: number;
+}
+
+export type HookEvent = "run:start" | "run:end";
+export interface Hook {
+  id:        string;
+  name:      string;
+  event:     HookEvent;
+  command:   string;
+  cwd?:      string;
+  enabled:   boolean;
+  approved:  boolean;
+  createdAt: string;
+}
+
+// Mirrors electron/openscad-pure.ts's RenderParams/OpenScadResult (a real
+// pre-existing gap: preload-memex.ts exposes `openscad`, but this interface
+// never declared it, so window.memex.openscad was renderer-side untyped).
+// Local copy, not an import — same convention as every other namespace
+// here (Hook, EvalCase, ArtifactRecord, ...), avoiding a renderer-bundle
+// import of an electron/ module even though openscad-pure.ts is Node-free.
+export type OpenScadFormat = "png" | "stl" | "3mf" | "off";
+export interface RenderParams {
+  scadPath:    string;
+  outputPath:  string;
+  part?:       string;
+  vars?:       Record<string, string | number | boolean>;
+  format:      OpenScadFormat;
+  fullRender?: boolean;
+  timeoutMs?:  number;
+  openscadBin?: string;
+}
+export interface OpenScadResult {
+  ok:         boolean;
+  outputPath?: string;
+  stdout:     string;
+  stderr:     string;
+  code:       number | null;
+  warnings:   string[];
+  geometry?:  {
+    boundingBox: { min: [number, number, number]; max: [number, number, number] };
+    triangleCount: number;
+    vertexCount: number;
+    manifold: boolean | null;
+  };
+  durationMs: number;
 }
 
 export interface OllamaModel {
@@ -44,12 +89,16 @@ export const MEMPALACE_DEFAULT     = "http://192.168.2.102:8200";
 export const AGENT_RUNTIME = AGENT_RUNTIME_DEFAULT;
 export const MEMPALACE     = MEMPALACE_DEFAULT;
 
+export type ProviderType = "internal" | "external";
+
 export interface RuntimeProfile {
   id:           string;
   name:         string;
+  providerType: ProviderType; // "internal" = trusted LAN host, "external" = 3rd-party API
   agentRuntime: string;
   mempalace:    string;
   ollama?:      string;
+  apiKey?:      string; // only present when providerType === "external"
   readonly?:    boolean;
 }
 
@@ -135,7 +184,7 @@ export interface MemexBridge {
     getAll:        () => Promise<RuntimeProfile[]>;
     getActive:     () => Promise<RuntimeProfile>;
     setActive:     (id: string) => Promise<boolean>;
-    save:          (profile: Partial<RuntimeProfile> & { name: string; agentRuntime: string; mempalace: string }) => Promise<RuntimeProfile>;
+    save:          (profile: Partial<RuntimeProfile> & { name: string; providerType: ProviderType; agentRuntime: string; mempalace: string }) => Promise<RuntimeProfile>;
     delete:        (id: string) => Promise<boolean>;
     getUrls:       () => Promise<{ agentRuntime: string; mempalace: string; ollama: string }>;
     getWizardDone: () => Promise<boolean>;
@@ -175,6 +224,17 @@ export interface MemexBridge {
     getResults:   (caseId?: string)                     => Promise<EvalResult[]>;
     startResult:  (caseId: string, runId?: string)      => Promise<EvalResult>;
     updateResult: (id: string, patch: Partial<EvalResult>) => Promise<EvalResult | null>;
+  };
+
+  hooks: {
+    getAll: ()                                          => Promise<Hook[]>;
+    save:   (hook: Partial<Hook> & { name: string; event: HookEvent; command: string }) => Promise<Hook>;
+    delete: (id: string)                                => Promise<boolean>;
+  };
+
+  openscad: {
+    render: (params: RenderParams) => Promise<OpenScadResult>;
+    export: (params: RenderParams) => Promise<OpenScadResult>;
   };
 
   onQuickSubmit: (cb: (text: string) => void) => void;

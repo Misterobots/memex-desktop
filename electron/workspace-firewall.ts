@@ -25,7 +25,7 @@ export interface WorkspacePolicy {
   allowWrite:     boolean;        // allow fs:writeFile / fs:mkdir at all
 }
 
-export type AuditAction = "fs:read" | "fs:write" | "shell:exec" | "pty:create" | "fs:mkdir";
+export type AuditAction = "fs:read" | "fs:write" | "shell:exec" | "pty:create" | "fs:mkdir" | "hook:exec";
 export type AuditDecision = "allowed" | "denied" | "approved_once" | "approved_session";
 
 export interface AuditEvent {
@@ -70,6 +70,12 @@ export class WorkspaceFirewall {
   }
 
   clearSessionApprovals() { this.sessionAllow.clear(); }
+
+  /** Public wrapper so hooks-runner.ts's firings land in the same
+   *  audit.jsonl as every other shell exec, instead of a parallel log. */
+  auditHook(hookName: string, command: string, decision: AuditDecision) {
+    this.audit({ action: "hook:exec", subject: `${hookName}: ${command}`, decision, mode: this.policy.mode });
+  }
 
   // ---------------------------------------------------------------------------
   // Path helpers

@@ -1,0 +1,26 @@
+sequenceDiagram
+  participant U as User
+  participant UI as React InputBar
+  participant Store as Zustand session store
+  participant Stream as SSE stream client
+  participant Runtime as agent_runtime
+  participant Agents as Swarm and tools
+  participant Native as Electron native bridge
+  participant Memory as MemPalace
+
+  U->>UI: Submit message with mode
+  UI->>Store: Add user message
+  UI->>Store: Add empty assistant message
+  UI->>Stream: POST /v1/chat/completions with mode flags
+  Stream->>Runtime: Open streaming fetch
+  Runtime->>Agents: Run model, tools, swarm roles
+  Agents-->>Memory: Recall or store memory
+  Agents-->>Native: Request filesystem, shell, PTY, or permission
+  Native-->>Agents: Tool result or approval decision
+  Agents-->>Runtime: Emit deltas and tool events
+  Runtime-->>Stream: SSE data chunks
+  Stream-->>Store: Append event
+  Stream-->>Store: Accumulate assistant content
+  Store-->>UI: Re-render transcript and trace
+  Runtime-->>Stream: DONE or error
+  Stream-->>Store: Clear streaming state

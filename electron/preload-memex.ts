@@ -4,6 +4,36 @@
  */
 import { contextBridge, ipcRenderer } from "electron";
 
+/**
+ * Collapses "one ipcRenderer.invoke wrapper per method" for namespaces that
+ * are pure passthroughs on the main-process side (see ipc-autowire.ts —
+ * these are exactly the namespaces wired there with autoWireStore()).
+ * `methods` is either an array (exposed name === channel suffix) or a
+ * { exposedName: channelSuffix } map for the cases where the renderer-facing
+ * name and the channel name differ (e.g. hooks.getAll() calls "hooks:list",
+ * not "hooks:getAll" — an existing name predating this helper).
+ *
+ * Deliberately untyped here (unknown[] / Promise<unknown>) — ipcRenderer.invoke
+ * itself is always Promise<any>, so this was never where type safety came
+ * from. desktop.ts's MemexBridge interface is and remains the one place the
+ * renderer's actual method signatures are declared; this only removes the
+ * repetitive `(...args) => ipcRenderer.invoke("ns:x", ...args)` lines.
+ */
+function bridgeNamespace(
+  namespace: string,
+  methods: readonly string[] | Readonly<Record<string, string>>,
+): Record<string, (...args: unknown[]) => Promise<unknown>> {
+  const entries: Array<[string, string]> = Array.isArray(methods)
+    ? methods.map((m) => [m, m])
+    : Object.entries(methods as Record<string, string>);
+
+  const obj: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
+  for (const [exposedName, channelSuffix] of entries) {
+    obj[exposedName] = (...args: unknown[]) => ipcRenderer.invoke(`${namespace}:${channelSuffix}`, ...args);
+  }
+  return obj;
+}
+
 contextBridge.exposeInMainWorld("memex", {
   isDesktop: true,
   version:   () => ipcRenderer.invoke("app:getVersion"),
@@ -32,6 +62,17 @@ contextBridge.exposeInMainWorld("memex", {
   // Dialogs
   dialog: {
     openFolder: () => ipcRenderer.invoke("dialog:openFolder"),
+  },
+
+  // OpenSCAD render/export -- kept as `unknown` here on purpose, same as
+  // every other namespace in this file (this preload layer was never the
+  // source of type safety; ipcRenderer.invoke is always Promise<any>
+  // regardless of what's annotated locally). The real types now live in
+  // src/lib/desktop.ts's MemexBridge.openscad (previously missing entirely —
+  // that gap meant window.memex.openscad was untyped renderer-side; fixed).
+  openscad: {
+    render: (params: unknown) => ipcRenderer.invoke("openscad:render", params),
+    export: (params: unknown) => ipcRenderer.invoke("openscad:export", params),
   },
 
   // PTY terminal
@@ -111,24 +152,19 @@ contextBridge.exposeInMainWorld("memex", {
   },
 
   // Workspace capability firewall
-  workspace: {
-    getPolicy:    () => ipcRenderer.invoke("workspace:getPolicy"),
-    setPolicy:    (policy: unknown) => ipcRenderer.invoke("workspace:setPolicy", policy),
-    addRoot:      (root: string) => ipcRenderer.invoke("workspace:addRoot", root),
-    clearSession: () => ipcRenderer.invoke("workspace:clearSession"),
-  },
+  workspace: bridgeNamespace("workspace", { getPolicy: "getPolicy", setPolicy: "setPolicy", addRoot: "addRoot", clearSession: "clearSession" }),
 
   // Runtime configuration profiles
   config: {
-    getAll:    () => ipcRenderer.invoke("config:getAll"),
-    getActive: () => ipcRenderer.invoke("config:getActive"),
+    ...bridgeNamespace("config", {
+      getAll: "getAll", getActive: "getActive", save: "save", delete: "delete",
+      getUrls: "getUrls", getWizardDone: "getWizardDone", setWizardDone: "setWizardDone",
+    }),
+    // setActive broadcasts config:changed on the main-process side (see
+    // ipc-handlers.ts) — stays hand-written alongside its listener, same as
+    // every other invoke+on pairing in this file.
     setActive: (id: string) => ipcRenderer.invoke("config:setActive", id),
-    save:      (profile: unknown) => ipcRenderer.invoke("config:save", profile),
-    delete:    (id: string) => ipcRenderer.invoke("config:delete", id),
-    getUrls:        () => ipcRenderer.invoke("config:getUrls"),
-    getWizardDone:  () => ipcRenderer.invoke("config:getWizardDone") as Promise<boolean>,
-    setWizardDone:  () => ipcRenderer.invoke("config:setWizardDone"),
-    onChange:       (cb: (profile: unknown) => void) => {
+    onChange:  (cb: (profile: unknown) => void) => {
       ipcRenderer.on("config:changed", (_e, p) => cb(p));
       return () => ipcRenderer.removeAllListeners("config:changed");
     },
@@ -142,22 +178,16 @@ contextBridge.exposeInMainWorld("memex", {
       }>,
   },
 
-  // Run and audit data model
+  // Run and audit data model — start/end stay hand-written (see config.setActive
+  // comment above; same reasoning, they trigger hooks on the main-process side).
   runs: {
-    start:     (opts: unknown) => ipcRenderer.invoke("runs:start", opts),
-    end:       (id: string, status: string) => ipcRenderer.invoke("runs:end", id, status),
-    addEvent:  (id: string, type: string, payload: unknown) => ipcRenderer.invoke("runs:addEvent", id, type, payload),
-    getRecent: (limit?: number) => ipcRenderer.invoke("runs:getRecent", limit),
-    getEvents: (id: string)     => ipcRenderer.invoke("runs:getEvents", id),
+    start: (opts: unknown) => ipcRenderer.invoke("runs:start", opts),
+    end:   (id: string, status: string) => ipcRenderer.invoke("runs:end", id, status),
+    ...bridgeNamespace("runs", { addEvent: "addEvent", getRecent: "getRecent", getEvents: "getEvents" }),
   },
 
   // Artifact store
-  artifacts: {
-    add:        (rec: unknown)       => ipcRenderer.invoke("artifact:add", rec),
-    forRun:     (runId: string)      => ipcRenderer.invoke("artifact:forRun", runId),
-    forSession: (sessionId: string)  => ipcRenderer.invoke("artifact:forSession", sessionId),
-    recent:     (limit?: number)     => ipcRenderer.invoke("artifact:recent", limit),
-  },
+  artifacts: bridgeNamespace("artifact", { add: "add", forRun: "forRun", forSession: "forSession", recent: "recent" }),
 
   // Ollama model list
   ollama: {
@@ -172,14 +202,14 @@ contextBridge.exposeInMainWorld("memex", {
   },
 
   // Eval bench
-  evals: {
-    getCases:     ()                            => ipcRenderer.invoke("eval:getCases"),
-    saveCase:     (c: unknown)                  => ipcRenderer.invoke("eval:saveCase", c),
-    deleteCase:   (id: string)                  => ipcRenderer.invoke("eval:deleteCase", id),
-    getResults:   (caseId?: string)             => ipcRenderer.invoke("eval:getResults", caseId),
-    startResult:  (caseId: string, runId?: string) => ipcRenderer.invoke("eval:startResult", caseId, runId),
-    updateResult: (id: string, patch: unknown)  => ipcRenderer.invoke("eval:updateResult", id, patch),
-  },
+  evals: bridgeNamespace("eval", {
+    getCases: "getCases", saveCase: "saveCase", deleteCase: "deleteCase",
+    getResults: "getResults", startResult: "startResult", updateResult: "updateResult",
+  }),
+
+  // setApproval intentionally not exposed — see ipc-autowire.ts's comment on
+  // the matching main-process registration for why.
+  hooks: bridgeNamespace("hooks", { getAll: "list", save: "save", delete: "delete" }),
 
   // Quick submit / open path relays (set by the React app)
   onQuickSubmit: (cb: (text: string) => void) => { (window as any).__memexQuickSubmit = cb; },

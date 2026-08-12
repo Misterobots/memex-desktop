@@ -1,4 +1,4 @@
-export type AppTab = "chat" | "goals" | "art" | "memory" | "tasks" | "dev" | "eval" | "settings";
+export type AppTab = "chat" | "goals" | "art" | "memory" | "scheduled" | "dev" | "eval" | "settings";
 
 // ---------------------------------------------------------------------------
 // Task board types (mobile Codex loop — mirrors agent_runtime /v1/tasks)
@@ -25,10 +25,15 @@ export interface Task {
   has_diff?:         boolean;
   summary?:          string;        // detail only
   error?:            string;        // detail only
-  /** Present only for tasks created against a linked repo (New Task composer /
-   *  POST /v1/tasks with dev_project_id). */
+  /** Present only for tasks created against a git_url-linked repo (New Task
+   *  composer / POST /v1/tasks with dev_project_id). */
   repo_url?:         string;
   branch?:           string;
+  /** Present for any task created against a linked dev project — git_url-linked
+   *  or blank/local — the reliable field to correlate a task back to its
+   *  project. Use this, not repo_url matching (blank projects have no
+   *  git_url at all). */
+  dev_project_id?:   string;
 }
 
 export interface TaskWorker {

@@ -1,0 +1,57 @@
+flowchart LR
+  User["User"] --> Shell["Electron main process"]
+  Shell --> MainWindow["BrowserWindow: React app"]
+  Shell --> QuickWindow["Quick entry window"]
+  Shell --> Tray["System tray and shortcuts"]
+
+  subgraph Native["Native capability layer"]
+    Preload["preload-memex bridge"]
+    FS["Filesystem IPC"]
+    Exec["Shell exec IPC"]
+    PTY["node-pty terminal IPC"]
+    LSP["LSP manager"]
+    Browser["Browser extension bridge"]
+    Updater["Auto updater"]
+    Identity["safeStorage identity"]
+    Permission["Native permission dialog"]
+  end
+
+  MainWindow --> Preload
+  QuickWindow --> Shell
+  Preload --> FS
+  Preload --> Exec
+  Preload --> PTY
+  Preload --> LSP
+  Preload --> Browser
+  Preload --> Updater
+  Preload --> Identity
+  Preload --> Permission
+
+  subgraph Renderer["React renderer"]
+    Store["Zustand persisted store"]
+    Chat["Chat view"]
+    Dev["Dev workspace"]
+    Files["File tree and editor"]
+    Terminal["Terminal pane"]
+    Status["Status bar"]
+  end
+
+  MainWindow --> Store
+  Store --> Chat
+  Store --> Dev
+  Dev --> Files
+  Dev --> Terminal
+  Store --> Status
+
+  subgraph Services["Local network services"]
+    Runtime["agent_runtime 192.168.2.101:8008"]
+    Memory["MemPalace 192.168.2.102:8200"]
+    Ollama["Ollama nodes via runtime health"]
+  end
+
+  Chat --> Runtime
+  Status --> Runtime
+  Status --> Memory
+  Status --> Ollama
+  Shell -. "injects X-authentik-uid" .-> Runtime
+  Shell -. "injects X-authentik-uid" .-> Memory

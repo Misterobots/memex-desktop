@@ -20,6 +20,7 @@ import { registerAllIpc } from "./ipc-handlers";
 import { RunStore }        from "./run-store";
 import { EvalStore }       from "./eval-store";
 import { ArtifactStore }   from "./artifact-store";
+import { HooksStore }      from "./hooks-store";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -28,11 +29,13 @@ const isDev = process.env.NODE_ENV === "development";
 // ---------------------------------------------------------------------------
 let mainWindow: BrowserWindow | null = null;
 let tray:       Tray          | null = null;
+let isQuitting = false;
 let config:     ConfigStore;
 let firewall:   WorkspaceFirewall;
 let runs:       RunStore;
 let evals:      EvalStore;
 let artifacts:  ArtifactStore;
+let hooks:      HooksStore;
 const lsp     = new LspManager(() => mainWindow);
 const browser = new BrowserBridge();
 
@@ -51,9 +54,10 @@ app.whenReady().then(() => {
   runs      = new RunStore(userData);
   evals     = new EvalStore(userData);
   artifacts = new ArtifactStore(userData);
+  hooks     = new HooksStore(userData);
   setBridgeAllowedIds(config.getAllowedExtensionIds());
 
-  mainWindow = createMainWindow(config, getTray);
+  mainWindow = createMainWindow(config, getTray, () => isQuitting);
   tray       = createTray(getMain, toggleQuickWindow);
 
   const doStartHealthLoop = () => startHealthLoop(config, getMain);
@@ -68,17 +72,22 @@ app.whenReady().then(() => {
   registerNativeHost();
   browser.start((msg) => mainWindow?.webContents.send("browser:message", msg));
 
-  registerAllIpc({ config, firewall, lsp, browser, runs, evals, artifacts, getMain, startHealthLoop: doStartHealthLoop });
+  registerAllIpc({ config, firewall, lsp, browser, runs, evals, artifacts, hooks, getMain, startHealthLoop: doStartHealthLoop });
 
   app.on("activate", () => {
     if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
-    else mainWindow = createMainWindow(config, getTray);
+    else mainWindow = createMainWindow(config, getTray, () => isQuitting);
   });
 
   // Hide on --startup arg (auto-start login item)
   if (process.argv.includes("--startup")) mainWindow.hide();
 });
 
+// Flips before any window's close event fires as part of a real quit (tray
+// "Quit", Cmd+Q, app.quit() from the updater, ...) — see windows.ts's close
+// handler, which otherwise intercepts every close identically and just
+// re-hides to tray, so "Quit" would silently do nothing.
+app.on("before-quit", () => { isQuitting = true; });
 app.on("will-quit", () => { globalShortcut.unregisterAll(); lsp.stopAll(); browser.stop(); });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 
