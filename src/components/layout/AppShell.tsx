@@ -7,7 +7,6 @@ import { GoalsView } from "../views/GoalsView";
 import { ArtView } from "../views/ArtView";
 import { MemoryView } from "../views/MemoryView";
 import { ScheduledTasksView } from "../views/ScheduledTasksView";
-import { BrowserView } from "../views/BrowserView";
 import { DevView } from "../views/DevView";
 import { SettingsView }   from "../views/SettingsView";
 import { EvalBenchView }  from "../views/EvalBenchView";
@@ -43,7 +42,6 @@ function AppShellInner() {
           {activeTab === "art"       && <ArtView />}
           {activeTab === "memory"    && <MemoryView />}
           {activeTab === "scheduled" && <ScheduledTasksView />}
-          {activeTab === "browser"   && <BrowserView />}
           {activeTab === "dev"       && <DevView />}
           {activeTab === "eval"      && <EvalBenchView />}
           {activeTab === "settings"  && <SettingsView />}

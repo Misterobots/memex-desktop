@@ -7,10 +7,11 @@ import { TerminalPane } from "../dev/TerminalPane";
 import { FileEditor } from "../dev/FileEditor";
 import { WorkspaceSafetyBadge } from "../dev/WorkspaceSafetyBadge";
 import { ProjectTasksPane } from "../dev/ProjectTasksPane";
+import { BrowserView } from "./BrowserView";
 import { ipc } from "../../lib/ipc";
 
 type PrimaryPane = "chat" | "editor" | "tasks";
-type BottomPane  = "terminal" | "none";
+type BottomPane  = "terminal" | "browser" | "none";
 
 export function DevView() {
   const { cwd, setCwd, sidebarOpen, activeSession, activeSessionId } = useStore();
@@ -26,6 +27,8 @@ export function DevView() {
 
   const toggleTerminal = () =>
     setBottomPane((p) => (p === "terminal" ? "none" : "terminal"));
+  const toggleBrowser = () =>
+    setBottomPane((p) => (p === "browser" ? "none" : "browser"));
 
   return (
     <div className="flex flex-1 min-h-0">
@@ -94,6 +97,20 @@ export function DevView() {
             </svg>
             Terminal
           </button>
+          <button
+            onClick={toggleBrowser}
+            disabled={!cwd}
+            className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+              bottomPane === "browser" ? "text-accent bg-accent/10" : "text-faint hover:text-text"
+            }`}
+            title={cwd ? "Toggle project browser" : "Open a project folder to use Browser"}
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <circle cx="8" cy="8" r="5.5" />
+              <path d="M2.5 8h11M8 2.5a8.5 8.5 0 010 11M8 2.5a8.5 8.5 0 000 11" />
+            </svg>
+            Browser
+          </button>
         </div>
 
         {/* Pane area */}
@@ -133,11 +150,13 @@ export function DevView() {
             )}
           </div>
 
-          {/* Terminal pane */}
-          {bottomPane === "terminal" && (
+          {/* Project tools live alongside the work, rather than as app-wide
+              destinations: terminal, browser, files, and task review all
+              describe the same open project. */}
+          {bottomPane !== "none" && (
             <div style={{ height: "40%" }} className="flex flex-col min-h-0">
               <div className="flex items-center px-3 h-8 bg-surface border-b border-border/60 flex-shrink-0">
-                <span className="text-xs text-faint font-medium">Terminal</span>
+                <span className="text-xs text-faint font-medium">{bottomPane === "terminal" ? "Terminal" : `Browser · ${folderName ?? "Project"}`}</span>
                 <div className="flex-1" />
                 <button
                   onClick={() => setBottomPane("none")}
@@ -148,7 +167,11 @@ export function DevView() {
                   </svg>
                 </button>
               </div>
-              <TerminalPane id={termId} cwd={cwd || undefined} className="flex-1 min-h-0" />
+              {bottomPane === "terminal" ? (
+                <TerminalPane id={termId} cwd={cwd || undefined} className="flex-1 min-h-0" />
+              ) : (
+                <BrowserView />
+              )}
             </div>
           )}
         </div>
