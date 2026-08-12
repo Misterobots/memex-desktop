@@ -122,6 +122,22 @@ contextBridge.exposeInMainWorld("memex", {
     },
   },
 
+  browserPane: {
+    open:     (url?: string) => ipcRenderer.invoke("browser-pane:open", url),
+    navigate: (url: string)  => ipcRenderer.invoke("browser-pane:navigate", url),
+    setBounds:(bounds: { x: number; y: number; width: number; height: number }) => ipcRenderer.invoke("browser-pane:bounds", bounds),
+    hide:     () => ipcRenderer.invoke("browser-pane:hide"),
+    back:     () => ipcRenderer.invoke("browser-pane:back"),
+    forward:  () => ipcRenderer.invoke("browser-pane:forward"),
+    reload:   () => ipcRenderer.invoke("browser-pane:reload"),
+    stop:     () => ipcRenderer.invoke("browser-pane:stop"),
+    getState: () => ipcRenderer.invoke("browser-pane:getState"),
+    onState: (cb: (state: unknown) => void) => {
+      ipcRenderer.on("browser-pane:state", (_e, state) => cb(state));
+      return () => ipcRenderer.removeAllListeners("browser-pane:state");
+    },
+  },
+
   // LSP bridge
   lsp: {
     start:   (ext: string, rootUri: string) =>

@@ -4,7 +4,7 @@ import type { AppTab } from "../../types/memex";
 
 // Tabs requiring the Electron native bridge (local terminal/editor/FS, local
 // run store) — hidden when running as a web app.
-const DESKTOP_ONLY: AppTab[] = ["dev", "eval"];
+const DESKTOP_ONLY: AppTab[] = ["browser", "dev", "eval"];
 
 interface TabDef {
   id: AppTab;
@@ -63,6 +63,16 @@ const TABS: TabDef[] = [
         <circle cx="8" cy="8.5" r="5.5" />
         <path d="M8 5.5v3l2 1.5" />
         <path d="M6 1.5h4" />
+      </svg>
+    ),
+  },
+  {
+    id: "browser",
+    label: "Browser",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <circle cx="8" cy="8" r="6" />
+        <path d="M2 8h12M8 2a9.5 9.5 0 010 12M8 2a9.5 9.5 0 000 12" />
       </svg>
     ),
   },

@@ -39,6 +39,14 @@ export interface Hook {
   createdAt: string;
 }
 
+export interface BrowserPaneState {
+  url: string;
+  title: string;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  loading: boolean;
+}
+
 // Mirrors electron/openscad-pure.ts's RenderParams/OpenScadResult (a real
 // pre-existing gap: preload-memex.ts exposes `openscad`, but this interface
 // never declared it, so window.memex.openscad was renderer-side untyped).
@@ -153,6 +161,19 @@ export interface MemexBridge {
     getExtensionIds: () => Promise<string[]>;
     setExtensionIds: (ids: string[]) => Promise<void>;
     onMessage:       (cb: (msg: Record<string, unknown>) => void) => () => void;
+  };
+
+  browserPane: {
+    open:      (url?: string) => Promise<BrowserPaneState>;
+    navigate:  (url: string) => Promise<BrowserPaneState>;
+    setBounds: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void>;
+    hide:      () => Promise<void>;
+    back:      () => Promise<BrowserPaneState>;
+    forward:   () => Promise<BrowserPaneState>;
+    reload:    () => Promise<BrowserPaneState>;
+    stop:      () => Promise<BrowserPaneState>;
+    getState:  () => Promise<BrowserPaneState>;
+    onState:   (cb: (state: BrowserPaneState) => void) => () => void;
   };
 
   lsp: {

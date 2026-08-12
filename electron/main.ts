@@ -21,6 +21,7 @@ import { RunStore }        from "./run-store";
 import { EvalStore }       from "./eval-store";
 import { ArtifactStore }   from "./artifact-store";
 import { HooksStore }      from "./hooks-store";
+import { BrowserPane }     from "./browser-pane";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -38,6 +39,7 @@ let artifacts:  ArtifactStore;
 let hooks:      HooksStore;
 const lsp     = new LspManager(() => mainWindow);
 const browser = new BrowserBridge();
+const browserPane = new BrowserPane(() => mainWindow);
 
 const getMain = () => mainWindow;
 const getTray = () => tray;
@@ -72,7 +74,7 @@ app.whenReady().then(() => {
   registerNativeHost();
   browser.start((msg) => mainWindow?.webContents.send("browser:message", msg));
 
-  registerAllIpc({ config, firewall, lsp, browser, runs, evals, artifacts, hooks, getMain, startHealthLoop: doStartHealthLoop });
+  registerAllIpc({ config, firewall, lsp, browser, browserPane, runs, evals, artifacts, hooks, getMain, startHealthLoop: doStartHealthLoop });
 
   app.on("activate", () => {
     if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
@@ -88,7 +90,7 @@ app.whenReady().then(() => {
 // handler, which otherwise intercepts every close identically and just
 // re-hides to tray, so "Quit" would silently do nothing.
 app.on("before-quit", () => { isQuitting = true; });
-app.on("will-quit", () => { globalShortcut.unregisterAll(); lsp.stopAll(); browser.stop(); });
+app.on("will-quit", () => { globalShortcut.unregisterAll(); lsp.stopAll(); browser.stop(); browserPane.dispose(); });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 
 // ---------------------------------------------------------------------------

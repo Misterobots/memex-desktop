@@ -1,4 +1,4 @@
-export type AppTab = "chat" | "goals" | "art" | "memory" | "scheduled" | "dev" | "eval" | "settings";
+export type AppTab = "chat" | "goals" | "art" | "memory" | "scheduled" | "browser" | "dev" | "eval" | "settings";
 
 // ---------------------------------------------------------------------------
 // Task board types (mobile Codex loop — mirrors agent_runtime /v1/tasks)

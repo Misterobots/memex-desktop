@@ -27,6 +27,7 @@ import type { ConfigStore }       from "./config-store";
 import type { WorkspaceFirewall } from "./workspace-firewall";
 import type { LspManager }        from "./lsp-manager";
 import type { BrowserBridge }     from "./browser-bridge";
+import type { BrowserPane }       from "./browser-pane";
 import { getCurrentUid, setCurrentUid } from "./identity";
 import { updateNativeHostManifest }     from "./browser-bridge";
 import type { RunStore }               from "./run-store";
@@ -44,6 +45,7 @@ export interface IpcContext {
   firewall:  WorkspaceFirewall;
   lsp:       LspManager;
   browser:   BrowserBridge;
+  browserPane: BrowserPane;
   runs:      RunStore;
   evals:     EvalStore;
   artifacts: ArtifactStore;
@@ -53,7 +55,7 @@ export interface IpcContext {
 }
 
 export function registerAllIpc(ctx: IpcContext): void {
-  const { config, firewall, lsp, browser, runs, evals, artifacts, hooks, getMain, startHealthLoop } = ctx;
+  const { config, firewall, lsp, browser, browserPane, runs, evals, artifacts, hooks, getMain, startHealthLoop } = ctx;
 
   // ── Identity ──────────────────────────────────────────────────────────────
   ipcMain.handle("identity:get", () => getCurrentUid());
@@ -187,6 +189,17 @@ export function registerAllIpc(ctx: IpcContext): void {
     config.setAllowedExtensionIds(ids);
     updateNativeHostManifest(config.getAllowedExtensionIds());
   });
+
+  // ── Native browser pane ──────────────────────────────────────────────────
+  ipcMain.handle("browser-pane:open",     (_e, url?: string) => browserPane.open(url));
+  ipcMain.handle("browser-pane:navigate", (_e, url: string)  => browserPane.navigate(url));
+  ipcMain.handle("browser-pane:bounds",   (_e, bounds: Electron.Rectangle) => browserPane.setBounds(bounds));
+  ipcMain.handle("browser-pane:hide",     () => browserPane.hide());
+  ipcMain.handle("browser-pane:back",     () => browserPane.back());
+  ipcMain.handle("browser-pane:forward",  () => browserPane.forward());
+  ipcMain.handle("browser-pane:reload",   () => browserPane.reload());
+  ipcMain.handle("browser-pane:stop",     () => browserPane.stop());
+  ipcMain.handle("browser-pane:getState", () => browserPane.getState());
 
   // ── Permissions ───────────────────────────────────────────────────────────
   ipcMain.handle("permission:request", async (_e, opts: {
