@@ -44,6 +44,24 @@ contextBridge.exposeInMainWorld("memex", {
     set: (uid: string) => ipcRenderer.invoke("identity:set", uid) as Promise<string>,
   },
 
+  api: {
+    request: (request: { url: string; method?: string; headers?: Record<string, string>; body?: string }) =>
+      ipcRenderer.invoke("api:request", request),
+    stream: (
+      streamId: string,
+      request: { url: string; method?: string; headers?: Record<string, string>; body?: string },
+      onEvent: (event: { kind: "response" | "chunk" | "done" | "error"; value?: unknown }) => void,
+    ) => {
+      const channel = `api:stream:${streamId}`;
+      ipcRenderer.on(channel, (_event, payload) => onEvent(payload));
+      ipcRenderer.send("api:stream:start", streamId, request);
+      return () => {
+        ipcRenderer.send("api:stream:abort", streamId);
+        ipcRenderer.removeAllListeners(channel);
+      };
+    },
+  },
+
   // File system
   fs: {
     readFile:     (path: string)                  => ipcRenderer.invoke("fs:readFile", path),

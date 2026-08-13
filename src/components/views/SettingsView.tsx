@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { desktop, type RuntimeProfile, type ShortcutConfig } from "../../lib/desktop";
 import { useStore } from "../../lib/store";
 import { getAgentRuntime } from "../../lib/runtime-urls";
+import { apiFetch } from "../../lib/api-fetch";
 import { SkillRegistry } from "../settings/SkillRegistry";
 import { ShortcutCapture } from "../settings/ShortcutCapture";
 import { GitHubPushConnect } from "../settings/GitHubPushConnect";
@@ -180,7 +181,7 @@ function WebSettings() {
     let alive = true;
     (async () => {
       try {
-        const r = await fetch(`${getAgentRuntime()}/api/v1/identity`, { signal: AbortSignal.timeout(6000) });
+        const r = await apiFetch(`${getAgentRuntime()}/api/v1/identity`, { signal: AbortSignal.timeout(6000) });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const data = await r.json();
         if (alive) { setIdentity(data?.caller_identity ?? null); setIdStatus("ok"); }

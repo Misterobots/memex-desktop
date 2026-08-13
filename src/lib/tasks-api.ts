@@ -4,11 +4,12 @@
  * active profile URL in Electron. All routes are owner-scoped server-side.
  */
 import { getAgentRuntime } from "./runtime-urls";
+import { apiFetch } from "./api-fetch";
 import type { Task, TaskWorker } from "../types/memex";
 
 export async function listTasks(status: "all" | "running" = "all"): Promise<Task[]> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/v1/tasks?status=${status}`, {
+    const r = await apiFetch(`${getAgentRuntime()}/v1/tasks?status=${status}`, {
       signal: AbortSignal.timeout(8000),
     });
     if (!r.ok) return [];
@@ -21,7 +22,7 @@ export async function listTasks(status: "all" | "running" = "all"): Promise<Task
 
 export async function getTask(id: string): Promise<{ run: Task; workers: TaskWorker[] } | null> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/v1/tasks/${encodeURIComponent(id)}`, {
+    const r = await apiFetch(`${getAgentRuntime()}/v1/tasks/${encodeURIComponent(id)}`, {
       signal: AbortSignal.timeout(8000),
     });
     if (!r.ok) return null;
@@ -41,7 +42,7 @@ export interface TaskDiff {
 /** Returns the diff, or a status code for the "not ready" cases (404 none / 409 running). */
 export async function getTaskDiff(id: string): Promise<{ diff?: TaskDiff; status: number }> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/v1/tasks/${encodeURIComponent(id)}/diff`, {
+    const r = await apiFetch(`${getAgentRuntime()}/v1/tasks/${encodeURIComponent(id)}/diff`, {
       signal: AbortSignal.timeout(8000),
     });
     if (!r.ok) return { status: r.status };
@@ -53,7 +54,7 @@ export async function getTaskDiff(id: string): Promise<{ diff?: TaskDiff; status
 
 export async function setTaskApproval(id: string, decision: "approve" | "deny"): Promise<boolean> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/v1/tasks/${encodeURIComponent(id)}/${decision}`, {
+    const r = await apiFetch(`${getAgentRuntime()}/v1/tasks/${encodeURIComponent(id)}/${decision}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{}",
@@ -81,7 +82,7 @@ export async function createTask(body: {
   branch?: string;
 }): Promise<{ coordination_id?: string; status: number }> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/v1/tasks`, {
+    const r = await apiFetch(`${getAgentRuntime()}/v1/tasks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

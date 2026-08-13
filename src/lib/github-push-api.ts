@@ -7,6 +7,7 @@
  * token is used only to open pull requests from completed Tasks.
  */
 import { getAgentRuntime } from "./runtime-urls";
+import { apiFetch } from "./api-fetch";
 
 export interface GithubPushStatus {
   connected: boolean;
@@ -17,7 +18,7 @@ export async function connectGithubPush(
   token: string
 ): Promise<{ connected: boolean; github_username?: string; error?: string }> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/api/v1/github/push/token`, {
+    const r = await apiFetch(`${getAgentRuntime()}/api/v1/github/push/token`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token }),
@@ -35,7 +36,7 @@ export async function connectGithubPush(
 
 export async function getGithubPushStatus(): Promise<GithubPushStatus> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/api/v1/github/push/status`, {
+    const r = await apiFetch(`${getAgentRuntime()}/api/v1/github/push/status`, {
       signal: AbortSignal.timeout(8000),
     });
     if (!r.ok) return { connected: false };
@@ -48,7 +49,7 @@ export async function getGithubPushStatus(): Promise<GithubPushStatus> {
 
 export async function disconnectGithubPush(): Promise<boolean> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/api/v1/github/push/token`, {
+    const r = await apiFetch(`${getAgentRuntime()}/api/v1/github/push/token`, {
       method: "DELETE",
       signal: AbortSignal.timeout(8000),
     });
@@ -110,7 +111,7 @@ export async function getPushPreview(
   coordinationId: string
 ): Promise<PushPreview | { error: string; status: number }> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/v1/tasks/${encodeURIComponent(coordinationId)}/push/preview`, {
+    const r = await apiFetch(`${getAgentRuntime()}/v1/tasks/${encodeURIComponent(coordinationId)}/push/preview`, {
       signal: AbortSignal.timeout(8000),
     });
     const data = await r.json().catch(() => ({}));
@@ -131,7 +132,7 @@ export async function confirmPush(
   body: PushConfirmBody
 ): Promise<PushConfirmResult | { error: string; status: number }> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/v1/tasks/${encodeURIComponent(coordinationId)}/push/confirm`, {
+    const r = await apiFetch(`${getAgentRuntime()}/v1/tasks/${encodeURIComponent(coordinationId)}/push/confirm`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -148,7 +149,7 @@ export async function confirmPush(
 /** Polls the latest audit-trail row for this task. Defensive/optional — confirmPush's own response already carries pr_url on success. */
 export async function getPushStatus(coordinationId: string): Promise<PushStatus> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/v1/tasks/${encodeURIComponent(coordinationId)}/push/status`, {
+    const r = await apiFetch(`${getAgentRuntime()}/v1/tasks/${encodeURIComponent(coordinationId)}/push/status`, {
       signal: AbortSignal.timeout(8000),
     });
     if (!r.ok) return { stage: null };

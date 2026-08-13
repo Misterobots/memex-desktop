@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useStore } from "../../lib/store";
 import { contextWindowFor, fmtTokens } from "../../lib/tokens";
 import { getAgentRuntime } from "../../lib/runtime-urls";
+import { apiFetch } from "../../lib/api-fetch";
 import { pushSession } from "../../lib/conv-sync";
 import type { ChatMessage } from "../../types/memex";
 
@@ -47,7 +48,7 @@ export function ContextMeter() {
     setBusy(true);
     setNote(null);
     try {
-      const r = await fetch(`${getAgentRuntime()}/v1/chat/compact`, {
+      const r = await apiFetch(`${getAgentRuntime()}/v1/chat/compact`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

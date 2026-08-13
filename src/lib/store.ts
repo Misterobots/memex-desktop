@@ -2,12 +2,29 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type {
   ChatMessage, Session, ConnectionStatus, MemexMode, MessageEvent, AppTab, TokenUsage,
+  ExperienceId,
 } from "../types/memex";
+
+export const experienceForTab = (tab: AppTab): ExperienceId | null => {
+  if (tab === "goals") return "goals";
+  if (tab === "art") return "design";
+  if (tab === "dev") return "code";
+  if (tab === "research") return "research";
+  if (tab === "chat") return "chat";
+  return null;
+};
+
+export const sessionMatches = (session: Session, experience: ExperienceId, workspaceKey?: string) =>
+  session.experience === experience &&
+  (experience !== "code" || session.workspaceKey === (workspaceKey || undefined));
+
+export const sessionScopeKey = (experience: ExperienceId, workspaceKey?: string) =>
+  experience === "code" ? `code:${workspaceKey || "unselected"}` : experience;
 
 interface AppState {
   // Sessions
   sessions: Session[];
-  activeSessionId: string | null;
+  activeSessionIds: Record<string, string | undefined>;
 
   // UI state
   activeTab: AppTab;
@@ -15,16 +32,16 @@ interface AppState {
   cwd: string;
   sidebarOpen: boolean;
   commandPaletteOpen: boolean;
-  streaming: boolean;
-  stopStream: (() => void) | null;
+  streamingSessions: Record<string, boolean>;
+  stopStreams: Record<string, (() => void) | undefined>;
 
   // Connection
   connections: ConnectionStatus;
   selectedModel: string;
 
   // Actions — sessions
-  createSession: () => string;
-  setActiveSession: (id: string) => void;
+  createSession: (experience?: ExperienceId, workspaceKey?: string) => string;
+  setActiveSession: (id: string, experience?: ExperienceId) => void;
   deleteSession: (id: string) => void;
   addMessage: (sessionId: string, msg: ChatMessage) => void;
   mergeRemoteSessions: (remote: Session[]) => void;
@@ -40,27 +57,27 @@ interface AppState {
   setCwd: (cwd: string) => void;
   toggleSidebar: () => void;
   setCommandPalette: (open: boolean) => void;
-  setStreaming: (streaming: boolean, stop?: () => void) => void;
+  setStreaming: (sessionId: string, streaming: boolean, stop?: () => void) => void;
 
   // Actions — connection
   setConnections: (c: Partial<ConnectionStatus>) => void;
   setSelectedModel: (model: string) => void;
 
-  activeSession: () => Session | null;
+  activeSession: (experience?: ExperienceId, workspaceKey?: string) => Session | null;
 }
 
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
       sessions: [],
-      activeSessionId: null,
+      activeSessionIds: {},
       activeTab: "chat",
       mode: "chat",
       cwd: "",
       sidebarOpen: true,
       commandPaletteOpen: false,
-      streaming: false,
-      stopStream: null,
+      streamingSessions: {},
+      stopStreams: {},
       connections: {
         agentRuntime: "checking",
         mempalace:    "checking",
@@ -68,38 +85,60 @@ export const useStore = create<AppState>()(
       },
       selectedModel: "qwen3.6:27b",
 
-      createSession: () => {
-        const id = `session-${Date.now()}`;
+      createSession: (requestedExperience, requestedWorkspaceKey) => {
+        const experience = requestedExperience ?? experienceForTab(get().activeTab) ?? "chat";
+        const workspaceKey = experience === "code" ? ((requestedWorkspaceKey ?? get().cwd) || undefined) : undefined;
+        const id = `session-${experience}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         const now = Date.now();
         const session: Session = {
           id,
           title: "New conversation",
+          experience,
+          workspaceKey,
           createdAt: now,
           updatedAt: now,
           messages: [],
         };
         set((s) => ({
           sessions: [session, ...s.sessions],
-          activeSessionId: id,
+          activeSessionIds: { ...s.activeSessionIds, [sessionScopeKey(experience, workspaceKey)]: id },
         }));
         return id;
       },
 
-      setActiveSession: (id) => set({ activeSessionId: id }),
+      setActiveSession: (id, requestedExperience) => set((s) => {
+        const session = s.sessions.find((item) => item.id === id);
+        const experience = requestedExperience ?? session?.experience ?? "chat";
+        return {
+          activeSessionIds: {
+            ...s.activeSessionIds,
+            [sessionScopeKey(experience, session?.workspaceKey)]: id,
+          },
+        };
+      }),
 
       deleteSession: (id) =>
         set((s) => {
           const sessions = s.sessions.filter((x) => x.id !== id);
-          const activeSessionId =
-            s.activeSessionId === id ? (sessions[0]?.id ?? null) : s.activeSessionId;
-          return { sessions, activeSessionId };
+          const activeSessionIds = { ...s.activeSessionIds };
+          for (const [scope, activeId] of Object.entries(activeSessionIds)) {
+            if (activeId === id) delete activeSessionIds[scope];
+          }
+          return { sessions, activeSessionIds };
         }),
 
       addMessage: (sessionId, msg) =>
         set((s) => ({
           sessions: s.sessions.map((sess) =>
             sess.id === sessionId
-              ? { ...sess, messages: [...sess.messages, msg], updatedAt: Date.now() }
+              ? {
+                  ...sess,
+                  title: sess.messages.length === 0 && msg.role === "user"
+                    ? (msg.content.trim().slice(0, 54) || sess.title)
+                    : sess.title,
+                  messages: [...sess.messages, msg],
+                  updatedAt: Date.now(),
+                }
               : sess
           ),
         })),
@@ -178,32 +217,60 @@ export const useStore = create<AppState>()(
       setCwd:            (cwd)               => set({ cwd }),
       toggleSidebar:     ()                  => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
       setCommandPalette: (open)              => set({ commandPaletteOpen: open }),
-      setStreaming:      (streaming, stop)   => set({ streaming, stopStream: stop ?? null }),
+      setStreaming: (sessionId, streaming, stop) => set((s) => ({
+        streamingSessions: { ...s.streamingSessions, [sessionId]: streaming },
+        stopStreams: { ...s.stopStreams, [sessionId]: streaming ? stop : undefined },
+      })),
       setConnections:    (c)                 => set((s) => ({ connections: { ...s.connections, ...c } })),
       setSelectedModel:  (model)             => set({ selectedModel: model }),
 
-      activeSession: () => {
-        const { sessions, activeSessionId } = get();
-        return sessions.find((s) => s.id === activeSessionId) ?? null;
+      activeSession: (requestedExperience, requestedWorkspaceKey) => {
+        const state = get();
+        const experience = requestedExperience ?? experienceForTab(state.activeTab);
+        if (!experience) return null;
+        const workspaceKey = experience === "code" ? ((requestedWorkspaceKey ?? state.cwd) || undefined) : undefined;
+        const activeId = state.activeSessionIds[sessionScopeKey(experience, workspaceKey)];
+        const active = state.sessions.find((session) => session.id === activeId);
+        if (active && sessionMatches(active, experience, workspaceKey)) return active;
+        return state.sessions.find((session) => sessionMatches(session, experience, workspaceKey)) ?? null;
       },
     }),
     {
       name: "memex-desktop",
-      version: 1,
+      version: 3,
       // mode is intentionally NOT persisted — it's a per-session intent, and a
       // sticky "swarm" silently turned greetings into build orchestration.
       // Each launch starts in the default "chat" mode.
       partialize: (s) => ({
         sessions: s.sessions.slice(0, 50),
-        activeSessionId: s.activeSessionId,
+        activeSessionIds: s.activeSessionIds,
         activeTab: s.activeTab,
         cwd: s.cwd,
         sidebarOpen: s.sidebarOpen,
         selectedModel: s.selectedModel,
       }),
       // Drop any previously-persisted mode so existing installs reset to chat.
-      migrate: (persisted: any) => {
+      migrate: (persisted: any, version) => {
         if (persisted && "mode" in persisted) delete persisted.mode;
+        if (persisted && version < 2) {
+          const oldActive = persisted.activeSessionId;
+          persisted.sessions = (persisted.sessions ?? []).map((session: Session) => ({
+            ...session,
+            experience: session.experience ?? "chat",
+          }));
+          persisted.activeSessionIds = oldActive ? { chat: oldActive } : {};
+          delete persisted.activeSessionId;
+        }
+        if (persisted && version < 3) {
+          const activeIds = { ...(persisted.activeSessionIds ?? {}) };
+          const legacyCodeId = activeIds.code;
+          if (legacyCodeId) {
+            const codeSession = (persisted.sessions ?? []).find((session: Session) => session.id === legacyCodeId);
+            activeIds[sessionScopeKey("code", codeSession?.workspaceKey)] = legacyCodeId;
+            delete activeIds.code;
+          }
+          persisted.activeSessionIds = activeIds;
+        }
         return persisted;
       },
     }

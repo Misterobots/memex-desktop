@@ -135,10 +135,12 @@ export function ScheduledTasks() {
   const [triggers, setTriggers] = useState<Trigger[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = async () => {
-    const list = await listTriggers();
-    setTriggers(list);
+    const result = await listTriggers();
+    setTriggers(result.triggers);
+    setLoadError(result.status === 0 ? "Could not reach Agent Runtime." : result.status >= 400 ? `Could not load schedules (HTTP ${result.status}).` : null);
     setLoading(false);
   };
 
@@ -161,8 +163,14 @@ export function ScheduledTasks() {
       </p>
 
       {loading && <p className="text-xs text-muted">Loading…</p>}
+      {!loading && loadError && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-red-400/30 bg-red-400/5 px-3 py-2 text-xs text-red-400">
+          <span>{loadError}</span>
+          <button onClick={load} className="text-text hover:text-accent">Retry</button>
+        </div>
+      )}
 
-      {!loading && triggers.length === 0 && !creating && (
+      {!loading && !loadError && triggers.length === 0 && !creating && (
         <p className="text-xs text-muted py-2">
           No scheduled tasks yet. If you expect some and this stays empty, check the
           active Routing profile's Agent Runtime URL is reachable.

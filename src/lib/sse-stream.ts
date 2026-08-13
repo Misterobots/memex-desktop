@@ -62,6 +62,80 @@ export function streamChat(opts: StreamOptions): () => void {
     ...opts.modeFlags,
   });
 
+  const consumeChunk = async (value: Uint8Array) => {
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const data = line.slice(6).trim();
+      if (!data || data === "[DONE]") continue;
+
+      try {
+        const chunk = JSON.parse(data);
+        if (chunk.usage) {
+          opts.onUsage?.({
+            promptTokens: chunk.usage.prompt_tokens ?? 0,
+            completionTokens: chunk.usage.completion_tokens ?? 0,
+            totalTokens: chunk.usage.total_tokens ?? 0,
+          });
+        }
+        const delta = chunk?.choices?.[0]?.delta;
+        if (!delta || (!delta.type && !delta.content)) continue;
+        const rawType = (delta.type as string) ?? "message";
+        if (rawType === "memory_write" && bridge) {
+          const policy = await bridge.workspace.getPolicy();
+          if (policy.mode === "ask") {
+            const { approved } = await bridge.permissions.request({
+              toolName: "memory_write",
+              toolInput: { content: String(delta.content).slice(0, 100) },
+              callId: `mw-${Date.now()}`,
+            });
+            if (!approved) continue;
+          }
+        }
+        const isText = rawType === "message" || rawType === "response";
+        opts.onEvent({
+          type: rawType as EventType,
+          content: delta.content ?? "",
+          agent_name: delta.agent_name,
+          pioneer_name: delta.pioneer_name,
+          clarification: delta.clarification,
+          data: isText ? undefined : (delta as Record<string, unknown>),
+        });
+      } catch {}
+    }
+  };
+  const decoder = new TextDecoder();
+  let buf = "";
+
+  // Electron streaming must stay in the authenticated native process. The
+  // browser build retains ordinary fetch against its same-origin proxy.
+  if (bridge?.api) {
+    const streamId = `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    let status = 0;
+    const cancel = bridge.api.stream(streamId, {
+      url: `${getAgentRuntime()}/v1/chat/completions`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    }, (event) => {
+      if (event.kind === "response") {
+        status = Number((event.value as { status?: number })?.status ?? 0);
+      } else if (event.kind === "chunk") {
+        void consumeChunk(new Uint8Array(event.value as ArrayBufferLike));
+      } else if (event.kind === "done") {
+        if (status < 200 || status >= 300) opts.onError(new Error(`agent_runtime returned ${status}`));
+        else { if (runId) bridge.runs?.end(runId, "done"); opts.onDone(); }
+      } else if (event.kind === "error") {
+        if (runId) bridge.runs?.end(runId, "error");
+        opts.onError(new Error(String(event.value ?? "Stream failed")));
+      }
+    });
+    return () => { cancel(); if (runId) bridge.runs?.end(runId, "cancelled"); };
+  }
+
   fetch(`${getAgentRuntime()}/v1/chat/completions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -74,73 +148,10 @@ export function streamChat(opts: StreamOptions): () => void {
       }
 
       const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const data = line.slice(6).trim();
-          if (!data || data === "[DONE]") continue;
-
-          try {
-            const chunk = JSON.parse(data);
-
-            // Token usage rides at the top level (OpenAI-style), not in delta.
-            if (chunk.usage) {
-              opts.onUsage?.({
-                promptTokens:     chunk.usage.prompt_tokens     ?? 0,
-                completionTokens: chunk.usage.completion_tokens ?? 0,
-                totalTokens:      chunk.usage.total_tokens      ?? 0,
-              });
-            }
-
-            const delta = chunk?.choices?.[0]?.delta;
-            // Forward EVERY typed event. Only skip deltas with neither a `type` nor
-            // `content` (OpenAI role-only openers, empty keepalives). Rich events
-            // carry their payload in structured fields, not text — never drop a typed
-            // event just because it has no `content` (that was the silent-drop bug).
-            if (!delta || (!delta.type && !delta.content)) continue;
-
-            const rawType   = (delta.type as string) ?? "message";
-            const eventType = rawType as EventType;
-
-            // In Ask mode, gate memory writes through the permission dialog
-            if (rawType === "memory_write" && bridge) {
-              const policy = await bridge.workspace.getPolicy();
-              if (policy.mode === "ask") {
-                const { approved } = await bridge.permissions.request({
-                  toolName:  "memory_write",
-                  toolInput: { content: String(delta.content).slice(0, 100) },
-                  callId:    `mw-${Date.now()}`,
-                });
-                if (!approved) {
-                  if (runId) bridge.runs?.addEvent(runId, "permission", { action: "memory_write", denied: true });
-                  continue;
-                }
-              }
-            }
-
-            const isText = rawType === "message" || rawType === "response";
-            opts.onEvent({
-              type:          eventType,
-              content:       delta.content ?? "",
-              agent_name:    delta.agent_name,
-              pioneer_name:  delta.pioneer_name,
-              clarification: delta.clarification,
-              // Carry the full payload for rich events so a new structured type
-              // reaches the UI with no parser edit; text tokens skip it (no bloat).
-              data:          isText ? undefined : (delta as Record<string, unknown>),
-            });
-          } catch {}
-        }
+        await consumeChunk(value);
       }
 
       if (runId) bridge?.runs?.end(runId, "done");

@@ -18,7 +18,7 @@ export function SteeringCard({ card }: Props) {
   const [freetext, setFreetext]   = useState("");
   const [submitted, setSubmitted] = useState<string | null>(null);
   const {
-    mode, activeSessionId, addMessage, appendEvent,
+    addMessage, appendEvent,
     updateMessageContent, setStreaming, activeSession,
   } = useStore();
 
@@ -26,11 +26,13 @@ export function SteeringCard({ card }: Props) {
 
   const submit = (value: string, label?: string) => {
     const v = value.trim();
-    if (!v || submitted || !activeSessionId) return;
+    const session = activeSession();
+    if (!v || submitted || !session) return;
     setSubmitted(label ?? v);
 
-    const sessionId = activeSessionId;
-    const history = (activeSession()?.messages ?? []).map((m) => ({ role: m.role, content: m.content }));
+    const sessionId = session.id;
+    const mode = [...session.messages].reverse().find((message) => message.role === "assistant")?.mode ?? "chat";
+    const history = session.messages.map((m) => ({ role: m.role, content: m.content }));
     const now = Date.now();
 
     // Show the choice as a user turn and send it — the backend picks up the
@@ -53,10 +55,10 @@ export function SteeringCard({ card }: Props) {
           updateMessageContent(sessionId, assistantId, acc);
         }
       },
-      onDone: () => setStreaming(false),
-      onError: () => setStreaming(false),
+      onDone: () => setStreaming(sessionId, false),
+      onError: () => setStreaming(sessionId, false),
     });
-    setStreaming(true, stop);
+    setStreaming(sessionId, true, stop);
   };
 
   if (submitted) {

@@ -5,6 +5,7 @@
  * in Electron — same pattern as tasks-api.ts.
  */
 import { getAgentRuntime } from "./runtime-urls";
+import { apiFetch } from "./api-fetch";
 
 export type TriggerType = "cron" | "interval" | "once";
 export type TriggerState = "active" | "paused" | "fired" | "failed";
@@ -34,14 +35,14 @@ export interface Trigger {
   fire_at?:          number;
 }
 
-export async function listTriggers(): Promise<Trigger[]> {
+export async function listTriggers(): Promise<{ triggers: Trigger[]; status: number }> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/api/v1/trigger/list`, { signal: AbortSignal.timeout(8000) });
-    if (!r.ok) return [];
+    const r = await apiFetch(`${getAgentRuntime()}/api/v1/trigger/list`, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return { triggers: [], status: r.status };
     const data = await r.json();
-    return Array.isArray(data?.triggers) ? data.triggers : [];
+    return { triggers: Array.isArray(data?.triggers) ? data.triggers : [], status: r.status };
   } catch {
-    return [];
+    return { triggers: [], status: 0 };
   }
 }
 
@@ -60,7 +61,7 @@ export interface CreateTriggerBody {
  *  collapse to the same "failed" state as a network error). */
 export async function createTrigger(body: CreateTriggerBody): Promise<{ trigger?: Trigger; status: number }> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/api/v1/trigger/create`, {
+    const r = await apiFetch(`${getAgentRuntime()}/api/v1/trigger/create`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -76,7 +77,7 @@ export async function createTrigger(body: CreateTriggerBody): Promise<{ trigger?
 
 export async function pauseTrigger(id: string): Promise<boolean> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/api/v1/trigger/${encodeURIComponent(id)}/pause`, { method: "POST" });
+    const r = await apiFetch(`${getAgentRuntime()}/api/v1/trigger/${encodeURIComponent(id)}/pause`, { method: "POST" });
     return r.ok;
   } catch {
     return false;
@@ -85,7 +86,7 @@ export async function pauseTrigger(id: string): Promise<boolean> {
 
 export async function resumeTrigger(id: string): Promise<boolean> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/api/v1/trigger/${encodeURIComponent(id)}/resume`, { method: "POST" });
+    const r = await apiFetch(`${getAgentRuntime()}/api/v1/trigger/${encodeURIComponent(id)}/resume`, { method: "POST" });
     return r.ok;
   } catch {
     return false;
@@ -94,7 +95,7 @@ export async function resumeTrigger(id: string): Promise<boolean> {
 
 export async function deleteTrigger(id: string): Promise<boolean> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/api/v1/trigger/${encodeURIComponent(id)}`, { method: "DELETE" });
+    const r = await apiFetch(`${getAgentRuntime()}/api/v1/trigger/${encodeURIComponent(id)}`, { method: "DELETE" });
     return r.ok;
   } catch {
     return false;

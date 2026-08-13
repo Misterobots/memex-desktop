@@ -7,6 +7,7 @@ import {
 import { join } from "path";
 import type { ConfigStore } from "./config-store";
 import { getCurrentUid } from "./identity";
+import { MEMEX_PUBLIC_ORIGIN, publicSessionHeaders } from "./remote-auth";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -69,7 +70,7 @@ export function createMainWindow(
   // take effect without re-registering the listener.
   win.webContents.session.webRequest.onBeforeSendHeaders(
     { urls: ["http://*/*", "https://*/*"] },
-    (details, callback) => {
+    async (details, callback) => {
       const { agentRuntime, mempalace } = config.getUrls();
       const u = details.url;
       if (u.startsWith(agentRuntime) || u.startsWith(mempalace)) {
@@ -81,16 +82,31 @@ export function createMainWindow(
           active.providerType === "external" && active.apiKey
             ? { Authorization: `Bearer ${active.apiKey}` }
             : {};
-        callback({
-          requestHeaders: {
-            ...details.requestHeaders,
-            "X-authentik-uid":      getCurrentUid(),
-            // Owner key for server-side conversation sync (/v1/conversations).
-            "X-authentik-username": getCurrentUid(),
-            "X-desktop-client":     "memex-desktop",
-            ...authHeaders,
-          },
-        });
+        try {
+          // Renderer requests originate from file://. Even with
+          // credentials:"include", SameSite rules can omit the Authentik
+          // cookie because that is a cross-site request. Health checks worked
+          // while chat, Memory, and Schedules received Authentik HTML for this
+          // exact reason. Attach the public profile's Electron-session cookies
+          // here, at the one hook shared by every renderer API client (including
+          // streaming responses), rather than fixing each feature separately.
+          const sessionHeaders = agentRuntime.startsWith(MEMEX_PUBLIC_ORIGIN)
+            ? await publicSessionHeaders()
+            : {};
+          callback({
+            requestHeaders: {
+              ...details.requestHeaders,
+              ...sessionHeaders,
+              "X-authentik-uid":      getCurrentUid(),
+              // Owner key for server-side conversation sync (/v1/conversations).
+              "X-authentik-username": getCurrentUid(),
+              "X-desktop-client":     "memex-desktop",
+              ...authHeaders,
+            },
+          });
+        } catch {
+          callback({ requestHeaders: details.requestHeaders });
+        }
       } else {
         callback({ requestHeaders: details.requestHeaders });
       }

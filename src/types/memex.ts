@@ -1,4 +1,7 @@
-export type AppTab = "chat" | "goals" | "art" | "memory" | "scheduled" | "dev" | "eval" | "settings";
+export type AppTab = "chat" | "dev" | "research" | "goals" | "art" | "memory" | "eval" | "settings";
+
+/** Conversational products own separate histories and lifecycle state. */
+export type ExperienceId = "chat" | "code" | "research" | "goals" | "design";
 
 // ---------------------------------------------------------------------------
 // Task board types (mobile Codex loop — mirrors agent_runtime /v1/tasks)
@@ -166,6 +169,9 @@ export interface MessageEvent {
 export interface Session {
   id: string;
   title: string;
+  experience: ExperienceId;
+  /** Code sessions are additionally isolated to the project folder. */
+  workspaceKey?: string;
   createdAt: number;
   updatedAt?: number;   // last activity — used for cross-device sync ordering
   messages: ChatMessage[];

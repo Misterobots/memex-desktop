@@ -2,7 +2,7 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { useStore } from "../../lib/store";
 import { streamChat } from "../../lib/sse-stream";
 import { pushSession } from "../../lib/conv-sync";
-import { MODE_FLAGS, MODE_LABELS, type MemexMode, type ChatMessage, type MessageEvent } from "../../types/memex";
+import { MODE_FLAGS, MODE_LABELS, type ExperienceId, type MemexMode, type ChatMessage, type MessageEvent } from "../../types/memex";
 import { ModelPickerPopover } from "./ModelPickerPopover";
 import { ContextMeter } from "./ContextMeter";
 
@@ -37,20 +37,30 @@ interface InputBarProps {
   lockMode?: MemexMode;
   /** Placeholder override. */
   placeholder?: string;
+  /** Routes messages into the owning product history, not the last app-wide chat. */
+  experience?: ExperienceId;
+  /** Further isolates Code conversations to the open project. */
+  workspaceKey?: string;
+  /** Prevents submission while preserving an explanatory composer state. */
+  disabledReason?: string;
 }
 
-export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarProps) {
+export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = "chat", workspaceKey, disabledReason }: InputBarProps) {
   const [text, setText] = useState("");
   const [modeOpen, setModeOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modeRef = useRef<HTMLDivElement>(null);
   const {
-    mode: globalMode, setMode, activeSessionId, createSession,
+    mode: globalMode, setMode, createSession,
     addMessage, appendEvent, updateMessageContent, updateMessageRunId, setMessageUsage,
-    setStreaming, streaming, stopStream, activeSession, selectedModel,
+    setStreaming, streamingSessions, stopStreams, activeSession, selectedModel,
   } = useStore();
 
   const mode = lockMode ?? globalMode;
+  const currentSession = activeSession(experience, workspaceKey);
+  const currentSessionId = currentSession?.id;
+  const streaming = currentSessionId ? !!streamingSessions[currentSessionId] : false;
+  const stopStream = currentSessionId ? stopStreams[currentSessionId] : undefined;
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -68,11 +78,11 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarPro
 
   const submit = useCallback(() => {
     const content = text.trim();
-    if (!content || streaming) return;
+    if (!content || streaming || disabledReason) return;
     setText("");
 
-    const sessionId = activeSessionId ?? createSession();
-    const session = activeSession();
+    const session = activeSession(experience, workspaceKey);
+    const sessionId = session?.id ?? createSession(experience, workspaceKey);
 
     addMessage(sessionId, {
       id: `msg-${Date.now()}-u`, role: "user", content,
@@ -106,18 +116,18 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarPro
         }
       },
       onDone: () => {
-        setStreaming(false);
+        setStreaming(sessionId, false);
         // Sync the completed conversation to the backend for resume / cross-device.
         const sess = useStore.getState().sessions.find((x) => x.id === sessionId);
         if (sess) pushSession(sess);
       },
       onError: (err) => {
         appendEvent(sessionId, assistantId, { type: "log", content: `Error: ${err.message}` });
-        setStreaming(false);
+        setStreaming(sessionId, false);
       },
     });
-    setStreaming(true, stop);
-  }, [text, streaming, mode, activeSessionId, extraFlags]);
+    setStreaming(sessionId, true, stop);
+  }, [text, streaming, disabledReason, mode, experience, workspaceKey, extraFlags]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Enter sends; Shift+Enter inserts a newline. Skip while an IME composition
@@ -128,7 +138,7 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarPro
     }
     if (e.key === "Escape" && streaming && stopStream) {
       stopStream();
-      setStreaming(false);
+      if (currentSessionId) setStreaming(currentSessionId, false);
     }
   };
 
@@ -139,9 +149,10 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarPro
           <textarea
             ref={textareaRef}
             value={text}
+            disabled={!!disabledReason}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={placeholder ?? (streaming ? "Streaming… (Esc to stop)" : "Message Memex…")}
+            placeholder={disabledReason ?? placeholder ?? (streaming ? "Streaming… (Esc to stop)" : "Message Memex…")}
             rows={1}
             className="w-full bg-transparent px-2 text-text text-[15px] resize-none focus:outline-none placeholder-faint min-h-[24px] leading-relaxed"
           />
@@ -199,8 +210,8 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder }: InputBarPro
             </div>
 
             <button
-              onClick={streaming ? () => { stopStream?.(); setStreaming(false); } : submit}
-              disabled={!streaming && !text.trim()}
+              onClick={streaming ? () => { stopStream?.(); if (currentSessionId) setStreaming(currentSessionId, false); } : submit}
+              disabled={!streaming && (!text.trim() || !!disabledReason)}
               className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${
                 streaming
                   ? "bg-red/90 text-white hover:bg-red"

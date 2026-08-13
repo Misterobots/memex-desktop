@@ -23,8 +23,27 @@ const TABS: TabDef[] = [
     ),
   },
   {
+    id: "dev",
+    label: "Code",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path d="M5.5 5L2.5 8l3 3M10.5 5l3 3-3 3M9 3.5L7 12.5" />
+      </svg>
+    ),
+  },
+  {
+    id: "research",
+    label: "Research",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <circle cx="7" cy="7" r="4.5" />
+        <path d="M10.5 10.5L14 14M5 7h4M7 5v4" />
+      </svg>
+    ),
+  },
+  {
     id: "goals",
-    label: "Goals",
+    label: "Routines",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
         <circle cx="8" cy="8" r="6" />
@@ -35,7 +54,7 @@ const TABS: TabDef[] = [
   },
   {
     id: "art",
-    label: "Art",
+    label: "Design",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
         <rect x="2" y="2.5" width="12" height="11" rx="1.5" />
@@ -52,26 +71,6 @@ const TABS: TabDef[] = [
         <ellipse cx="8" cy="4" rx="5.5" ry="2" />
         <path d="M2.5 4v8c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2V4" />
         <path d="M2.5 8c0 1.1 2.46 2 5.5 2s5.5-.9 5.5-2" />
-      </svg>
-    ),
-  },
-  {
-    id: "scheduled",
-    label: "Scheduled",
-    icon: (
-      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-        <circle cx="8" cy="8.5" r="5.5" />
-        <path d="M8 5.5v3l2 1.5" />
-        <path d="M6 1.5h4" />
-      </svg>
-    ),
-  },
-  {
-    id: "dev",
-    label: "Code",
-    icon: (
-      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-        <path d="M5.5 5L2.5 8l3 3M10.5 5l3 3-3 3M9 3.5L7 12.5" />
       </svg>
     ),
   },

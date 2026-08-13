@@ -9,13 +9,14 @@ import { WorkspaceSafetyBadge } from "../dev/WorkspaceSafetyBadge";
 import { ProjectTasksPane } from "../dev/ProjectTasksPane";
 import { BrowserView } from "./BrowserView";
 import { ipc } from "../../lib/ipc";
+import { SessionList } from "../sidebar/SessionList";
 
 type PrimaryPane = "chat" | "editor" | "tasks";
 type BottomPane  = "terminal" | "browser" | "none";
 
 export function DevView() {
-  const { cwd, setCwd, sidebarOpen, activeSession, activeSessionId } = useStore();
-  const session    = activeSession();
+  const { cwd, setCwd, sidebarOpen, activeSession } = useStore();
+  const session    = activeSession("code", cwd);
   const empty      = !session || session.messages.length === 0;
   const folderName = cwd ? cwd.split(/[/\\]/).filter(Boolean).pop() : null;
 
@@ -23,7 +24,7 @@ export function DevView() {
   const [bottomPane, setBottomPane] = useState<BottomPane>("none");
   const [openFile, setOpenFile]     = useState<string | null>(null);
 
-  const termId = `term-${activeSessionId ?? "default"}`;
+  const termId = `term-${session?.id ?? `project-${cwd || "unselected"}`}`;
 
   const toggleTerminal = () =>
     setBottomPane((p) => (p === "terminal" ? "none" : "terminal"));
@@ -49,7 +50,12 @@ export function DevView() {
               </svg>
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto py-1">
+          {cwd && (
+            <div className="border-b border-border/60 max-h-[42%] overflow-y-auto">
+              <SessionList experience="code" workspaceKey={cwd} newLabel="New agent thread" />
+            </div>
+          )}
+          <div className="flex-1 overflow-y-auto py-1 min-h-0">
             {cwd ? (
               <FileTree root={cwd} onFileClick={(path) => { setOpenFile(path); setPrimary("editor"); }} />
             ) : (
@@ -140,10 +146,14 @@ export function DevView() {
                     </div>
                   </div>
                 ) : (
-                  <ConversationPane />
+                  <ConversationPane experience="code" workspaceKey={cwd} />
                 )}
                 <InputBar
+                  experience="code"
+                  workspaceKey={cwd}
+                  lockMode="swarm"
                   extraFlags={{ dev_mode: true }}
+                  disabledReason={cwd ? undefined : "Open a project folder to start coding"}
                   placeholder={cwd ? `Ask the agent to change ${folderName}…` : "Open a folder to start…"}
                 />
               </div>

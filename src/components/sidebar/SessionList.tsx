@@ -1,19 +1,29 @@
 import { useStore } from "../../lib/store";
 import { deleteRemoteSession } from "../../lib/conv-sync";
+import { sessionMatches } from "../../lib/store";
+import type { ExperienceId } from "../../types/memex";
 
-export function SessionList() {
-  const { sessions, activeSessionId, setActiveSession, createSession, deleteSession } = useStore();
+interface Props {
+  experience?: ExperienceId;
+  workspaceKey?: string;
+  newLabel?: string;
+}
+
+export function SessionList({ experience = "chat", workspaceKey, newLabel = "New chat" }: Props) {
+  const { sessions, activeSession, setActiveSession, createSession, deleteSession } = useStore();
+  const scoped = sessions.filter((session) => sessionMatches(session, experience, workspaceKey));
+  const activeSessionId = activeSession(experience, workspaceKey)?.id;
 
   return (
     <div className="py-3">
       {/* New chat button */}
       <div className="px-3 mb-2">
         <button
-          onClick={() => createSession()}
+          onClick={() => createSession(experience, workspaceKey)}
           className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-text bg-surface2 hover:bg-border/60 transition-colors"
         >
           <span className="text-accent text-base leading-none">+</span>
-          New chat
+          {newLabel}
         </button>
       </div>
 
@@ -22,7 +32,7 @@ export function SessionList() {
       </div>
 
       <div className="px-2">
-        {sessions.slice(0, 20).map((s) => (
+        {scoped.slice(0, 20).map((s) => (
           <div
             key={s.id}
             className={`group relative flex items-center rounded-lg mb-0.5 transition-colors ${
@@ -30,7 +40,7 @@ export function SessionList() {
             }`}
           >
             <button
-              onClick={() => setActiveSession(s.id)}
+              onClick={() => setActiveSession(s.id, experience)}
               className={`flex-1 min-w-0 text-left pl-3 pr-7 py-2 text-sm truncate ${
                 s.id === activeSessionId ? "text-text" : "text-muted group-hover:text-text"
               }`}
@@ -48,7 +58,7 @@ export function SessionList() {
             </button>
           </div>
         ))}
-        {sessions.length === 0 && (
+        {scoped.length === 0 && (
           <p className="px-3 py-2 text-xs text-faint">No conversations yet</p>
         )}
       </div>

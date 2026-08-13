@@ -18,6 +18,14 @@ async function clearMemexSsoSession(): Promise<void> {
   session.defaultSession.clearAuthCache();
 }
 
+/** Headers for native/renderer requests that must reuse the sign-in window's
+ * Authentik session. Electron's Node fetch and file:// renderer requests do
+ * not reliably attach this cookie automatically. */
+export async function publicSessionHeaders(): Promise<Record<string, string>> {
+  const cookies = await session.defaultSession.cookies.get({ url: MEMEX_PUBLIC_ORIGIN });
+  return cookies.length ? { Cookie: cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ") } : {};
+}
+
 export function registerRemoteAuthIpc(getMain: () => BrowserWindow | null): void {
   ipcMain.handle("remote-auth:signOut", async () => {
     await clearMemexSsoSession();

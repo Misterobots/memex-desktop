@@ -37,6 +37,7 @@ import type { HooksStore }             from "./hooks-store";
 import { fireHooks }                   from "./hooks-runner";
 import { runOpenScad, type RenderParams } from "./openscad-runner";
 import { autoWireStore }                  from "./ipc-autowire";
+import { MEMEX_PUBLIC_ORIGIN, publicSessionHeaders } from "./remote-auth";
 
 const execAsync = promisify(exec);
 
@@ -62,6 +63,89 @@ export function registerAllIpc(ctx: IpcContext): void {
   ipcMain.handle("identity:set", (_e, uid: string) => {
     setCurrentUid(uid);
     return uid;
+  });
+
+  // ── Authenticated backend requests ───────────────────────────────────────
+  // file:// renderer fetches do not reliably carry SameSite Authentik cookies.
+  // Keep feature API calls in the native process, alongside the health probe
+  // that already proves this session is authenticated. Targets are restricted
+  // to the active profile so this cannot become an arbitrary network proxy.
+  type ApiRequest = {
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+  };
+  const prepareApiRequest = async (request: ApiRequest) => {
+    const urls = config.getUrls();
+    const allowed = [urls.agentRuntime, urls.mempalace, urls.ollama]
+      .filter(Boolean)
+      .some((base) => request.url.startsWith(base));
+    if (!allowed) throw new Error("Request target is outside the active runtime profile");
+
+    const active = config.getActive();
+    const headers = new Headers(request.headers);
+    headers.set("X-authentik-uid", getCurrentUid());
+    headers.set("X-authentik-username", getCurrentUid());
+    headers.set("X-desktop-client", "memex-desktop");
+    if (urls.agentRuntime.startsWith(MEMEX_PUBLIC_ORIGIN)) {
+      for (const [name, value] of Object.entries(await publicSessionHeaders())) headers.set(name, value);
+    }
+    if (active.providerType === "external" && active.apiKey) {
+      headers.set("Authorization", `Bearer ${active.apiKey}`);
+    }
+
+    return { headers, request };
+  };
+
+  ipcMain.handle("api:request", async (_e, request: ApiRequest) => {
+    const prepared = await prepareApiRequest(request);
+    const response = await fetch(request.url, {
+      method: request.method ?? "GET",
+      headers: prepared.headers,
+      body: request.body,
+      signal: AbortSignal.timeout(30_000),
+    });
+    return {
+      status: response.status,
+      statusText: response.statusText,
+      headers: Object.fromEntries(response.headers.entries()),
+      body: await response.text(),
+    };
+  });
+
+  const apiStreams = new Map<string, AbortController>();
+  ipcMain.on("api:stream:start", async (event, streamId: string, request: ApiRequest) => {
+    const controller = new AbortController();
+    apiStreams.set(streamId, controller);
+    const send = (kind: "response" | "chunk" | "done" | "error", value?: unknown) =>
+      event.sender.send(`api:stream:${streamId}`, { kind, value });
+    try {
+      const prepared = await prepareApiRequest(request);
+      const response = await fetch(request.url, {
+        method: request.method ?? "GET",
+        headers: prepared.headers,
+        body: request.body,
+        signal: controller.signal,
+      });
+      send("response", { status: response.status, statusText: response.statusText });
+      if (!response.body) throw new Error("Runtime returned no response body");
+      const reader = response.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        send("chunk", value);
+      }
+      send("done");
+    } catch (error: any) {
+      if (error?.name !== "AbortError") send("error", error?.message ?? "Stream failed");
+    } finally {
+      apiStreams.delete(streamId);
+    }
+  });
+  ipcMain.on("api:stream:abort", (_event, streamId: string) => {
+    apiStreams.get(streamId)?.abort();
+    apiStreams.delete(streamId);
   });
 
   // ── File system (workspace-gated) ─────────────────────────────────────────

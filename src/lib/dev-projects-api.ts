@@ -7,6 +7,7 @@
  * from / creates via the inline "+ New repo" affordance.
  */
 import { getAgentRuntime } from "./runtime-urls";
+import { apiFetch } from "./api-fetch";
 
 export interface DevProject {
   id:         string;
@@ -21,7 +22,7 @@ export interface DevProject {
 
 export async function listDevProjects(): Promise<DevProject[]> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/v1/dev/projects`, {
+    const r = await apiFetch(`${getAgentRuntime()}/v1/dev/projects`, {
       signal: AbortSignal.timeout(8000),
     });
     if (!r.ok) return [];
@@ -39,7 +40,7 @@ export async function createDevProject(body: {
   git_ref?: string;
 }): Promise<DevProject | null> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/v1/dev/projects`, {
+    const r = await apiFetch(`${getAgentRuntime()}/v1/dev/projects`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

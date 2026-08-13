@@ -6,6 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getMempalace } from "../../lib/runtime-urls";
+import { apiFetch } from "../../lib/api-fetch";
 
 // ---------------------------------------------------------------------------
 // Types (matches MemPalace API)
@@ -31,7 +32,7 @@ interface MemStats {
 // ---------------------------------------------------------------------------
 async function mpFetch(path: string, init?: RequestInit) {
   const base = getMempalace();
-  return fetch(`${base}${path}`, { headers: { "Content-Type": "application/json" }, ...init });
+  return apiFetch(`${base}${path}`, { headers: { "Content-Type": "application/json" }, ...init });
 }
 
 // ---------------------------------------------------------------------------
@@ -84,7 +85,8 @@ export function MemoryView() {
 
   const deleteMemory = async (id: string) => {
     try {
-      await mpFetch(`/v1/memories/${id}`, { method: "DELETE" });
+      const res = await mpFetch(`/v1/memories/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setResults((r) => r.filter((m) => m.id !== id));
       if (selected?.id === id) setSelected(null);
       setMsg("Memory deleted");
@@ -94,10 +96,11 @@ export function MemoryView() {
   const pinMemory = async (rec: MemRecord) => {
     try {
       const pinned = !rec.pinned;
-      await mpFetch(`/v1/memories/${rec.id}`, {
+      const res = await mpFetch(`/v1/memories/${rec.id}`, {
         method: "PATCH",
         body: JSON.stringify({ metadata: { ...rec.metadata, pinned } }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setResults((r) => r.map((m) => m.id === rec.id ? { ...m, pinned } : m));
       if (selected?.id === rec.id) setSelected((s) => s ? { ...s, pinned } : s);
       setMsg(pinned ? "Memory pinned" : "Memory unpinned");

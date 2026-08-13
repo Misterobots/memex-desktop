@@ -7,12 +7,13 @@
  * and cross-device sync with any client signed in as the same user.
  */
 import { getAgentRuntime } from "./runtime-urls";
+import { apiFetch } from "./api-fetch";
 import type { Session } from "../types/memex";
 
 /** Fetch all stored conversations for the current user (newest first). */
 export async function fetchRemoteSessions(): Promise<Session[]> {
   try {
-    const res = await fetch(`${getAgentRuntime()}/v1/conversations`, {
+    const res = await apiFetch(`${getAgentRuntime()}/v1/conversations`, {
       signal: AbortSignal.timeout(6000),
     });
     if (!res.ok) return [];
@@ -21,7 +22,7 @@ export async function fetchRemoteSessions(): Promise<Session[]> {
     // Only trust well-formed conversation objects.
     return list.filter((c): c is Session =>
       !!c && typeof (c as Session).id === "string" && Array.isArray((c as Session).messages)
-    );
+    ).map((session) => ({ ...session, experience: session.experience ?? "chat" }));
   } catch {
     return [];
   }
@@ -39,7 +40,7 @@ export function pushSession(session: Session): void {
     timers.delete(session.id);
     const payload = { ...session, updatedAt: session.updatedAt ?? Date.now() };
     // Backend requires body.id === path id.
-    fetch(`${getAgentRuntime()}/v1/conversations/${encodeURIComponent(session.id)}`, {
+    apiFetch(`${getAgentRuntime()}/v1/conversations/${encodeURIComponent(session.id)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -49,7 +50,7 @@ export function pushSession(session: Session): void {
 
 /** Delete a session from the backend. */
 export function deleteRemoteSession(id: string): void {
-  fetch(`${getAgentRuntime()}/v1/conversations/${encodeURIComponent(id)}`, {
+  apiFetch(`${getAgentRuntime()}/v1/conversations/${encodeURIComponent(id)}`, {
     method: "DELETE",
   }).catch(() => {});
 }

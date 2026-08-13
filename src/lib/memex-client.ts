@@ -1,4 +1,5 @@
 import { getAgentRuntime, getMempalace } from "./runtime-urls";
+import { apiFetch } from "./api-fetch";
 import type { OllamaModel } from "./desktop";
 
 // Re-exported for any legacy imports still using these constants.
@@ -18,7 +19,7 @@ export async function checkHealth(): Promise<{
   let agentRuntime = false;
   let ollama = false;
   try {
-    const r = await fetch(`${ar}/api/v1/health/nodes`, { signal: AbortSignal.timeout(3000) });
+    const r = await apiFetch(`${ar}/api/v1/health/nodes`, { signal: AbortSignal.timeout(3000) });
     if (r.ok) {
       agentRuntime = true;
       const data = await r.json();
@@ -28,7 +29,7 @@ export async function checkHealth(): Promise<{
 
   let mempalace = false;
   try {
-    const r = await fetch(`${mp}/health`, { signal: AbortSignal.timeout(3000) });
+    const r = await apiFetch(`${mp}/health`, { signal: AbortSignal.timeout(3000) });
     mempalace = r.ok;
   } catch {}
 
@@ -37,7 +38,7 @@ export async function checkHealth(): Promise<{
 
 export async function listModels(): Promise<string[]> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/v1/models/ollama`);
+    const r = await apiFetch(`${getAgentRuntime()}/v1/models/ollama`);
     const data = await r.json();
     const models = data.models ?? data;
     return models.map((m: any) => m.name ?? m.id ?? String(m));
@@ -54,7 +55,7 @@ export async function listModels(): Promise<string[]> {
  */
 export async function fetchOllamaModels(): Promise<OllamaModel[]> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/v1/models/ollama`, {
+    const r = await apiFetch(`${getAgentRuntime()}/v1/models/ollama`, {
       signal: AbortSignal.timeout(8000),
     });
     if (!r.ok) return [];
@@ -82,7 +83,7 @@ export async function fetchOllamaModels(): Promise<OllamaModel[]> {
 
 export async function recallMemory(query: string, limit = 5): Promise<string[]> {
   try {
-    const r = await fetch(`${getMempalace()}/v1/memories/search`, {
+    const r = await apiFetch(`${getMempalace()}/v1/memories/search`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query, limit }),
@@ -95,7 +96,7 @@ export async function recallMemory(query: string, limit = 5): Promise<string[]> 
 }
 
 export async function storeMemory(content: string): Promise<void> {
-  await fetch(`${getMempalace()}/v1/memories`, {
+  await apiFetch(`${getMempalace()}/v1/memories`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content, memory_type: "semantic", domain: "general" }),

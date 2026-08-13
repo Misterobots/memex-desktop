@@ -4,9 +4,9 @@ import { StatusBar } from "./StatusBar";
 import { TabBar } from "./TabBar";
 import { ChatView } from "../views/ChatView";
 import { GoalsView } from "../views/GoalsView";
+import { ResearchView } from "../views/ResearchView";
 import { ArtView } from "../views/ArtView";
 import { MemoryView } from "../views/MemoryView";
-import { ScheduledTasksView } from "../views/ScheduledTasksView";
 import { DevView } from "../views/DevView";
 import { SettingsView }   from "../views/SettingsView";
 import { EvalBenchView }  from "../views/EvalBenchView";
@@ -38,10 +38,10 @@ function AppShellInner() {
         <TabBar />
         <div className="flex flex-1 min-h-0">
           {activeTab === "chat"      && <ChatView />}
+          {activeTab === "research"  && <ResearchView />}
           {activeTab === "goals"     && <GoalsView />}
           {activeTab === "art"       && <ArtView />}
           {activeTab === "memory"    && <MemoryView />}
-          {activeTab === "scheduled" && <ScheduledTasksView />}
           {activeTab === "dev"       && <DevView />}
           {activeTab === "eval"      && <EvalBenchView />}
           {activeTab === "settings"  && <SettingsView />}

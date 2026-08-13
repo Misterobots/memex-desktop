@@ -119,6 +119,20 @@ export interface MemexBridge {
     set: (uid: string) => Promise<string>;
   };
 
+  api: {
+    request: (request: { url: string; method?: string; headers?: Record<string, string>; body?: string }) => Promise<{
+      status: number;
+      statusText: string;
+      headers: Record<string, string>;
+      body: string;
+    }>;
+    stream: (
+      streamId: string,
+      request: { url: string; method?: string; headers?: Record<string, string>; body?: string },
+      onEvent: (event: { kind: "response" | "chunk" | "done" | "error"; value?: unknown }) => void,
+    ) => () => void;
+  };
+
   fs: {
     readFile:     (path: string)                  => Promise<string>;
     previewWrite: (path: string)                  => Promise<string>;

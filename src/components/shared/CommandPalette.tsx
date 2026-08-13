@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import { useStore } from "../../lib/store";
-import type { MemexMode } from "../../types/memex";
-import { MODE_LABELS } from "../../types/memex";
 
 interface Command {
   id: string;
@@ -13,20 +11,19 @@ interface Command {
 export function CommandPalette() {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const { setCommandPalette, setMode, createSession, toggleSidebar } = useStore();
+  const { setCommandPalette, setActiveTab, createSession, toggleSidebar } = useStore();
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
   const close = () => setCommandPalette(false);
 
   const COMMANDS: Command[] = [
-    ...( ["chat","swarm","research","design","think","plan"] as MemexMode[]).map((m) => ({
-      id: `mode-${m}`,
-      label: `Set mode: ${MODE_LABELS[m]}`,
-      description: `Switch to ${m} mode`,
-      action: () => { setMode(m); close(); },
-    })),
-    { id: "new-session",    label: "New session",     action: () => { createSession(); close(); } },
+    { id: "open-chat", label: "Open Chat", action: () => { setActiveTab("chat"); close(); } },
+    { id: "open-code", label: "Open Code", action: () => { setActiveTab("dev"); close(); } },
+    { id: "open-research", label: "Open Research", action: () => { setActiveTab("research"); close(); } },
+    { id: "open-design", label: "Open Design", action: () => { setActiveTab("art"); close(); } },
+    { id: "open-routines", label: "Open Routines", action: () => { setActiveTab("goals"); close(); } },
+    { id: "new-session", label: "New Chat thread", action: () => { createSession("chat"); setActiveTab("chat"); close(); } },
     { id: "toggle-sidebar", label: "Toggle sidebar",  action: () => { toggleSidebar(); close(); } },
   ];
 

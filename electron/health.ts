@@ -1,7 +1,7 @@
 /** Native health loop — probes all three endpoints, pushes health:status to renderer. */
-import { ipcMain, BrowserWindow, session } from "electron";
+import { ipcMain, BrowserWindow } from "electron";
 import type { ConfigStore } from "./config-store";
-import { MEMEX_PUBLIC_ORIGIN } from "./remote-auth";
+import { MEMEX_PUBLIC_ORIGIN, publicSessionHeaders } from "./remote-auth";
 
 export interface HealthStatus {
   agentRuntime: "connected" | "disconnected";
@@ -41,16 +41,6 @@ async function publicAgentHealth(url: string, headers: HeadersInit): Promise<{ a
   } catch {
     return { agentRuntime: false, ollama: false };
   }
-}
-
-/**
- * Node's fetch does not share Electron's browser cookie jar.  The public
- * profile is authenticated through Authentik in the sign-in BrowserWindow, so
- * copy its same-site cookies into the native health probes explicitly.
- */
-async function publicSessionHeaders(): Promise<HeadersInit> {
-  const cookies = await session.defaultSession.cookies.get({ url: MEMEX_PUBLIC_ORIGIN });
-  return cookies.length ? { Cookie: cookies.map((c) => `${c.name}=${c.value}`).join("; ") } : {};
 }
 
 async function check(config: ConfigStore): Promise<HealthStatus> {

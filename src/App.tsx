@@ -10,7 +10,7 @@ import { fetchRemoteSessions } from "./lib/conv-sync";
 
 export default function App() {
   const {
-    setConnections, setCwd, createSession, activeSessionId,
+    setConnections, setCwd,
     setCommandPalette, commandPaletteOpen,
   } = useStore();
   const [wizardDone, setWizardDone] = useState<boolean | null>(null); // null = loading
@@ -26,7 +26,6 @@ export default function App() {
     // Setup is a hard gate: don't restore sessions, initialize runtime URLs,
     // or mount the working app until this installation is configured.
     if (wizardDone !== true) return;
-    if (!activeSessionId) createSession();
     // Load active profile URLs before any requests fire, then resume sessions
     // from the backend (cross-device / fresh-install continuity).
     initRuntimeUrls().then(() => {
@@ -88,7 +87,7 @@ export default function App() {
       // Global shortcut: new conversation
       (window as any).__memexNewConversation = () => {
         const { createSession: cs, setActiveTab } = useStore.getState();
-        cs();
+        cs("chat");
         setActiveTab("chat");
       };
 

@@ -5,6 +5,7 @@
  * bridge owns OpenSCAD and printer credentials; this client never does.
  */
 import { getAgentRuntime } from "./runtime-urls";
+import { apiFetch } from "./api-fetch";
 
 export type CadPart = {
   printable: boolean;
@@ -29,7 +30,7 @@ function config(): CadBridgeConfig {
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const { url, token } = config();
-  const response = await fetch(`${url}${path}`, {
+  const response = await apiFetch(`${url}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",

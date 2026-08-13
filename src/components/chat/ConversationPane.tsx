@@ -1,34 +1,34 @@
 import { useEffect, useRef } from "react";
 import { useStore } from "../../lib/store";
 import { MessageBubble } from "./MessageBubble";
-import { MODE_LABELS, type MemexMode } from "../../types/memex";
+import type { AppTab, ExperienceId } from "../../types/memex";
 
-const SUGGESTIONS: Array<{ mode: MemexMode; label: string; prompt: string }> = [
-  { mode: "swarm",    label: "Build something",   prompt: "Build " },
-  { mode: "research", label: "Research a topic",  prompt: "Research " },
-  { mode: "design",   label: "Design a UI",       prompt: "Design " },
-  { mode: "think",    label: "Think through",     prompt: "Help me think through " },
+const SUGGESTIONS: Array<{ tab: AppTab; label: string; description: string }> = [
+  { tab: "dev",      label: "Build code",       description: "Open the Code workspace" },
+  { tab: "research", label: "Research a topic", description: "Start a Research thread" },
+  { tab: "art",      label: "Design something", description: "Open the Design studio" },
+  { tab: "goals",    label: "Create a routine", description: "Build a repeatable workflow" },
 ];
 
 function WelcomeScreen() {
-  const { setMode } = useStore();
+  const { setActiveTab } = useStore();
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-6 select-none">
       <div className="max-w-conversation w-full text-center">
         <div className="text-5xl text-accent mb-5 opacity-90">◈</div>
         <h1 className="text-2xl text-text font-medium mb-2">How can I help today?</h1>
         <p className="text-muted text-sm mb-8">
-          Powered by local models through Memex · No cloud, no limits
+          Powered by the active Memex routing profile
         </p>
         <div className="grid grid-cols-2 gap-2.5 max-w-md mx-auto">
           {SUGGESTIONS.map((s) => (
             <button
-              key={s.mode}
-              onClick={() => setMode(s.mode)}
+              key={s.tab}
+              onClick={() => setActiveTab(s.tab)}
               className="flex flex-col items-start gap-1 px-4 py-3 rounded-xl border border-border/60 bg-surface hover:bg-surface2 hover:border-accent/40 transition-colors text-left"
             >
               <span className="text-text text-sm font-medium">{s.label}</span>
-              <span className="text-faint text-xs">{MODE_LABELS[s.mode]} mode</span>
+              <span className="text-faint text-xs">{s.description}</span>
             </button>
           ))}
         </div>
@@ -37,9 +37,15 @@ function WelcomeScreen() {
   );
 }
 
-export function ConversationPane() {
-  const { activeSession, streaming } = useStore();
-  const session = activeSession();
+interface Props {
+  experience?: ExperienceId;
+  workspaceKey?: string;
+}
+
+export function ConversationPane({ experience = "chat", workspaceKey }: Props) {
+  const { activeSession, streamingSessions } = useStore();
+  const session = activeSession(experience, workspaceKey);
+  const streaming = session ? !!streamingSessions[session.id] : false;
   const containerRef = useRef<HTMLDivElement>(null);
   const pinnedRef    = useRef(true);              // is the user parked at the bottom?
   const prevLenRef   = useRef(0);

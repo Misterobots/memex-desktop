@@ -6,6 +6,7 @@
  * publish routes.
  */
 import { getAgentRuntime } from "./runtime-urls";
+import { apiFetch } from "./api-fetch";
 
 export interface PublishPreview {
   branch: string;
@@ -20,7 +21,7 @@ export interface PublishPreview {
  *  reason instead of a dead end. */
 export async function getPublishPreview(projectId: string): Promise<{ preview?: PublishPreview; status: number; detail?: string }> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/v1/dev/projects/${encodeURIComponent(projectId)}/publish/preview`, {
+    const r = await apiFetch(`${getAgentRuntime()}/v1/dev/projects/${encodeURIComponent(projectId)}/publish/preview`, {
       signal: AbortSignal.timeout(15000),
     });
     if (!r.ok) {
@@ -42,7 +43,7 @@ export interface PublishResult {
 
 export async function publishProject(projectId: string, body: { repoName: string; private: boolean }): Promise<PublishResult> {
   try {
-    const r = await fetch(`${getAgentRuntime()}/v1/dev/projects/${encodeURIComponent(projectId)}/publish`, {
+    const r = await apiFetch(`${getAgentRuntime()}/v1/dev/projects/${encodeURIComponent(projectId)}/publish`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ repo_name: body.repoName, private: body.private }),
