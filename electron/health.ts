@@ -15,7 +15,13 @@ let lastStatus: HealthStatus | null = null;
 
 async function probe(url: string, headers?: HeadersInit, init?: RequestInit): Promise<boolean> {
   try {
-    const r = await fetch(url, { ...init, headers, signal: AbortSignal.timeout(4000) });
+    // Preserve request-specific headers (notably MemPalace's JSON content
+    // type) while adding the Authentik session cookie. Passing `headers`
+    // separately used to overwrite init.headers, turning the POST into
+    // text/plain and producing a false offline result.
+    const mergedHeaders = new Headers(init?.headers);
+    for (const [name, value] of new Headers(headers)) mergedHeaders.set(name, value);
+    const r = await fetch(url, { ...init, headers: mergedHeaders, signal: AbortSignal.timeout(4000) });
     return r.ok;
   } catch { return false; }
 }
