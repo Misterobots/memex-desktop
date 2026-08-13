@@ -15,10 +15,10 @@ export function registerRemoteAuthIpc(getMain: () => BrowserWindow | null): void
       webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
     });
     let finished = false;
-    // The first navigation begins at memex.shivelymedia.com, then Traefik
-    // redirects to Authentik.  Treating that initial visit as success closes
-    // the window before the user ever sees the login form.  Completion is
-    // valid only after the window has left Memex and returned from that flow.
+    // The first navigation may redirect through Authentik, or may load Memex
+    // directly when this Electron session already has a valid SSO cookie.
+    // Track redirects, then complete only after an actual Memex document has
+    // finished loading (never merely on the initial navigation event).
     let authFlowVisited = false;
     const complete = (ok: boolean) => {
       if (finished) return;
@@ -40,6 +40,13 @@ export function registerRemoteAuthIpc(getMain: () => BrowserWindow | null): void
     };
     win.webContents.on("did-navigate", (_event, url) => consider(url));
     win.webContents.on("did-navigate-in-page", (_event, url) => consider(url));
+    win.webContents.on("did-finish-load", () => {
+      const url = win.webContents.getURL();
+      try {
+        const parsed = new URL(url);
+        if (parsed.origin === MEMEX_PUBLIC_ORIGIN) complete(true);
+      } catch {}
+    });
     win.on("closed", () => { if (!finished) { finished = true; resolve(false); } });
     void win.loadURL(MEMEX_PUBLIC_ORIGIN).catch(() => complete(false));
   }));
