@@ -8,11 +8,11 @@ export const MEMEX_PUBLIC_ORIGIN = "https://memex.shivelymedia.com";
 async function clearMemexSsoSession(): Promise<void> {
   const cookies = await session.defaultSession.cookies.get({});
   const ssoCookies = cookies.filter((cookie) =>
-    cookie.domain.replace(/^\./, "").endsWith("shivelymedia.com"),
+    (cookie.domain ?? "").replace(/^\./, "").endsWith("shivelymedia.com"),
   );
   await Promise.all(ssoCookies.map((cookie) => {
     const scheme = cookie.secure ? "https" : "http";
-    const host = cookie.domain.replace(/^\./, "");
+    const host = (cookie.domain ?? "").replace(/^\./, "");
     return session.defaultSession.cookies.remove(`${scheme}://${host}${cookie.path}`, cookie.name);
   }));
   session.defaultSession.clearAuthCache();
