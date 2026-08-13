@@ -75,6 +75,17 @@ function defaultShortcuts(): ShortcutConfig {
 // Seed profiles — installed on first run if config.json doesn't exist
 const SEED_PROFILES: RuntimeProfile[] = [
   {
+    id:           "memex-anywhere",
+    name:         "Memex Anywhere",
+    providerType: "internal",
+    // The Next.js proxy authenticates with Authentik and reaches both the
+    // agent runtime and Hopper's MemPalace over private Docker/LAN links.
+    // Neither private address is ever sent to a remote Desktop install.
+    agentRuntime: "https://memex.shivelymedia.com/api/backend",
+    mempalace:    "https://memex.shivelymedia.com/api/backend",
+    readonly:     true,
+  },
+  {
     id:           "home-lan",
     name:         "Home LAN",
     providerType: "internal",
@@ -94,7 +105,7 @@ const SEED_PROFILES: RuntimeProfile[] = [
   },
 ];
 
-const DEFAULT_ACTIVE = "home-lan";
+const DEFAULT_ACTIVE = "memex-anywhere";
 
 export class ConfigStore {
   private configPath: string;

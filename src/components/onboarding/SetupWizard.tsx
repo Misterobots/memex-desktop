@@ -91,6 +91,8 @@ export function SetupWizard({ onComplete }: Props) {
   const [root,     setRoot]     = useState("");
   const [mode,     setMode]     = useState<"trusted" | "workspace" | "ask">("workspace");
   const [uid,      setUid]      = useState("");
+  const [signingIn, setSigningIn] = useState(false);
+  const publicProfile = profiles.find((p) => p.id === "memex-anywhere");
 
   useEffect(() => {
     if (!bridge) return;
@@ -137,7 +139,7 @@ export function SetupWizard({ onComplete }: Props) {
         {/* Step 0: Runtime profile */}
         {step === 0 && (
           <Step index={0} total={TOTAL} title="Connect to Memex" onNext={next}>
-            <p className="text-sm text-muted">Choose the server profile to connect to. You can change this later in Settings.</p>
+            <p className="text-sm text-muted">Sign in once to use Memex securely from anywhere. Home-LAN routing is available below for advanced use.</p>
             <div className="space-y-2">
               {profiles.map((p) => (
                 <button key={p.id} onClick={() => { setActiveId(p.id); bridge?.config.setActive(p.id); }}
@@ -148,6 +150,17 @@ export function SetupWizard({ onComplete }: Props) {
                 </button>
               ))}
             </div>
+            {activeId === publicProfile?.id && (
+              <button
+                onClick={async () => {
+                  setSigningIn(true);
+                  await bridge?.remoteAuth.signIn();
+                  setSigningIn(false);
+                }}
+                disabled={signingIn}
+                className="w-full py-2.5 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent/80 disabled:opacity-50"
+              >{signingIn ? "Waiting for sign-in…" : "Sign in to Memex"}</button>
+            )}
           </Step>
         )}
 

@@ -138,6 +138,10 @@ contextBridge.exposeInMainWorld("memex", {
     },
   },
 
+  remoteAuth: {
+    signIn: () => ipcRenderer.invoke("remote-auth:signIn") as Promise<boolean>,
+  },
+
   // LSP bridge
   lsp: {
     start:   (ext: string, rootUri: string) =>

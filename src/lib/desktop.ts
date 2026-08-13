@@ -176,6 +176,10 @@ export interface MemexBridge {
     onState:   (cb: (state: BrowserPaneState) => void) => () => void;
   };
 
+  remoteAuth: {
+    signIn: () => Promise<boolean>;
+  };
+
   lsp: {
     start:          (ext: string, rootUri: string) => Promise<boolean>;
     request:        (lang: string, rootUri: string, method: string, params: unknown) => Promise<unknown>;

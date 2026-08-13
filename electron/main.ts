@@ -22,6 +22,7 @@ import { EvalStore }       from "./eval-store";
 import { ArtifactStore }   from "./artifact-store";
 import { HooksStore }      from "./hooks-store";
 import { BrowserPane }     from "./browser-pane";
+import { registerRemoteAuthIpc } from "./remote-auth";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -67,6 +68,7 @@ app.whenReady().then(() => {
 
   setupUpdater(getMain, getTray, isDev);
   registerUpdaterIpc();
+  registerRemoteAuthIpc(getMain);
   registerHealthIpc(config, getMain);
   registerQuickIpc(getMain);
   registerShortcuts(config, getMain, toggleQuickWindow);

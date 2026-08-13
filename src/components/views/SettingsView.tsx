@@ -264,6 +264,7 @@ export function SettingsView() {
   const [profiles,         setProfiles]       = useState<RuntimeProfile[]>([]);
   const [activeProfileId,  setActiveProfileId] = useState<string>("");
   const [editingProfile,   setEditingProfile]  = useState<Partial<RuntimeProfile> | null>(null);
+  const [signingIn,        setSigningIn]       = useState(false);
 
   // ── Workspace / permission ────────────────────────────────────────────────
   const [permMode,         setPermMode]        = useState<"trusted"|"workspace"|"ask">("workspace");
@@ -323,6 +324,13 @@ export function SettingsView() {
   const handleActivate = async (id: string) => {
     await bridge?.config.setActive(id);
     setActiveProfileId(id);
+  };
+
+  const handleRemoteSignIn = async () => {
+    if (!bridge) return;
+    setSigningIn(true);
+    await bridge.remoteAuth.signIn();
+    setSigningIn(false);
   };
 
   const handleSaveProfile = async (p: Partial<RuntimeProfile>) => {
@@ -417,6 +425,13 @@ export function SettingsView() {
                 <span className="text-[10px] font-semibold uppercase tracking-wide text-accent px-2 py-0.5 rounded-full border border-accent/30">
                   Active
                 </span>
+              )}
+              {p.id === "memex-anywhere" && (
+                <button
+                  onClick={handleRemoteSignIn}
+                  disabled={signingIn}
+                  className="text-xs text-accent hover:text-accent/80 px-2 py-1 disabled:opacity-50"
+                >{signingIn ? "Signing in…" : "Sign in"}</button>
               )}
               {!p.readonly && (
                 <>
