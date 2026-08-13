@@ -13,11 +13,28 @@ export interface HealthStatus {
 let timer:      ReturnType<typeof setInterval> | null = null;
 let lastStatus: HealthStatus | null = null;
 
-async function probe(url: string, headers?: HeadersInit): Promise<boolean> {
+async function probe(url: string, headers?: HeadersInit, init?: RequestInit): Promise<boolean> {
   try {
-    const r = await fetch(url, { headers, signal: AbortSignal.timeout(4000) });
+    const r = await fetch(url, { ...init, headers, signal: AbortSignal.timeout(4000) });
     return r.ok;
   } catch { return false; }
+}
+
+async function publicAgentHealth(url: string, headers: HeadersInit): Promise<{ agentRuntime: boolean; ollama: boolean }> {
+  try {
+    const r = await fetch(url, { headers, signal: AbortSignal.timeout(4000) });
+    if (!r.ok) return { agentRuntime: false, ollama: false };
+    const body = await r.json() as { nodes?: Array<{ healthy?: boolean }> };
+    return {
+      agentRuntime: true,
+      // Remote Desktop intentionally has no direct Ollama URL.  The agent
+      // runtime owns model routing, so show its reported healthy inference
+      // nodes rather than probing an inaccessible private address.
+      ollama: Array.isArray(body.nodes) && body.nodes.some((node) => node.healthy === true),
+    };
+  } catch {
+    return { agentRuntime: false, ollama: false };
+  }
 }
 
 /**
@@ -34,16 +51,24 @@ async function check(config: ConfigStore): Promise<HealthStatus> {
   const { agentRuntime, mempalace, ollama } = config.getUrls();
   const isPublicProfile = agentRuntime.startsWith(MEMEX_PUBLIC_ORIGIN);
   const headers = isPublicProfile ? await publicSessionHeaders() : undefined;
-  const [ar, mp, ol] = await Promise.all([
-    // The public reverse proxy exposes the actual agent health endpoint. The
-    // old root probe only saw Authentik redirects and therefore reported a
-    // healthy signed-in remote service as unreachable.
-    probe(isPublicProfile ? `${agentRuntime}/api/v1/health/nodes` : `${agentRuntime}/`, headers),
-    // The Next proxy routes /v1/memories to Hopper's MemPalace internally.
-    // There is no public /health route for Hopper by design.
-    probe(isPublicProfile ? `${mempalace}/v1/memories?limit=1` : `${mempalace}/health`, headers),
+  const [publicHealth, mp, lanAr, lanOl] = await Promise.all([
+    isPublicProfile
+      ? publicAgentHealth(`${agentRuntime}/api/v1/health/nodes`, headers ?? {})
+      : Promise.resolve({ agentRuntime: false, ollama: false }),
+    // MemPalace has no public /health endpoint. Its documented, used-in-
+    // production contract is POST /v1/memories/search, not GET /v1/memories.
+    isPublicProfile
+      ? probe(`${mempalace}/v1/memories/search`, headers, {
+          method: "POST",
+          headers: { ...(headers ?? {}), "Content-Type": "application/json" },
+          body: JSON.stringify({ query: "healthcheck", limit: 1 }),
+        })
+      : probe(`${mempalace}/health`),
+    isPublicProfile ? Promise.resolve(false) : probe(`${agentRuntime}/`),
     isPublicProfile ? Promise.resolve(false) : probe(`${ollama}/api/version`),
   ]);
+  const ar = isPublicProfile ? publicHealth.agentRuntime : lanAr;
+  const ol = isPublicProfile ? publicHealth.ollama : lanOl;
   return {
     agentRuntime: ar ? "connected" : "disconnected",
     mempalace:    mp ? "connected" : "disconnected",
