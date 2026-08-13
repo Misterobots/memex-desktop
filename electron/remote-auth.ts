@@ -1,10 +1,29 @@
 /** Authentik sign-in window for the public “Memex Anywhere” profile. */
-import { BrowserWindow, ipcMain } from "electron";
+import { BrowserWindow, ipcMain, session } from "electron";
 
 export const MEMEX_PUBLIC_ORIGIN = "https://memex.shivelymedia.com";
 
+/** Remove only SSO cookies owned by Memex/Authen­tik, never the Desktop app's
+ * own local settings, workspace data, or unrelated browser state. */
+async function clearMemexSsoSession(): Promise<void> {
+  const cookies = await session.defaultSession.cookies.get({});
+  const ssoCookies = cookies.filter((cookie) =>
+    cookie.domain.replace(/^\./, "").endsWith("shivelymedia.com"),
+  );
+  await Promise.all(ssoCookies.map((cookie) => {
+    const scheme = cookie.secure ? "https" : "http";
+    const host = cookie.domain.replace(/^\./, "");
+    return session.defaultSession.cookies.remove(`${scheme}://${host}${cookie.path}`, cookie.name);
+  }));
+  session.defaultSession.clearAuthCache();
+}
+
 export function registerRemoteAuthIpc(getMain: () => BrowserWindow | null): void {
-  ipcMain.handle("remote-auth:signIn", () => new Promise<boolean>((resolve) => {
+  ipcMain.handle("remote-auth:signIn", async () => {
+    // "Sign in" must mean a deliberate fresh SSO flow. Electron's cookie jar
+    // is independent of Chrome/Brave, so a browser logout cannot clear it.
+    await clearMemexSsoSession();
+    return new Promise<boolean>((resolve) => {
     const parent = getMain();
     const win = new BrowserWindow({
       parent: parent ?? undefined,
@@ -49,5 +68,6 @@ export function registerRemoteAuthIpc(getMain: () => BrowserWindow | null): void
     });
     win.on("closed", () => { if (!finished) { finished = true; resolve(false); } });
     void win.loadURL(MEMEX_PUBLIC_ORIGIN).catch(() => complete(false));
-  }));
+    });
+  });
 }
