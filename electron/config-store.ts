@@ -121,11 +121,19 @@ export class ConfigStore {
       try {
         const raw = JSON.parse(readFileSync(this.configPath, "utf-8")) as AppConfig;
         raw.profiles = decryptProfilesFromDisk(raw.profiles as unknown as LegacyPersistedProfile[]);
+        // A config created before Memex Anywhere existed only knows about LAN
+        // addresses.  Add the new profile and make it the active route once,
+        // so an upgrade does not strand a user on private 192.168.x.x hosts.
+        const hadAnywhere = raw.profiles.some((p) => p.id === "memex-anywhere");
         // Ensure seed profiles are always present (add if missing from stored config)
         for (const seed of SEED_PROFILES) {
           if (!raw.profiles.find((p) => p.id === seed.id)) {
             raw.profiles.unshift(seed);
           }
+        }
+        if (!hadAnywhere) {
+          raw.activeProfileId = DEFAULT_ACTIVE;
+          this.persist(raw);
         }
         return raw;
       } catch {}
