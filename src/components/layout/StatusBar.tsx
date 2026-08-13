@@ -1,4 +1,5 @@
 import { useStore } from "../../lib/store";
+import { AccountMenu } from "./AccountMenu";
 import { isDesktop } from "../../lib/desktop";
 import { fmtTokens } from "../../lib/tokens";
 
@@ -60,6 +61,7 @@ export function StatusBar() {
       </div>
 
       <div className={`no-drag flex items-center gap-2 sm:gap-3 ${reserveForWindowControls ? "pr-[140px]" : ""}`}>
+        <AccountMenu />
         <div
           className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-surface transition-colors cursor-default"
           title={`runtime: ${connections.agentRuntime} · memory: ${connections.mempalace} · ollama: ${connections.ollama}`}

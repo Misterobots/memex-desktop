@@ -338,10 +338,14 @@ export function SettingsView() {
     if (!bridge) return;
     setSigningOut(true);
     try {
-      await bridge.remoteAuth.signOut();
+      const complete = await bridge.remoteAuth.signOut();
+      if (!complete) throw new Error("Sign-out did not complete");
       // Refresh the native badge immediately; it will now report the signed-out
       // public route as unreachable until the user deliberately signs in again.
       await bridge.health.check();
+      window.dispatchEvent(new CustomEvent("memex:notice", { detail: "Signed out of Memex on this desktop." }));
+    } catch {
+      window.dispatchEvent(new CustomEvent("memex:notice", { detail: "Could not sign out. Please try again." }));
     } finally {
       setSigningOut(false);
     }
