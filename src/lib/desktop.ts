@@ -178,6 +178,7 @@ export interface MemexBridge {
 
   remoteAuth: {
     signIn: () => Promise<boolean>;
+    signOut: () => Promise<boolean>;
   };
 
   lsp: {

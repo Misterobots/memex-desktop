@@ -19,6 +19,11 @@ async function clearMemexSsoSession(): Promise<void> {
 }
 
 export function registerRemoteAuthIpc(getMain: () => BrowserWindow | null): void {
+  ipcMain.handle("remote-auth:signOut", async () => {
+    await clearMemexSsoSession();
+    return true;
+  });
+
   ipcMain.handle("remote-auth:signIn", async () => {
     // "Sign in" must mean a deliberate fresh SSO flow. Electron's cookie jar
     // is independent of Chrome/Brave, so a browser logout cannot clear it.

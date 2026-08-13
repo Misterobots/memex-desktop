@@ -265,6 +265,7 @@ export function SettingsView() {
   const [activeProfileId,  setActiveProfileId] = useState<string>("");
   const [editingProfile,   setEditingProfile]  = useState<Partial<RuntimeProfile> | null>(null);
   const [signingIn,        setSigningIn]       = useState(false);
+  const [signingOut,       setSigningOut]      = useState(false);
 
   // ── Workspace / permission ────────────────────────────────────────────────
   const [permMode,         setPermMode]        = useState<"trusted"|"workspace"|"ask">("workspace");
@@ -331,6 +332,19 @@ export function SettingsView() {
     setSigningIn(true);
     await bridge.remoteAuth.signIn();
     setSigningIn(false);
+  };
+
+  const handleRemoteSignOut = async () => {
+    if (!bridge) return;
+    setSigningOut(true);
+    try {
+      await bridge.remoteAuth.signOut();
+      // Refresh the native badge immediately; it will now report the signed-out
+      // public route as unreachable until the user deliberately signs in again.
+      await bridge.health.check();
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   const handleSaveProfile = async (p: Partial<RuntimeProfile>) => {
@@ -427,11 +441,18 @@ export function SettingsView() {
                 </span>
               )}
               {p.id === "memex-anywhere" && (
-                <button
-                  onClick={handleRemoteSignIn}
-                  disabled={signingIn}
-                  className="text-xs text-accent hover:text-accent/80 px-2 py-1 disabled:opacity-50"
-                >{signingIn ? "Signing in…" : "Sign in"}</button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={handleRemoteSignIn}
+                    disabled={signingIn || signingOut}
+                    className="text-xs text-accent hover:text-accent/80 px-2 py-1 disabled:opacity-50"
+                  >{signingIn ? "Signing in…" : "Sign in"}</button>
+                  <button
+                    onClick={handleRemoteSignOut}
+                    disabled={signingIn || signingOut}
+                    className="text-xs text-muted hover:text-text px-2 py-1 disabled:opacity-50"
+                  >{signingOut ? "Signing out…" : "Sign out"}</button>
+                </div>
               )}
               {!p.readonly && (
                 <>
