@@ -206,6 +206,7 @@ export class ConfigStore {
   // Setup wizard completion
   getWizardComplete(): boolean { return this.config.wizardComplete ?? false; }
   setWizardComplete(): void    { this.config.wizardComplete = true; this.save(); }
+  requireWizard(): void        { this.config.wizardComplete = false; this.save(); }
 
   // One-time "still running in the tray" notification, shown the first time
   // the window is closed-to-tray rather than quit.

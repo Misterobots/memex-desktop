@@ -1,6 +1,6 @@
 {
   "name": "memex-desktop",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Memex Desktop — local-first AI development harness",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -103,7 +103,8 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "include": "build/installer.nsh"
     }
   }
 }

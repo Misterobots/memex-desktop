@@ -17,11 +17,11 @@ import {
   app, ipcMain, BrowserWindow, dialog, shell,
 } from "electron";
 import {
-  readFileSync, writeFileSync, readdirSync, statSync, mkdirSync,
+  readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, existsSync, unlinkSync,
 } from "fs";
 import { exec }      from "child_process";
 import { promisify } from "util";
-import { join }      from "path";
+import { join, dirname } from "path";
 import * as pty      from "node-pty";
 import type { ConfigStore }       from "./config-store";
 import type { WorkspaceFirewall } from "./workspace-firewall";
@@ -237,7 +237,12 @@ export function registerAllIpc(ctx: IpcContext): void {
   // actual method names (save/delete vs saveProfile/deleteProfile, etc.).
   autoWireStore("config", config, {
     getAll: "getAll", getActive: "getActive", save: "saveProfile", delete: "deleteProfile",
-    getUrls: "getUrls", getWizardDone: "getWizardComplete", setWizardDone: "setWizardComplete",
+    getUrls: "getUrls", getWizardDone: "getWizardComplete",
+  });
+  ipcMain.handle("config:setWizardDone", () => {
+    config.setWizardComplete();
+    const marker = join(dirname(process.resourcesPath), ".memex-setup-required");
+    if (existsSync(marker)) unlinkSync(marker);
   });
   ipcMain.handle("config:setActive", (_e, id: string) => {
     const ok = config.setActive(id);

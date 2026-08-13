@@ -23,6 +23,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // Setup is a hard gate: don't restore sessions, initialize runtime URLs,
+    // or mount the working app until this installation is configured.
+    if (wizardDone !== true) return;
     if (!activeSessionId) createSession();
     // Load active profile URLs before any requests fire, then resume sessions
     // from the backend (cross-device / fresh-install continuity).
@@ -104,7 +107,7 @@ export default function App() {
       if (offHealth) offHealth();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [wizardDone]);
 
   // Ctrl+K command palette
   useEffect(() => {
@@ -128,9 +131,10 @@ export default function App() {
 
   return (
     <>
-      {!wizardDone && <SetupWizard onComplete={handleWizardComplete} />}
-      <AppShell />
-      {commandPaletteOpen && <CommandPalette />}
+      {wizardDone ? <>
+        <AppShell />
+        {commandPaletteOpen && <CommandPalette />}
+      </> : <SetupWizard onComplete={handleWizardComplete} />}
     </>
   );
 }

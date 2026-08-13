@@ -4,6 +4,8 @@
  */
 import { app, BrowserWindow, globalShortcut } from "electron";
 import type { Tray } from "electron";
+import { existsSync } from "fs";
+import { join, dirname } from "path";
 
 import { ConfigStore }       from "./config-store";
 import { WorkspaceFirewall } from "./workspace-firewall";
@@ -53,6 +55,11 @@ app.whenReady().then(() => {
 
   initIdentity(userData);
   config   = new ConfigStore(userData);
+  // Every NSIS install writes this marker. Preserve prior user data, but
+  // require setup before any persisted content is exposed in the renderer.
+  if (existsSync(join(dirname(process.resourcesPath), ".memex-setup-required"))) {
+    config.requireWizard();
+  }
   firewall = new WorkspaceFirewall(userData);
   runs      = new RunStore(userData);
   evals     = new EvalStore(userData);
