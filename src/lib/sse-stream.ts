@@ -84,6 +84,28 @@ export function streamChat(opts: StreamOptions): () => void {
         const delta = chunk?.choices?.[0]?.delta;
         if (!delta || (!delta.type && !delta.content)) continue;
         const rawType = (delta.type as string) ?? "message";
+        // DevHarness uses a richer vocabulary than the conversational stream.
+        // Normalize it into the established desktop presentation contract so a
+        // completed coding run never looks blank merely because it said
+        // `content` instead of `message`.
+        const typeMap: Record<string, EventType> = {
+          content: "message",
+          error: "log",
+          tool_start: "status",
+          tool_approval_needed: "status",
+          tool_result: "agent_event",
+          file_change: "agent_event",
+          todo: "status",
+        };
+        const eventType = typeMap[rawType] ?? rawType as EventType;
+        const rawContent = delta.content;
+        const content = typeof rawContent === "string"
+          ? rawContent
+          : rawType === "todo"
+            ? "Updated task plan."
+            : rawType === "file_change"
+              ? "Proposed file changes."
+              : JSON.stringify(rawContent ?? {});
         if (rawType === "memory_write" && bridge) {
           const policy = await bridge.workspace.getPolicy();
           if (policy.mode === "ask") {
@@ -95,10 +117,10 @@ export function streamChat(opts: StreamOptions): () => void {
             if (!approved) continue;
           }
         }
-        const isText = rawType === "message" || rawType === "response";
+        const isText = eventType === "message" || eventType === "response";
         opts.onEvent({
-          type: rawType as EventType,
-          content: delta.content ?? "",
+          type: eventType,
+          content,
           agent_name: delta.agent_name,
           pioneer_name: delta.pioneer_name,
           clarification: delta.clarification,
@@ -115,6 +137,7 @@ export function streamChat(opts: StreamOptions): () => void {
   if (bridge?.api) {
     const streamId = `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     let status = 0;
+    let failureDetail = "";
     const cancel = bridge.api.stream(streamId, {
       url: `${getAgentRuntime()}/v1/chat/completions`,
       method: "POST",
@@ -122,11 +145,16 @@ export function streamChat(opts: StreamOptions): () => void {
       body,
     }, (event) => {
       if (event.kind === "response") {
-        status = Number((event.value as { status?: number })?.status ?? 0);
+        const response = event.value as { status?: number; detail?: string };
+        status = Number(response?.status ?? 0);
+        failureDetail = response?.detail ?? "";
       } else if (event.kind === "chunk") {
         void consumeChunk(new Uint8Array(event.value as ArrayBufferLike));
       } else if (event.kind === "done") {
-        if (status < 200 || status >= 300) opts.onError(new Error(`agent_runtime returned ${status}`));
+        if (status < 200 || status >= 300) {
+          const detail = failureDetail ? `: ${failureDetail.slice(0, 500)}` : "";
+          opts.onError(new Error(`agent_runtime returned ${status}${detail}`));
+        }
         else { if (runId) bridge.runs?.end(runId, "done"); opts.onDone(); }
       } else if (event.kind === "error") {
         if (runId) bridge.runs?.end(runId, "error");

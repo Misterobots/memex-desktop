@@ -128,6 +128,15 @@ export function registerAllIpc(ctx: IpcContext): void {
         body: request.body,
         signal: controller.signal,
       });
+      if (!response.ok) {
+        // A failed SSE response has no useful stream to consume. Preserve a
+        // bounded server detail so the renderer can show the actionable reason
+        // instead of only a bare status code.
+        const detail = (await response.text()).slice(0, 2_000);
+        send("response", { status: response.status, statusText: response.statusText, detail });
+        send("done");
+        return;
+      }
       send("response", { status: response.status, statusText: response.statusText });
       if (!response.body) throw new Error("Runtime returned no response body");
       const reader = response.body.getReader();

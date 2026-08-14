@@ -94,6 +94,12 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
       id: assistantId, role: "assistant", content: "",
       events: [], timestamp: Date.now(), mode,
     } as ChatMessage);
+    if (experience === "code") {
+      appendEvent(sessionId, assistantId, {
+        type: "status",
+        content: "Starting Code agent…",
+      });
+    }
 
     const history = (session?.messages ?? []).map((m) => ({ role: m.role, content: m.content }));
     history.push({ role: "user", content });
