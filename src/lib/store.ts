@@ -83,7 +83,10 @@ export const useStore = create<AppState>()(
         mempalace:    "checking",
         ollama:       "checking",
       },
-      selectedModel: "qwen3.6:27b",
+      // Code's responsive default.  The 27B model remains available as an
+      // explicit deep-work choice, but should not make every new Code session
+      // wait for a large cold GPU load.
+      selectedModel: "qwen3:14b",
 
       createSession: (requestedExperience, requestedWorkspaceKey) => {
         const experience = requestedExperience ?? experienceForTab(get().activeTab) ?? "chat";
@@ -237,7 +240,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: "memex-desktop",
-      version: 3,
+      version: 4,
       // mode is intentionally NOT persisted — it's a per-session intent, and a
       // sticky "swarm" silently turned greetings into build orchestration.
       // Each launch starts in the default "chat" mode.
@@ -270,6 +273,12 @@ export const useStore = create<AppState>()(
             delete activeIds.code;
           }
           persisted.activeSessionIds = activeIds;
+        }
+        // Earlier builds defaulted every experience to the 27B general model.
+        // Move only that old default to the responsive Code default; a user who
+        // picked any other model keeps their explicit choice.
+        if (persisted && version < 4 && persisted.selectedModel === "qwen3.6:27b") {
+          persisted.selectedModel = "qwen3:14b";
         }
         return persisted;
       },

@@ -15,6 +15,19 @@ function sizeLabel(gb: number): string {
   return gb >= 1 ? `${gb}GB` : `${Math.round(gb * 1000)}MB`;
 }
 
+const CODE_PRESETS = [
+  {
+    name: "qwen3:14b",
+    label: "Code — responsive",
+    detail: "Default · balanced speed and quality",
+  },
+  {
+    name: "qwen3.6:27b",
+    label: "Code — deep work",
+    detail: "Slower start · larger reasoning model",
+  },
+] as const;
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -90,6 +103,26 @@ export function ModelPickerPopover() {
               className="w-full px-3 py-1.5 text-xs bg-surface2 rounded-lg border border-border/60 text-text
                 focus:outline-none focus:ring-1 focus:ring-accent/60 placeholder-muted"
             />
+          </div>
+
+          <div className="px-2 pt-2 pb-1 border-b border-border/40">
+            <div className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Code presets
+            </div>
+            {CODE_PRESETS.map((preset) => (
+              <button
+                key={preset.name}
+                onClick={() => { setSelectedModel(preset.name); setOpen(false); setQuery(""); }}
+                className={`w-full rounded-lg px-2 py-1.5 text-left transition-colors
+                  ${preset.name === selectedModel ? "bg-accent/10 text-text" : "text-text/80 hover:bg-surface2/60"}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-medium">{preset.label}</span>
+                  <span className="font-mono text-[10px] text-muted">{shortName(preset.name)}</span>
+                </div>
+                <div className="text-[10px] text-muted">{preset.detail}</div>
+              </button>
+            ))}
           </div>
 
           <div className="max-h-64 overflow-y-auto py-1">
