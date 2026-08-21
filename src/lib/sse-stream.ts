@@ -22,6 +22,8 @@ export interface StreamOptions {
   model?: string;
   sessionId?: string;
   alreadySteered?: boolean;
+  /** Resume a server-side DevHarness checkpoint after explicit tool replay. */
+  devResume?: boolean;
   /** If provided, a RunRecord will be opened and closed around the stream. */
   runMeta?: { profile: string };
   /** Called as soon as the run record is created, with its ID. */
@@ -59,6 +61,7 @@ export function streamChat(opts: StreamOptions): () => void {
     stream: true,
     session_id: opts.sessionId ?? "default_session",
     already_steered: opts.alreadySteered ?? false,
+    dev_resume: opts.devResume ?? false,
     ...opts.modeFlags,
   });
 

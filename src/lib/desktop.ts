@@ -106,6 +106,8 @@ export interface RuntimeProfile {
   agentRuntime: string;
   mempalace:    string;
   ollama?:      string;
+  /** Last model deliberately selected for this routing profile. */
+  defaultModel?: string;
   apiKey?:      string; // only present when providerType === "external"
   readonly?:    boolean;
 }
@@ -148,6 +150,11 @@ export interface MemexBridge {
 
   dialog: { openFolder: () => Promise<string | null> };
 
+  cadPrint: {
+    getBridgeConfig: () => Promise<{ configured: boolean; envPath: string; url: string; importedAt: string | null }>;
+    importBridgeConfig: () => Promise<{ ok: boolean; canceled: boolean; error?: string; envPath?: string; url?: string; importedAt?: string }>;
+  };
+
   pty: {
     create:  (id: string, cwd?: string)               => Promise<{ pid: number }>;
     write:   (id: string, data: string)               => Promise<void>;
@@ -163,11 +170,19 @@ export interface MemexBridge {
   };
 
   updater: {
+    getStatus: () => Promise<{
+      state: "checking"|"available"|"downloading"|"ready"|"current"|"error";
+      version?: string; percent?: number; message?: string;
+    }>;
+    check: () => Promise<{
+      state: "checking"|"available"|"downloading"|"ready"|"current"|"error";
+      version?: string; percent?: number; message?: string;
+    }>;
     onStatus: (cb: (s: {
       state: "checking"|"available"|"downloading"|"ready"|"current"|"error";
       version?: string; percent?: number; message?: string;
     }) => void) => () => void;
-    install: () => void;
+    install: () => Promise<boolean>;
   };
 
   browser: {

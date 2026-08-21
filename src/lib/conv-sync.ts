@@ -22,30 +22,70 @@ export async function fetchRemoteSessions(): Promise<Session[]> {
     // Only trust well-formed conversation objects.
     return list.filter((c): c is Session =>
       !!c && typeof (c as Session).id === "string" && Array.isArray((c as Session).messages)
-    ).map((session) => ({ ...session, experience: session.experience ?? "chat" }));
+    ).map((session) => ({
+      ...session,
+      experience: session.experience ?? "chat",
+      // Older/synced messages can arrive without an events array; every
+      // renderer downstream (MessageBubble, etc.) assumes it's always present.
+      messages: session.messages.map((m) => ({ ...m, events: m.events ?? [] })),
+    }));
   } catch {
     return [];
   }
 }
 
-// Debounce pushes per session so rapid turns coalesce into one PUT.
-const timers = new Map<string, ReturnType<typeof setTimeout>>();
+// Debounce pushes per session so rapid turns coalesce into one PUT. Failed
+// writes are retried because a runtime restart or short network interruption
+// should not silently lose the latest local conversation state.
+type PendingPush = {
+  session: Session;
+  attempt: number;
+  timer?: ReturnType<typeof setTimeout>;
+};
+
+const pendingPushes = new Map<string, PendingPush>();
+const RETRY_DELAYS_MS = [1500, 3000, 6000, 12000];
+
+function schedulePush(id: string, pending: PendingPush, delayMs: number): void {
+  if (pending.timer) clearTimeout(pending.timer);
+  pending.timer = setTimeout(() => {
+    pending.timer = undefined;
+    void performPush(id, pending);
+  }, delayMs);
+}
+
+async function performPush(id: string, pending: PendingPush): Promise<void> {
+  // A newer local snapshot has replaced this retry; never let an older
+  // in-flight request delete or reschedule the newer entry.
+  if (pendingPushes.get(id) !== pending) return;
+
+  const payload = { ...pending.session, updatedAt: pending.session.updatedAt ?? Date.now() };
+  try {
+    const response = await apiFetch(`${getAgentRuntime()}/v1/conversations/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error(`conversation sync failed (${response.status})`);
+    if (pendingPushes.get(id) === pending) pendingPushes.delete(id);
+  } catch {
+    if (pendingPushes.get(id) !== pending) return;
+    const retryDelay = RETRY_DELAYS_MS[pending.attempt];
+    if (retryDelay === undefined) {
+      pendingPushes.delete(id);
+      return;
+    }
+    pending.attempt += 1;
+    schedulePush(id, pending, retryDelay);
+  }
+}
 
 /** Upsert a session to the backend (debounced). Skips empty sessions. */
 export function pushSession(session: Session): void {
   if (!session || session.messages.length === 0) return;
-  const existing = timers.get(session.id);
-  if (existing) clearTimeout(existing);
-  timers.set(session.id, setTimeout(() => {
-    timers.delete(session.id);
-    const payload = { ...session, updatedAt: session.updatedAt ?? Date.now() };
-    // Backend requires body.id === path id.
-    apiFetch(`${getAgentRuntime()}/v1/conversations/${encodeURIComponent(session.id)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }).catch(() => {});
-  }, 1200));
+  const pending: PendingPush = { session, attempt: 0 };
+  pendingPushes.set(session.id, pending);
+  schedulePush(session.id, pending, 1200);
 }
 
 /** Delete a session from the backend. */

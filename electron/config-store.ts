@@ -18,6 +18,8 @@ export interface RuntimeProfile {
   agentRuntime: string;
   mempalace:    string;
   ollama?:      string;
+  /** Last model deliberately selected for this routing profile. */
+  defaultModel?: string;
   apiKey?:      string;   // plaintext in memory/IPC; encrypted only in the persisted file
   readonly?:    boolean; // seed profiles are read-only by convention (UI hint only)
 }
@@ -83,6 +85,7 @@ const SEED_PROFILES: RuntimeProfile[] = [
     // Neither private address is ever sent to a remote Desktop install.
     agentRuntime: "https://memex.shivelymedia.com/api/backend",
     mempalace:    "https://memex.shivelymedia.com/api/backend",
+    defaultModel: "qwen3:14b",
     readonly:     true,
   },
   {
@@ -92,6 +95,7 @@ const SEED_PROFILES: RuntimeProfile[] = [
     agentRuntime: "http://192.168.2.101:8008",
     mempalace:    "http://192.168.2.102:8200",
     ollama:       "http://192.168.2.101:11434",
+    defaultModel: "qwen3:14b",
     readonly:     true,
   },
   {
@@ -101,6 +105,7 @@ const SEED_PROFILES: RuntimeProfile[] = [
     agentRuntime: "http://localhost:8008",
     mempalace:    "http://localhost:8200",
     ollama:       "http://localhost:11434",
+    defaultModel: "qwen3:14b",
     readonly:     true,
   },
 ];

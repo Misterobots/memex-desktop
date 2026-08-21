@@ -10,8 +10,9 @@ import { ProjectTasksPane } from "../dev/ProjectTasksPane";
 import { BrowserView } from "./BrowserView";
 import { ipc } from "../../lib/ipc";
 import { SessionList } from "../sidebar/SessionList";
+import { PrintWorkflowPanel } from "../dev/PrintWorkflowPanel";
 
-type PrimaryPane = "chat" | "editor" | "tasks";
+type PrimaryPane = "chat" | "editor" | "tasks" | "print";
 type BottomPane  = "terminal" | "browser" | "none";
 
 export function DevView() {
@@ -77,7 +78,7 @@ export function DevView() {
       <div className="flex flex-col flex-1 min-w-0">
         {/* Top toolbar */}
         <div className="flex items-center gap-1 px-3 h-9 border-b border-border/60 bg-surface flex-shrink-0">
-          {(["chat", "editor", "tasks"] as PrimaryPane[]).map((p) => (
+          {(["chat", "editor", "tasks", "print"] as PrimaryPane[]).map((p) => (
             <button
               key={p}
               onClick={() => setPrimary(p)}
@@ -85,7 +86,7 @@ export function DevView() {
                 primary === p ? "bg-surface2 text-text" : "text-faint hover:text-text"
               }`}
             >
-              {p === "editor" ? (openFile ? openFile.split(/[/\\]/).pop() : "Editor") : p === "tasks" ? "Tasks" : "Agent"}
+              {p === "editor" ? (openFile ? openFile.split(/[/\\]/).pop() : "Editor") : p === "tasks" ? "Tasks" : p === "print" ? "Print" : "Agent"}
             </button>
           ))}
           <div className="flex-1" />
@@ -124,7 +125,9 @@ export function DevView() {
           {/* Primary pane */}
           <div className={`flex flex-col flex-1 min-h-0 ${bottomPane !== "none" ? "border-b border-border/60" : ""}`}
                style={{ height: bottomPane !== "none" ? "60%" : "100%" }}>
-            {primary === "tasks" ? (
+            {primary === "print" ? (
+              <PrintWorkflowPanel />
+            ) : primary === "tasks" ? (
               <ProjectTasksPane cwd={cwd} />
             ) : primary === "editor" && openFile ? (
               <FileEditor

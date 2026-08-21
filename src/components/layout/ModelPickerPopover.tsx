@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { desktop, type OllamaModel } from "../../lib/desktop";
-import { fetchOllamaModels } from "../../lib/memex-client";
+import { apiFetch } from "../../lib/api-fetch";
+import { desktop, type RuntimeProfile } from "../../lib/desktop";
+import { getAgentRuntime } from "../../lib/runtime-urls";
 import { useStore } from "../../lib/store";
 
 // ---------------------------------------------------------------------------
@@ -11,40 +12,70 @@ function shortName(model: string): string {
   return model.replace(":", " ");
 }
 
-function sizeLabel(gb: number): string {
-  return gb >= 1 ? `${gb}GB` : `${Math.round(gb * 1000)}MB`;
-}
-
-const CODE_PRESETS = [
-  {
-    name: "qwen3:14b",
-    label: "Code — responsive",
-    detail: "Default · balanced speed and quality",
-  },
-  {
-    name: "qwen3.6:27b",
-    label: "Code — deep work",
-    detail: "Slower start · larger reasoning model",
-  },
-] as const;
+type CatalogModel = {
+  id: string;
+  label?: string;
+  description?: string;
+  owned_by?: string;
+  available?: boolean;
+};
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 export function ModelPickerPopover() {
-  const { selectedModel, setSelectedModel, connections } = useStore();
-  const bridge = desktop();
+  const { selectedModel, setSelectedModel } = useStore();
 
   const [open,   setOpen]   = useState(false);
-  const [models, setModels] = useState<OllamaModel[]>([]);
+  const [models, setModels] = useState<CatalogModel[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [accessResolved, setAccessResolved] = useState(false);
   const [query,  setQuery]  = useState("");
   const ref = useRef<HTMLDivElement>(null);
 
+  // Model choice follows the routing profile.  A remote profile might favour a
+  // responsive hosted default while a LAN profile can retain a larger local
+  // model; switching profiles must never silently carry the prior choice over.
+  useEffect(() => {
+    const bridge = desktop();
+    if (!bridge) return;
+    let alive = true;
+    const applyProfile = async (raw: unknown) => {
+      const profile = raw as RuntimeProfile;
+      if (!alive || !profile?.id) return;
+      const model = profile.defaultModel || useStore.getState().selectedModel;
+      if (model !== useStore.getState().selectedModel) setSelectedModel(model);
+      // Upgrade older profiles lazily so their current explicit selection is
+      // captured once and becomes independent of other profiles thereafter.
+      if (!profile.defaultModel) {
+        await bridge.config.save({ ...profile, defaultModel: model });
+      }
+    };
+    void bridge.config.getActive().then(applyProfile).catch(() => {});
+    return bridge.config.onChange((profile) => { void applyProfile(profile); });
+  }, [setSelectedModel]);
+
+  useEffect(() => {
+    let alive = true;
+    apiFetch(`${getAgentRuntime()}/api/v1/identity`, { signal: AbortSignal.timeout(6000) })
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => {
+        if (!alive) return;
+        const level = String(data?.caller_identity?.security_level ?? "").toUpperCase();
+        setIsAdmin(level === "L3_ADMIN" || level === "L4_SYSTEM");
+      })
+      .catch(() => { if (alive) setIsAdmin(false); })
+      .finally(() => { if (alive) setAccessResolved(true); });
+    return () => { alive = false; };
+  }, []);
+
   const load = useCallback(async () => {
-    // Desktop: Electron bridge. Web: same-origin /v1/models/ollama proxy.
-    const list = bridge ? await bridge.ollama.listModels() : await fetchOllamaModels();
-    setModels(list);
-  }, [bridge]);
+    if (!isAdmin) return;
+    const response = await apiFetch(`${getAgentRuntime()}/v1/models`, { signal: AbortSignal.timeout(8000) });
+    if (!response.ok) return;
+    const data = await response.json();
+    setModels(Array.isArray(data?.data) ? data.data : []);
+  }, [isAdmin]);
 
   // Reload when popover opens
   useEffect(() => { if (open) load(); }, [open, load]);
@@ -59,11 +90,29 @@ export function ModelPickerPopover() {
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  const ollamaOk = connections.ollama === "connected";
-
   const filtered = models.filter((m) =>
-    !query || m.name.toLowerCase().includes(query.toLowerCase())
+    !query || `${m.label ?? ""} ${m.id}`.toLowerCase().includes(query.toLowerCase())
   );
+
+  const chooseModel = async (model: string) => {
+    setSelectedModel(model);
+    const bridge = desktop();
+    if (bridge) {
+      try {
+        const profile = await bridge.config.getActive();
+        await bridge.config.save({ ...profile, defaultModel: model });
+      } catch {
+        // The local store is still persisted, so selection remains stable even
+        // if the native profile write is temporarily unavailable.
+      }
+    }
+    setOpen(false);
+    setQuery("");
+  };
+
+  if (!accessResolved || !isAdmin) {
+    return <span className="px-2 py-1 text-xs text-muted" title="Memex selects the approved default model">Memex default</span>;
+  }
 
   return (
     <div ref={ref} className="relative">
@@ -74,7 +123,6 @@ export function ModelPickerPopover() {
           ${open ? "bg-surface2 text-text" : "text-muted hover:text-text hover:bg-surface2/60"}`}
         title="Select model"
       >
-        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${ollamaOk ? "bg-green-400" : "bg-muted"}`} />
         <span className="font-mono max-w-[120px] truncate">{shortName(selectedModel)}</span>
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5">
           <path d="M2 3.5l3 3 3-3" />
@@ -84,14 +132,8 @@ export function ModelPickerPopover() {
       {/* Popover */}
       {open && (
         <div className="absolute bottom-full mb-2 left-0 w-72 bg-canvas border border-border/60 rounded-2xl shadow-2xl z-50 overflow-hidden">
-          <div className="px-3 py-2.5 border-b border-border/40 flex items-center justify-between">
+          <div className="px-3 py-2.5 border-b border-border/40">
             <span className="text-xs font-semibold text-muted uppercase tracking-wide">Model</span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full border
-              ${ollamaOk
-                ? "text-green-400 border-green-400/30 bg-green-400/10"
-                : "text-muted border-border/40"}`}>
-              {ollamaOk ? "Ollama connected" : "Ollama offline"}
-            </span>
           </div>
 
           <div className="p-2 border-b border-border/40">
@@ -105,52 +147,31 @@ export function ModelPickerPopover() {
             />
           </div>
 
-          <div className="px-2 pt-2 pb-1 border-b border-border/40">
-            <div className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
-              Code presets
-            </div>
-            {CODE_PRESETS.map((preset) => (
-              <button
-                key={preset.name}
-                onClick={() => { setSelectedModel(preset.name); setOpen(false); setQuery(""); }}
-                className={`w-full rounded-lg px-2 py-1.5 text-left transition-colors
-                  ${preset.name === selectedModel ? "bg-accent/10 text-text" : "text-text/80 hover:bg-surface2/60"}`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-medium">{preset.label}</span>
-                  <span className="font-mono text-[10px] text-muted">{shortName(preset.name)}</span>
-                </div>
-                <div className="text-[10px] text-muted">{preset.detail}</div>
-              </button>
-            ))}
-          </div>
-
           <div className="max-h-64 overflow-y-auto py-1">
             {filtered.length === 0 && (
               <p className="px-3 py-4 text-xs text-muted text-center">
                 {query
                   ? "No models match"
-                  : "No models available — type a model name manually below"}
+                  : "No models available"}
               </p>
             )}
             {filtered.map((m) => (
               <button
-                key={m.name}
-                onClick={() => { setSelectedModel(m.name); setOpen(false); setQuery(""); }}
-                className={`w-full text-left flex items-center justify-between gap-2 px-3 py-2 transition-colors
-                  ${m.name === selectedModel ? "bg-accent/10 text-text" : "text-text/80 hover:bg-surface2/60"}`}
+                key={m.id}
+                disabled={m.available === false}
+                onClick={() => { void chooseModel(m.id); }}
+                className={`w-full text-left flex items-center justify-between gap-2 px-3 py-2 transition-colors disabled:opacity-45 disabled:cursor-not-allowed
+                  ${m.id === selectedModel ? "bg-accent/10 text-text" : "text-text/80 hover:bg-surface2/60"}`}
               >
                 <div className="min-w-0">
-                  <div className="text-xs font-mono truncate">{m.name}</div>
+                  <div className="text-xs font-medium truncate">{m.label ?? m.id}</div>
                   <div className="text-[10px] text-muted truncate">
-                    {[m.family, m.parameterSize].filter(Boolean).join(" · ")}
+                    {m.description ?? m.id}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  {m.sizeGb > 0 && (
-                    <span className="text-[10px] text-muted">{sizeLabel(m.sizeGb)}</span>
-                  )}
-                  {m.name === selectedModel && (
+                  {m.available === false && <span className="text-[10px] text-muted">Setup required</span>}
+                  {m.id === selectedModel && (
                     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" className="text-accent">
                       <path d="M1.5 5l3 3 4-5" />
                     </svg>
@@ -160,33 +181,6 @@ export function ModelPickerPopover() {
             ))}
           </div>
 
-          {/* Manual entry fallback */}
-          <div className="p-2 border-t border-border/40">
-            <div className="text-[10px] text-muted mb-1">Or type a model name directly:</div>
-            <div className="flex gap-1.5">
-              <input
-                placeholder="model:tag"
-                defaultValue={selectedModel}
-                id="model-manual-input"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    const v = (e.target as HTMLInputElement).value.trim();
-                    if (v) { setSelectedModel(v); setOpen(false); }
-                  }
-                }}
-                className="flex-1 px-2 py-1 text-xs bg-surface2 rounded-lg border border-border/60 text-text font-mono
-                  focus:outline-none focus:ring-1 focus:ring-accent/60 placeholder-muted"
-              />
-              <button
-                onClick={() => {
-                  const el = document.getElementById("model-manual-input") as HTMLInputElement | null;
-                  const v = el?.value.trim();
-                  if (v) { setSelectedModel(v); setOpen(false); }
-                }}
-                className="px-2 py-1 text-xs rounded-lg bg-accent text-white hover:bg-accent/80"
-              >Set</button>
-            </div>
-          </div>
         </div>
       )}
     </div>

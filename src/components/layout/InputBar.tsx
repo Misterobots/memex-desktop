@@ -30,6 +30,11 @@ const MODE_DESC: Record<MemexMode, string> = {
   workshop: "Refine an idea into a brief",
 };
 
+function syncSessionById(sessionId: string): void {
+  const session = useStore.getState().sessions.find((item) => item.id === sessionId);
+  if (session) pushSession(session);
+}
+
 interface InputBarProps {
   /** Extra request flags merged into every send (e.g. { dev_mode: true }). */
   extraFlags?: Record<string, boolean>;
@@ -43,9 +48,11 @@ interface InputBarProps {
   workspaceKey?: string;
   /** Prevents submission while preserving an explanatory composer state. */
   disabledReason?: string;
+  /** Drops example/starter text into the composer (e.g. an empty-state suggestion click). */
+  prefillText?: string;
 }
 
-export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = "chat", workspaceKey, disabledReason }: InputBarProps) {
+export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = "chat", workspaceKey, disabledReason, prefillText }: InputBarProps) {
   const [text, setText] = useState("");
   const [modeOpen, setModeOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -68,6 +75,12 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
     ta.style.height = "auto";
     ta.style.height = Math.min(ta.scrollHeight, 220) + "px";
   }, [text]);
+
+  useEffect(() => {
+    if (!prefillText) return;
+    setText(prefillText);
+    textareaRef.current?.focus();
+  }, [prefillText]);
 
   useEffect(() => {
     if (!modeOpen) return;
@@ -101,6 +114,13 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
       });
     }
 
+    // Persist an initial turn checkpoint before the first model token. The
+    // debounced/retrying sync queue coalesces subsequent stream updates, so a
+    // browser or runtime interruption still leaves the in-flight turn
+    // resumable remotely instead of only in localStorage.
+    const syncSession = () => syncSessionById(sessionId);
+    syncSession();
+
     const history = (session?.messages ?? []).map((m) => ({ role: m.role, content: m.content }));
     history.push({ role: "user", content });
 
@@ -112,24 +132,30 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
       modeFlags: { ...MODE_FLAGS[mode], ...extraFlags },
       sessionId,
       runMeta: { profile: "default" },
-      onRunStarted: (runId) => updateMessageRunId(sessionId, assistantId, runId),
-      onUsage: (usage) => setMessageUsage(sessionId, assistantId, usage),
+      onRunStarted: (runId) => {
+        updateMessageRunId(sessionId, assistantId, runId);
+        syncSession();
+      },
+      onUsage: (usage) => {
+        setMessageUsage(sessionId, assistantId, usage);
+        syncSession();
+      },
       onEvent: (event) => {
         appendEvent(sessionId, assistantId, event as MessageEvent);
         if (event.type === "message" || event.type === "response") {
           accumulated += event.content;
           updateMessageContent(sessionId, assistantId, accumulated);
         }
+        syncSession();
       },
       onDone: () => {
         setStreaming(sessionId, false);
-        // Sync the completed conversation to the backend for resume / cross-device.
-        const sess = useStore.getState().sessions.find((x) => x.id === sessionId);
-        if (sess) pushSession(sess);
+        syncSession();
       },
       onError: (err) => {
         appendEvent(sessionId, assistantId, { type: "log", content: `Error: ${err.message}` });
         setStreaming(sessionId, false);
+        syncSession();
       },
     });
     setStreaming(sessionId, true, stop);
@@ -144,7 +170,10 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
     }
     if (e.key === "Escape" && streaming && stopStream) {
       stopStream();
-      if (currentSessionId) setStreaming(currentSessionId, false);
+      if (currentSessionId) {
+        setStreaming(currentSessionId, false);
+        syncSessionById(currentSessionId);
+      }
     }
   };
 
@@ -216,7 +245,13 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
             </div>
 
             <button
-              onClick={streaming ? () => { stopStream?.(); if (currentSessionId) setStreaming(currentSessionId, false); } : submit}
+              onClick={streaming ? () => {
+                stopStream?.();
+                if (currentSessionId) {
+                  setStreaming(currentSessionId, false);
+                  syncSessionById(currentSessionId);
+                }
+              } : submit}
               disabled={!streaming && (!text.trim() || !!disabledReason)}
               className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${
                 streaming
