@@ -57,7 +57,7 @@ export function ChatView() {
 
         <main className="flex flex-col flex-1 min-w-0">
           <ConversationPane />
-          <InputBar lockMode="chat" placeholder="Message Memex…" />
+          <InputBar placeholder="Message Memex…" />
         </main>
 
         {/* Inspector: full-screen overlay on mobile, side column on md+ */}
