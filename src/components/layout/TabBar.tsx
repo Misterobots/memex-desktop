@@ -53,8 +53,19 @@ const TABS: TabDef[] = [
     ),
   },
   {
-    id: "art",
+    id: "design",
     label: "Design",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <rect x="2" y="2.5" width="12" height="11" rx="1.5" />
+        <path d="M5 6h6M5 8.5h4M5 11h2" />
+        <path d="M12.5 1.5v3M11 3h3" />
+      </svg>
+    ),
+  },
+  {
+    id: "art",
+    label: "Art",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
         <rect x="2" y="2.5" width="12" height="11" rx="1.5" />

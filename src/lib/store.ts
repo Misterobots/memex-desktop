@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type {
   ChatMessage, Session, ConnectionStatus, MemexMode, MessageEvent, AppTab, TokenUsage,
-  ExperienceId,
+  ExperienceId, ChatDisplayMode,
 } from "../types/memex";
 
 export const experienceForTab = (tab: AppTab): ExperienceId | null => {
@@ -51,6 +51,7 @@ interface AppState {
   updateMessageRunId: (sessionId: string, msgId: string, runId: string) => void;
   setMessageUsage: (sessionId: string, msgId: string, usage: TokenUsage) => void;
   replaceMessages: (sessionId: string, messages: ChatMessage[]) => void;
+  setSessionDisplayMode: (sessionId: string, displayMode: ChatDisplayMode) => void;
 
   // Actions — UI
   setActiveTab: (tab: AppTab) => void;
@@ -215,6 +216,10 @@ export const useStore = create<AppState>()(
             sess.id === sessionId ? { ...sess, messages, updatedAt: Date.now() } : sess
           ),
         })),
+
+      setSessionDisplayMode: (sessionId, displayMode) => set((s) => ({
+        sessions: s.sessions.map((sess) => sess.id === sessionId ? { ...sess, displayMode, updatedAt: Date.now() } : sess),
+      })),
 
       setActiveTab:      (activeTab)         => set({ activeTab }),
       setMode:           (mode)              => set({ mode }),

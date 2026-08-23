@@ -5,20 +5,20 @@ interface Props { event: MessageEvent; }
 
 export function AgentTrace({ event }: Props) {
   const [expanded, setExpanded] = useState(false);
-  const label = event.pioneer_name ?? event.agent_name ?? "Agent";
+  const label = event.pioneer_name ?? event.agent_name ?? "Worker output";
 
   return (
-    <div className="border border-border rounded bg-surface text-xs font-mono">
+    <div className="border border-border/70 rounded-lg bg-surface text-xs">
       <button
         onClick={() => setExpanded((x) => !x)}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-canvas transition-colors"
+        aria-expanded={expanded}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-canvas transition-colors"
       >
-        <span className="text-green">{expanded ? "▼" : "▶"}</span>
-        <span className="text-accent">{label}</span>
-        <span className="text-muted ml-auto">worker output</span>
+        <span className="text-accent font-medium">{label}</span>
+        <span className="text-muted ml-auto">{expanded ? "Hide details" : "Show details"}</span>
       </button>
       {expanded && (
-        <div className="px-3 pb-2 pt-1 text-muted whitespace-pre-wrap border-t border-border">
+        <div className="px-3 pb-3 pt-2 text-muted whitespace-pre-wrap border-t border-border/70 leading-5">
           {event.content}
         </div>
       )}

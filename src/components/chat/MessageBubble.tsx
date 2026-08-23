@@ -1,4 +1,4 @@
-import type { ChatMessage } from "../../types/memex";
+import type { ChatDisplayMode, ChatMessage } from "../../types/memex";
 import { StatusEvent }  from "./StatusEvent";
 import { AgentTrace }   from "./AgentTrace";
 import { SteeringCard } from "./SteeringCard";
@@ -10,6 +10,7 @@ interface Props {
   message: ChatMessage;
   /** True only for the single message currently being streamed. */
   isActive?: boolean;
+  displayMode?: ChatDisplayMode;
 }
 
 function RunButton({ runId }: { runId: string }) {
@@ -37,16 +38,17 @@ function RunButton({ runId }: { runId: string }) {
   );
 }
 
-export function MessageBubble({ message, isActive = false }: Props) {
+export function MessageBubble({ message, isActive = false, displayMode = "normal" }: Props) {
   const isUser = message.role === "user";
   // Waiting for the first token on the message that's actively streaming.
   const isWaiting = isActive && !message.content;
 
-  const statusEvents = message.events.filter(
-    (e) => e.type === "status" || e.type === "thought" || e.type === "log"
+  const events = message.events ?? [];
+  const statusEvents = events.filter(
+    (e) => e.type === "status"
   );
-  const agentEvents   = message.events.filter((e) => e.type === "agent_event");
-  const clarification = message.events.find((e) => e.type === "clarification_card");
+  const agentEvents   = displayMode === "summary" ? [] : events.filter((e) => e.type === "agent_event");
+  const clarification = events.find((e) => e.type === "clarification_card");
 
   if (isUser) {
     return (
@@ -62,7 +64,7 @@ export function MessageBubble({ message, isActive = false }: Props) {
     <div className="flex gap-3 fade-up">
       {/* Assistant avatar */}
       <div className="flex-shrink-0 w-7 h-7 rounded-full bg-accent/15 border border-accent/30 flex items-center justify-center mt-0.5">
-        <span className="text-accent text-sm">◈</span>
+        <span className="sr-only">Assistant</span>
       </div>
 
       <div className="flex-1 min-w-0 space-y-2.5">

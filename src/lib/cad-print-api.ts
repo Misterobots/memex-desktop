@@ -19,7 +19,44 @@ export type CadBridgeConfig = {
   token: string;
 };
 
-function config(): CadBridgeConfig {
+/** Shared with the Friday voice assistant; both are clients of the same local bridge. */
+export const FRIDAY_BODY_ROOT = "C:\\Users\\panca\\Documents\\Github\\Friday_Body";
+
+export type CadArtifact = { name: string; path: string; bytes: number; sha256: string };
+export type BuildSetItem = { part: string; quantity: number };
+export type BuildSetExport = {
+  ok: boolean;
+  artifact?: CadArtifact;
+  parts?: Array<{ part: string; quantity: number; artifact: CadArtifact }>;
+  manifest?: Record<string, unknown>;
+  error?: string;
+};
+export type PrinterContext = {
+  ok: boolean;
+  configured: boolean;
+  source: "home_assistant";
+  captured_at?: string;
+  error?: string;
+  entities: Array<{
+    entity_id: string;
+    state?: string;
+    last_changed?: string;
+    attributes?: Record<string, unknown>;
+    error?: string;
+  }>;
+};
+
+/**
+ * Accept the two natural ways a user copies the local secret: either just the
+ * token value, or the complete `CAD_PRINT_BRIDGE_TOKEN=...` line from .env.
+ * Keeping this normalization here means every caller sends one canonical
+ * Authorization value.
+ */
+export function normalizeCadBridgeToken(value: string): string {
+  return value.trim().replace(/^CAD_PRINT_BRIDGE_TOKEN\s*=\s*/i, "").trim();
+}
+
+export function loadCadBridgeConfig(): CadBridgeConfig {
   // Runtime can proxy this in the future. Until then, a local bridge is the
   // safest default; no ambient credentials are sent to Agent_Swarm.
   return {
@@ -29,7 +66,7 @@ function config(): CadBridgeConfig {
 }
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const { url, token } = config();
+  const { url, token } = loadCadBridgeConfig();
   const response = await apiFetch(`${url}${path}`, {
     ...init,
     headers: {
@@ -45,7 +82,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function saveCadBridgeConfig(next: CadBridgeConfig): void {
   localStorage.setItem("memex.cadPrintBridgeUrl", next.url.replace(/\/$/, ""));
-  localStorage.setItem("memex.cadPrintBridgeToken", next.token);
+  localStorage.setItem("memex.cadPrintBridgeToken", normalizeCadBridgeToken(next.token));
 }
 
 export const cadPrint = {
@@ -55,6 +92,11 @@ export const cadPrint = {
     call<{ ok: boolean; artifact?: { name: string; path: string; bytes: number; sha256: string }; error?: string }>("/cad/render", {
       method: "POST", body: JSON.stringify({ part, format }),
     }),
+  exportBuildSet: (items: BuildSetItem[]) =>
+    call<BuildSetExport>("/cad/export-build-set", {
+      method: "POST", body: JSON.stringify({ items }),
+    }),
+  printerContext: () => call<PrinterContext>("/printer/context"),
   artifacts: () => call<{ ok: boolean; artifacts: Array<{ name: string; path: string; bytes: number; sha256: string }> }>("/cad/artifacts"),
   printStatus: () => call<Record<string, unknown>>("/print/status"),
   printJobs: () => call<Record<string, unknown>>("/print/jobs"),

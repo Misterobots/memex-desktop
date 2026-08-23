@@ -41,6 +41,52 @@ import { MEMEX_PUBLIC_ORIGIN, publicSessionHeaders } from "./remote-auth";
 
 const execAsync = promisify(exec);
 
+const LOCAL_CAD_BRIDGE_URL = "http://127.0.0.1:8790";
+
+type CadBridgeImport = {
+  envPath: string;
+  url: string;
+  importedAt: string;
+};
+
+function cadBridgeImportPath(): string {
+  return join(app.getPath("userData"), "cad-print-bridge.json");
+}
+
+function savedCadBridgeImport(): CadBridgeImport | null {
+  try {
+    const parsed = JSON.parse(readFileSync(cadBridgeImportPath(), "utf-8")) as Partial<CadBridgeImport>;
+    if (typeof parsed.envPath !== "string" || typeof parsed.url !== "string" || typeof parsed.importedAt !== "string") return null;
+    return { envPath: parsed.envPath, url: parsed.url, importedAt: parsed.importedAt };
+  } catch {
+    return null;
+  }
+}
+
+function tokenFromCadBridgeEnv(envPath: string): string {
+  try {
+    const match = readFileSync(envPath, "utf-8").match(/^\s*CAD_PRINT_BRIDGE_TOKEN\s*=\s*(.+?)\s*$/m);
+    return match?.[1]?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Read the Friday Body CAD bridge credential only in Electron's main process.
+ * The renderer never receives this value, so the local print workflow does
+ * not depend on users copying a secret out of a .env file by hand.
+ */
+function getLocalCadBridgeToken(): string {
+  const explicit = process.env.CAD_PRINT_BRIDGE_TOKEN?.trim();
+  if (explicit) return explicit;
+
+  const imported = savedCadBridgeImport()?.envPath;
+  const envPath = process.env.MEMEX_CAD_PRINT_BRIDGE_ENV || imported
+    || join(process.env.USERPROFILE ?? "", "Documents", "Github", "Friday_Body", "services", "cad_print_bridge", ".env");
+  return tokenFromCadBridgeEnv(envPath);
+}
+
 export interface IpcContext {
   config:    ConfigStore;
   firewall:  WorkspaceFirewall;
@@ -70,17 +116,29 @@ export function registerAllIpc(ctx: IpcContext): void {
   // Keep feature API calls in the native process, alongside the health probe
   // that already proves this session is authenticated. Targets are restricted
   // to the active profile so this cannot become an arbitrary network proxy.
+  // The sole exception is the CAD/print bridge: it is deliberately a
+  // workstation-local service, pinned to loopback port 8790. The renderer may
+  // configure its token, but cannot use this path as a general local-network
+  // proxy (no other host, port, or path is accepted here).
   type ApiRequest = {
     url: string;
     method?: string;
     headers?: Record<string, string>;
     body?: string;
   };
+  const isLocalCadPrintBridge = (raw: string): boolean => {
+    try {
+      const target = new URL(raw);
+      const loopback = target.hostname === "127.0.0.1" || target.hostname === "localhost" || target.hostname === "::1";
+      const allowedPath = target.pathname === "/health" || target.pathname.startsWith("/cad/") || target.pathname.startsWith("/printer/") || target.pathname.startsWith("/print/");
+      return target.protocol === "http:" && loopback && target.port === "8790" && allowedPath;
+    } catch { return false; }
+  };
   const prepareApiRequest = async (request: ApiRequest) => {
     const urls = config.getUrls();
     const allowed = [urls.agentRuntime, urls.mempalace, urls.ollama]
       .filter(Boolean)
-      .some((base) => request.url.startsWith(base));
+      .some((base) => request.url.startsWith(base)) || isLocalCadPrintBridge(request.url);
     if (!allowed) throw new Error("Request target is outside the active runtime profile");
 
     const active = config.getActive();
@@ -91,7 +149,13 @@ export function registerAllIpc(ctx: IpcContext): void {
     if (urls.agentRuntime.startsWith(MEMEX_PUBLIC_ORIGIN)) {
       for (const [name, value] of Object.entries(await publicSessionHeaders())) headers.set(name, value);
     }
-    if (active.providerType === "external" && active.apiKey) {
+    // The local CAD bridge owns a separate workstation-only token.  Source it
+    // locally so a pasted UI value cannot be stale or accidentally be an LLM
+    // provider key. Never expose the token back across IPC.
+    if (isLocalCadPrintBridge(request.url)) {
+      const localToken = getLocalCadBridgeToken();
+      if (localToken) headers.set("Authorization", `Bearer ${localToken}`);
+    } else if (active.providerType === "external" && active.apiKey) {
       headers.set("Authorization", `Bearer ${active.apiKey}`);
     }
 
@@ -255,6 +319,33 @@ export function registerAllIpc(ctx: IpcContext): void {
   ipcMain.handle("dialog:openFolder", async () => {
     const r = await dialog.showOpenDialog({ properties: ["openDirectory"] });
     return r.canceled ? null : r.filePaths[0];
+  });
+  ipcMain.handle("cadPrint:getBridgeConfig", () => {
+    const saved = savedCadBridgeImport();
+    const envPath = saved?.envPath || process.env.MEMEX_CAD_PRINT_BRIDGE_ENV
+      || join(process.env.USERPROFILE ?? "", "Documents", "Github", "Friday_Body", "services", "cad_print_bridge", ".env");
+    return {
+      configured: Boolean(tokenFromCadBridgeEnv(envPath)),
+      envPath,
+      url: saved?.url ?? LOCAL_CAD_BRIDGE_URL,
+      importedAt: saved?.importedAt ?? null,
+    };
+  });
+  ipcMain.handle("cadPrint:importBridgeConfig", async () => {
+    const choice = await dialog.showOpenDialog({
+      title: "Import Friday CAD bridge configuration",
+      defaultPath: savedCadBridgeImport()?.envPath,
+      properties: ["openFile"],
+      filters: [{ name: "Environment file", extensions: ["env"] }, { name: "All files", extensions: ["*"] }],
+    });
+    if (choice.canceled || !choice.filePaths[0]) return { ok: false, canceled: true };
+    const envPath = choice.filePaths[0];
+    if (!tokenFromCadBridgeEnv(envPath)) {
+      return { ok: false, canceled: false, error: "The selected file does not contain CAD_PRINT_BRIDGE_TOKEN." };
+    }
+    const record: CadBridgeImport = { envPath, url: LOCAL_CAD_BRIDGE_URL, importedAt: new Date().toISOString() };
+    writeFileSync(cadBridgeImportPath(), JSON.stringify(record, null, 2), "utf-8");
+    return { ok: true, ...record };
   });
   ipcMain.handle("app:getCwd",       () => process.cwd());
   ipcMain.handle("app:getVersion",   () => app.getVersion());

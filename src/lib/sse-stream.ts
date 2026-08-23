@@ -35,6 +35,28 @@ export interface StreamOptions {
   onError: (err: Error) => void;
 }
 
+/** Translate runtime-specific event names into the renderer's stable contract. */
+export function normalizeSSEDelta(delta: Record<string, unknown>): SSEEvent | null {
+  const rawType = typeof delta.type === "string" ? delta.type : "message";
+  const typeMap: Record<string, EventType> = {
+    content: "message", error: "log", tool_start: "tool_call_start",
+    tool_approval_needed: "status", tool_result: "tool_call_result",
+    file_change: "agent_event", todo: "status", approval_requested: "status",
+    approval_granted: "status", approval_denied: "status", continuation: "status",
+  };
+  const knownTypes: EventType[] = ["message", "status", "thought", "response", "log", "agent_event", "clarification_card", "tool_call_start", "tool_call_result"];
+  const eventType = typeMap[rawType] ?? (knownTypes.includes(rawType as EventType) ? rawType as EventType : "log");
+  const rawContent = delta.content;
+  const content = typeof rawContent === "string" ? rawContent : rawType === "todo" ? "Updated task plan." : rawType === "file_change" ? "Proposed file changes." : JSON.stringify(rawContent ?? {});
+  return {
+    type: eventType,
+    content,
+    agent_name: typeof delta.agent_name === "string" ? delta.agent_name : undefined,
+    pioneer_name: typeof delta.pioneer_name === "string" ? delta.pioneer_name : undefined,
+    clarification: delta.clarification as SSEEvent["clarification"],
+    data: eventType === "message" || eventType === "response" ? undefined : delta,
+  };
+}
 export function streamChat(opts: StreamOptions): () => void {
   const controller = new AbortController();
   const bridge     = desktop();
@@ -87,28 +109,7 @@ export function streamChat(opts: StreamOptions): () => void {
         const delta = chunk?.choices?.[0]?.delta;
         if (!delta || (!delta.type && !delta.content)) continue;
         const rawType = (delta.type as string) ?? "message";
-        // DevHarness uses a richer vocabulary than the conversational stream.
-        // Normalize it into the established desktop presentation contract so a
-        // completed coding run never looks blank merely because it said
-        // `content` instead of `message`.
-        const typeMap: Record<string, EventType> = {
-          content: "message",
-          error: "log",
-          tool_start: "status",
-          tool_approval_needed: "status",
-          tool_result: "agent_event",
-          file_change: "agent_event",
-          todo: "status",
-        };
-        const eventType = typeMap[rawType] ?? rawType as EventType;
-        const rawContent = delta.content;
-        const content = typeof rawContent === "string"
-          ? rawContent
-          : rawType === "todo"
-            ? "Updated task plan."
-            : rawType === "file_change"
-              ? "Proposed file changes."
-              : JSON.stringify(rawContent ?? {});
+
         if (rawType === "memory_write" && bridge) {
           const policy = await bridge.workspace.getPolicy();
           if (policy.mode === "ask") {
@@ -120,15 +121,9 @@ export function streamChat(opts: StreamOptions): () => void {
             if (!approved) continue;
           }
         }
-        const isText = eventType === "message" || eventType === "response";
-        opts.onEvent({
-          type: eventType,
-          content,
-          agent_name: delta.agent_name,
-          pioneer_name: delta.pioneer_name,
-          clarification: delta.clarification,
-          data: isText ? undefined : (delta as Record<string, unknown>),
-        });
+        const normalized = normalizeSSEDelta(delta as Record<string, unknown>);
+        if (normalized) opts.onEvent(normalized);
+
       } catch {}
     }
   };

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useStore } from "../../lib/store";
 import { ConversationPane } from "../chat/ConversationPane";
 import { InputBar } from "../layout/InputBar";
@@ -5,6 +6,7 @@ import { SessionList } from "../sidebar/SessionList";
 
 export function ResearchView() {
   const { activeSession } = useStore();
+  const [prefillText, setPrefillText] = useState("");
   const session = activeSession("research");
   const empty = !session || session.messages.length === 0;
 
@@ -24,13 +26,19 @@ export function ResearchView() {
               </p>
               <div className="flex flex-col gap-2 max-w-md mx-auto text-left">
                 {["Compare three approaches with sources", "Investigate a technical decision", "Build a cited background brief"].map((example) => (
-                  <div key={example} className="px-4 py-2.5 rounded-xl border border-border/60 bg-surface text-muted text-sm">{example}</div>
+                  <button
+                    key={example}
+                    onClick={() => setPrefillText(example)}
+                    className="px-4 py-2.5 rounded-xl border border-border/60 bg-surface text-muted text-sm text-left hover:bg-surface2 hover:text-text transition-colors"
+                  >
+                    {example}
+                  </button>
                 ))}
               </div>
             </div>
           </div>
         ) : <ConversationPane experience="research" />}
-        <InputBar experience="research" lockMode="research" placeholder="What would you like to investigate?" />
+        <InputBar experience="research" lockMode="research" placeholder="What would you like to investigate?" prefillText={prefillText} />
       </main>
     </div>
   );

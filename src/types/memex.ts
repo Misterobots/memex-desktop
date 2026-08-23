@@ -1,7 +1,7 @@
-export type AppTab = "chat" | "dev" | "research" | "goals" | "art" | "memory" | "eval" | "settings";
+export type AppTab = "chat" | "dev" | "research" | "goals" | "design" | "art" | "memory" | "eval" | "settings";
 
 /** Conversational products own separate histories and lifecycle state. */
-export type ExperienceId = "chat" | "code" | "research" | "goals" | "design";
+export type ExperienceId = "chat" | "code" | "research" | "goals" | "product_design" | "design";
 
 // ---------------------------------------------------------------------------
 // Task board types (mobile Codex loop — mirrors agent_runtime /v1/tasks)
@@ -50,6 +50,8 @@ export interface TaskWorker {
   started_at?:   number;
   completed_at?: number;
 }
+
+export type ChatDisplayMode = "normal" | "summary" | "thought";
 
 export type MemexMode =
   | "chat"
@@ -175,6 +177,7 @@ export interface Session {
   createdAt: number;
   updatedAt?: number;   // last activity — used for cross-device sync ordering
   messages: ChatMessage[];
+  displayMode?: ChatDisplayMode;
 }
 
 export interface ConnectionStatus {

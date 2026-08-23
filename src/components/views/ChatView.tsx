@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { useStore } from "../../lib/store";
+import type { ChatDisplayMode } from "../../types/memex";
 import { SessionList } from "../sidebar/SessionList";
 import { ConversationPane } from "../chat/ConversationPane";
 import { InputBar } from "../layout/InputBar";
@@ -22,7 +23,9 @@ export function useInspector(): InspectorCtx | null {
 // ChatView
 // ---------------------------------------------------------------------------
 export function ChatView() {
-  const { sidebarOpen, toggleSidebar } = useStore();
+  const { sidebarOpen, toggleSidebar, activeSession, setSessionDisplayMode } = useStore();
+  const session = activeSession("chat");
+  const displayMode: ChatDisplayMode = session?.displayMode ?? "normal";
   const [inspectorRunId, setInspectorRunId] = useState<string | null>(null);
 
   // On phones the sidebar is a slide-over, so start it closed (once on mount).
@@ -53,10 +56,15 @@ export function ChatView() {
               <SessionList />
             </aside>
           </>
-        )}
-
-        <main className="flex flex-col flex-1 min-w-0">
-          <ConversationPane />
+        )}        <main className="flex flex-col flex-1 min-w-0">
+          <div className="flex items-center justify-end px-4 py-2 border-b border-border/50">
+            <div className="flex items-center gap-1 rounded-lg border border-border/60 bg-surface p-0.5" role="group" aria-label="Chat display mode">
+              {(["normal", "summary", "thought"] as ChatDisplayMode[]).map((option) => (
+                <button key={option} disabled={!session} onClick={() => session && setSessionDisplayMode(session.id, option)} className={`px-2.5 py-1 rounded-md text-[11px] capitalize transition-colors ${displayMode === option ? "bg-surface2 text-text" : "text-muted hover:text-text"}`}>{option}</button>
+              ))}
+            </div>
+          </div>
+          <ConversationPane displayMode={displayMode} />
           <InputBar placeholder="Message Memex…" />
         </main>
 

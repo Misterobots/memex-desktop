@@ -2,17 +2,49 @@
 import { ipcMain, BrowserWindow, Tray } from "electron";
 import { autoUpdater } from "electron-updater";
 
+type UpdaterStatus = {
+  state: "checking" | "available" | "downloading" | "ready" | "current" | "error";
+  version?: string;
+  percent?: number;
+  message?: string;
+};
+
+let lastStatus: UpdaterStatus = { state: "checking" };
+let requestCheck = async (): Promise<UpdaterStatus> => lastStatus;
+let installReadyUpdate = (): boolean => false;
+
 export function setupUpdater(
   getMain: () => BrowserWindow | null,
   getTray: () => Tray | null,
   isDev:   boolean,
 ): void {
-  if (isDev) return;
+  if (isDev) {
+    lastStatus = { state: "current", message: "Development build — updates install through the packaged app." };
+    return;
+  }
 
   autoUpdater.autoDownload        = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
-  const send = (payload: object) => getMain()?.webContents.send("update:status", payload);
+  const send = (payload: UpdaterStatus) => {
+    lastStatus = payload;
+    getMain()?.webContents.send("update:status", payload);
+  };
+
+  requestCheck = async () => {
+    send({ state: "checking" });
+    try {
+      await autoUpdater.checkForUpdates();
+    } catch (error: any) {
+      send({ state: "error", message: error?.message ?? "Update check failed" });
+    }
+    return lastStatus;
+  };
+  installReadyUpdate = () => {
+    if (lastStatus.state !== "ready") return false;
+    autoUpdater.quitAndInstall(false, true);
+    return true;
+  };
 
   autoUpdater.on("update-available",     (i) => send({ state: "available",    version: i.version }));
   autoUpdater.on("update-not-available", ()  => send({ state: "current" }));
@@ -24,10 +56,12 @@ export function setupUpdater(
   });
   autoUpdater.on("error", (e) => send({ state: "error", message: e.message }));
 
-  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 5000);
-  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 6 * 60 * 60 * 1000);
+  setTimeout(() => { void requestCheck(); }, 5000);
+  setInterval(() => { void requestCheck(); }, 6 * 60 * 60 * 1000);
 }
 
 export function registerUpdaterIpc(): void {
-  ipcMain.on("update:install", () => autoUpdater.quitAndInstall(false, true));
+  ipcMain.handle("update:getStatus", () => lastStatus);
+  ipcMain.handle("update:check", () => requestCheck());
+  ipcMain.handle("update:install", () => installReadyUpdate());
 }

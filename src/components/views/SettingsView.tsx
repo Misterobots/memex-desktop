@@ -276,6 +276,10 @@ export function SettingsView() {
   // ── App ───────────────────────────────────────────────────────────────────
   const [autoStart,        setAutoStart]       = useState(false);
   const [updaterStatus,    setUpdaterStatus]   = useState<string>("—");
+  const [updateState,      setUpdateState]      = useState<"checking"|"available"|"downloading"|"ready"|"current"|"error">("checking");
+  const [appVersion,       setAppVersion]       = useState<string>("—");
+  const [cadBridge,        setCadBridge]        = useState<{ configured: boolean; envPath: string; url: string; importedAt: string | null } | null>(null);
+  const [cadBridgeMessage, setCadBridgeMessage] = useState<string>("");
   const [extensionIds,     setExtensionIds]    = useState<string[]>([]);
   const [newExtId,         setNewExtId]        = useState("");
   const [extIdError,       setExtIdError]      = useState("");
@@ -303,6 +307,11 @@ export function SettingsView() {
     setExtensionIds(ids);
 
     setShortcuts(await bridge.shortcuts.get());
+    const [update, version] = await Promise.all([bridge.updater.getStatus(), bridge.version()]);
+    setUpdaterStatus(formatUpdaterStatus(update));
+    setUpdateState(update.state);
+    setAppVersion(version);
+    setCadBridge(await bridge.cadPrint.getBridgeConfig());
   }, [bridge]);
 
   const updateShortcut = async (key: keyof ShortcutConfig, value: string) => {
@@ -312,13 +321,7 @@ export function SettingsView() {
 
   useEffect(() => {
     load();
-    const off = bridge?.updater.onStatus((s) => {
-      setUpdaterStatus(s.state === "available"   ? `Update available: ${s.version}` :
-                       s.state === "downloading" ? `Downloading… ${s.percent ?? 0}%` :
-                       s.state === "ready"       ? `Ready to install: ${s.version}` :
-                       s.state === "error"       ? `Error: ${s.message}` :
-                       s.state === "current"     ? "Up to date" : s.state);
-    });
+    const off = bridge?.updater.onStatus((s) => { setUpdaterStatus(formatUpdaterStatus(s)); setUpdateState(s.state); });
     return () => { off?.(); };
   }, [load]);
 
@@ -409,6 +412,25 @@ export function SettingsView() {
     const next = extensionIds.filter((x) => x !== id);
     await bridge?.browser.setExtensionIds(next);
     setExtensionIds(next);
+  };
+
+  const handleCheckUpdates = async () => {
+    if (!bridge) return;
+    const status = await bridge.updater.check();
+    setUpdaterStatus(formatUpdaterStatus(status));
+    setUpdateState(status.state);
+  };
+
+  const handleImportCadBridge = async () => {
+    if (!bridge) return;
+    const result = await bridge.cadPrint.importBridgeConfig();
+    if (result.canceled) return;
+    if (!result.ok) {
+      setCadBridgeMessage(result.error ?? "Could not import the CAD bridge configuration.");
+      return;
+    }
+    setCadBridgeMessage("Local bridge configuration imported.");
+    setCadBridge(await bridge.cadPrint.getBridgeConfig());
   };
 
   if (!bridge) return <WebSettings />;
@@ -550,14 +572,47 @@ export function SettingsView() {
 
       {/* ── App ── */}
       <Section title="App">
+        <Row label="Version">
+          <span className="text-sm font-mono text-text/80">{appVersion}</span>
+        </Row>
         <Row label="Launch at login">
           <Toggle checked={autoStart} onChange={async (v) => {
             setAutoStart(v);
             await bridge.autoStart.set(v);
           }} />
         </Row>
-        <Row label="Updater">
-          <span className="text-sm text-muted">{updaterStatus}</span>
+        <Row label="Updates">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted">{updaterStatus}</span>
+            <button
+              onClick={handleCheckUpdates}
+              disabled={updateState === "checking" || updateState === "downloading"}
+              className="px-2.5 py-1 text-xs rounded-md border border-border/60 bg-surface2 hover:bg-surface2/80 disabled:opacity-50"
+            >{updateState === "checking" ? "Checking…" : "Check now"}</button>
+            {updateState === "ready" && (
+              <button
+                onClick={() => bridge.updater.install()}
+                className="px-2.5 py-1 text-xs rounded-md border border-accent/40 bg-accent/15 text-accent hover:bg-accent/25"
+              >Restart & install</button>
+            )}
+          </div>
+        </Row>
+        <Row label="Friday CAD bridge">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`text-sm ${cadBridge?.configured ? "text-green" : "text-muted"}`}>
+                {cadBridge?.configured ? `Configured · ${cadBridge.url}` : "Not imported"}
+              </span>
+              <button
+                onClick={handleImportCadBridge}
+                className="px-2.5 py-1 text-xs rounded-md border border-border/60 bg-surface2 hover:bg-surface2/80"
+              >{cadBridge?.configured ? "Re-import…" : "Import…"}</button>
+            </div>
+            <p className="text-[11px] text-muted">
+              Stores the selected bridge configuration path in Memex. The token remains in that local <code>.env</code> file and is never copied into the app UI.
+            </p>
+            {cadBridgeMessage && <p className="text-[11px] text-muted">{cadBridgeMessage}</p>}
+          </div>
         </Row>
       </Section>
 
@@ -631,4 +686,12 @@ export function SettingsView() {
 
     </div>
   );
+}
+
+function formatUpdaterStatus(s: { state: string; version?: string; percent?: number; message?: string }): string {
+  return s.state === "available"   ? `Update available: ${s.version ?? "new version"}` :
+         s.state === "downloading" ? `Downloading… ${s.percent ?? 0}%` :
+         s.state === "ready"       ? `Ready to install: ${s.version ?? "new version"}` :
+         s.state === "error"       ? `Update check failed: ${s.message ?? "unknown error"}` :
+         s.state === "current"     ? "Up to date" : "Checking for updates…";
 }

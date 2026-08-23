@@ -8,6 +8,7 @@ import { ScheduledTasks } from "../scheduled/ScheduledTasks";
 export function GoalsView() {
   const { activeSession } = useStore();
   const [section, setSection] = useState<"work" | "schedule">("work");
+  const [prefillText, setPrefillText] = useState("");
   const session = activeSession("goals");
   const empty = !session || session.messages.length === 0;
 
@@ -43,13 +44,19 @@ export function GoalsView() {
                 </p>
                 <div className="flex flex-col gap-2 max-w-md mx-auto text-left">
                   {["Prepare a weekly project review", "Design a morning routine that sticks", "Track and summarize household maintenance"].map((ex) => (
-                    <div key={ex} className="px-4 py-2.5 rounded-xl border border-border/60 bg-surface text-muted text-sm">{ex}</div>
+                    <button
+                      key={ex}
+                      onClick={() => setPrefillText(ex)}
+                      className="px-4 py-2.5 rounded-xl border border-border/60 bg-surface text-muted text-sm text-left hover:bg-surface2 hover:text-text transition-colors"
+                    >
+                      {ex}
+                    </button>
                   ))}
                 </div>
               </div>
             </div>
           ) : <ConversationPane experience="goals" />}
-          <InputBar experience="goals" lockMode="workshop" placeholder="Describe a repeatable workflow…" />
+          <InputBar experience="goals" lockMode="workshop" placeholder="Describe a repeatable workflow…" prefillText={prefillText} />
         </main>
       )}
     </div>

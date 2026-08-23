@@ -134,7 +134,11 @@ export function SetupWizard({ onComplete }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 bg-canvas flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-surface border border-border/60 rounded-2xl p-8 shadow-2xl flex flex-col min-h-[520px]">
+      {/* The app uses a hidden native title bar. The regular shell supplies its
+          own drag region, but setup replaces that shell completely; keep a
+          dedicated strip available throughout onboarding. */}
+      <div className="drag-region absolute inset-x-0 top-0 h-10" aria-hidden="true" />
+      <div className="no-drag w-full max-w-md bg-surface border border-border/60 rounded-2xl p-8 shadow-2xl flex flex-col min-h-[520px]">
 
         {/* Step 0: Runtime profile */}
         {step === 0 && (

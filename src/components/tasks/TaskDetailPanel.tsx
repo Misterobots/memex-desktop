@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Task, TaskWorker } from "../../types/memex";
-import { getTask, getTaskDiff, setTaskApproval, type TaskDiff } from "../../lib/tasks-api";
+import { getTask, getTaskDiff, setTaskApproval, stopTask, type TaskDiff } from "../../lib/tasks-api";
 import { WebDiffViewer } from "./WebDiffViewer";
 import { PushPreviewModal } from "./PushPreviewModal";
 
@@ -16,6 +16,7 @@ export function TaskDetailPanel({ id, onClose, onChange }: {
   const [diff,     setDiff]     = useState<TaskDiff | null>(null);
   const [diffMsg,  setDiffMsg]  = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
+  const [stopping, setStopping] = useState(false);
 
   // Gated GitHub push/PR (Phase F). Local-only: a page refresh losing the
   // shown PR link is acceptable — push/status exists for a defensive re-fetch
@@ -57,6 +58,12 @@ export function TaskDetailPanel({ id, onClose, onChange }: {
     return () => { alive = false; };
   }, [run?.status, run?.has_diff, id]);
 
+  const stop = async () => {
+    if (!run || run.status !== "running") return;
+    setStopping(true);
+    if (await stopTask(id)) { await load(); onChange?.(); }
+    setStopping(false);
+  };
   const decide = async (decision: "approve" | "deny") => {
     setApproving(true);
     if (await setTaskApproval(id, decision)) { await load(); onChange?.(); }
@@ -92,6 +99,14 @@ export function TaskDetailPanel({ id, onClose, onChange }: {
         </button>
       </div>
 
+      {run.status === "running" && (
+        <div className="flex-shrink-0 border-b border-border/40 px-4 py-3">
+          <button onClick={stop} disabled={stopping}
+            className="w-full px-3 py-2 text-xs rounded-lg border border-red-400/40 text-red-400 hover:bg-red-400/10 disabled:opacity-50">
+            {stopping ? "Stopping…" : "Stop task"}
+          </button>
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {needsInput && (
           <div className="rounded-lg border border-accent2/40 bg-accent2/10 px-3 py-2.5 text-xs text-text/90 leading-relaxed">

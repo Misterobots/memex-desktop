@@ -82,6 +82,11 @@ contextBridge.exposeInMainWorld("memex", {
     openFolder: () => ipcRenderer.invoke("dialog:openFolder"),
   },
 
+  cadPrint: {
+    getBridgeConfig: () => ipcRenderer.invoke("cadPrint:getBridgeConfig"),
+    importBridgeConfig: () => ipcRenderer.invoke("cadPrint:importBridgeConfig"),
+  },
+
   // OpenSCAD render/export -- kept as `unknown` here on purpose, same as
   // every other namespace in this file (this preload layer was never the
   // source of type safety; ipcRenderer.invoke is always Promise<any>
@@ -119,6 +124,8 @@ contextBridge.exposeInMainWorld("memex", {
 
   // Auto-updater
   updater: {
+    getStatus: () => ipcRenderer.invoke("update:getStatus"),
+    check: () => ipcRenderer.invoke("update:check"),
     onStatus: (cb: (status: {
       state: "checking" | "available" | "downloading" | "ready" | "current" | "error";
       version?: string; percent?: number; message?: string;
@@ -126,7 +133,7 @@ contextBridge.exposeInMainWorld("memex", {
       ipcRenderer.on("update:status", (_e, status) => cb(status));
       return () => ipcRenderer.removeAllListeners("update:status");
     },
-    install: () => ipcRenderer.send("update:install"),
+    install: () => ipcRenderer.invoke("update:install"),
   },
 
   // Chrome extension browser bridge

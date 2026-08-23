@@ -52,6 +52,18 @@ export async function getTaskDiff(id: string): Promise<{ diff?: TaskDiff; status
   }
 }
 
+export async function stopTask(id: string): Promise<boolean> {
+  try {
+    const r = await apiFetch(`${getAgentRuntime()}/v1/tasks/${encodeURIComponent(id)}/stop`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
 export async function setTaskApproval(id: string, decision: "approve" | "deny"): Promise<boolean> {
   try {
     const r = await apiFetch(`${getAgentRuntime()}/v1/tasks/${encodeURIComponent(id)}/${decision}`, {

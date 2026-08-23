@@ -1,12 +1,13 @@
 import { useEffect, useRef } from "react";
 import { useStore } from "../../lib/store";
 import { MessageBubble } from "./MessageBubble";
-import type { AppTab, ExperienceId } from "../../types/memex";
+import type { AppTab, ChatDisplayMode, ExperienceId } from "../../types/memex";
 
 const SUGGESTIONS: Array<{ tab: AppTab; label: string; description: string }> = [
   { tab: "dev",      label: "Build code",       description: "Open the Code workspace" },
   { tab: "research", label: "Research a topic", description: "Start a Research thread" },
-  { tab: "art",      label: "Design something", description: "Open the Design studio" },
+  { tab: "design",   label: "Design an app", description: "Open the product Design workspace" },
+  { tab: "art",      label: "Create media", description: "Open Art, 3D, and Print" },
   { tab: "goals",    label: "Create a routine", description: "Build a repeatable workflow" },
 ];
 
@@ -15,7 +16,7 @@ function WelcomeScreen() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-6 select-none">
       <div className="max-w-conversation w-full text-center">
-        <div className="text-5xl text-accent mb-5 opacity-90">◈</div>
+        <div className="w-10 h-1 rounded-full bg-accent/70 mb-5 mx-auto" aria-hidden="true" />
         <h1 className="text-2xl text-text font-medium mb-2">How can I help today?</h1>
         <p className="text-muted text-sm mb-8">
           Powered by the active Memex routing profile
@@ -40,9 +41,10 @@ function WelcomeScreen() {
 interface Props {
   experience?: ExperienceId;
   workspaceKey?: string;
+  displayMode?: ChatDisplayMode;
 }
 
-export function ConversationPane({ experience = "chat", workspaceKey }: Props) {
+export function ConversationPane({ experience = "chat", workspaceKey, displayMode = "normal" }: Props) {
   const { activeSession, streamingSessions } = useStore();
   const session = activeSession(experience, workspaceKey);
   const streaming = session ? !!streamingSessions[session.id] : false;
@@ -87,6 +89,7 @@ export function ConversationPane({ experience = "chat", workspaceKey }: Props) {
             key={msg.id}
             message={msg}
             isActive={streaming && i === messages.length - 1 && msg.role === "assistant"}
+            displayMode={displayMode}
           />
         ))}
         <div className="h-4" />

@@ -26,7 +26,10 @@ import { HooksStore }      from "./hooks-store";
 import { BrowserPane }     from "./browser-pane";
 import { registerRemoteAuthIpc } from "./remote-auth";
 
-const isDev = process.env.NODE_ENV === "development";
+// `electron .` does not reliably set NODE_ENV. app.isPackaged is the actual
+// distinction that matters for electron-updater: source/dev launches must
+// never try to query the production release feed.
+const isDev = !app.isPackaged;
 
 // ---------------------------------------------------------------------------
 // Shared singletons — created in whenReady, referenced by all modules
