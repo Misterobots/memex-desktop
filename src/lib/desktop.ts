@@ -115,6 +115,8 @@ export interface RuntimeProfile {
 export interface MemexBridge {
   isDesktop: boolean;
   version:   () => Promise<string>;
+  cwd:       () => Promise<string>;
+  path:      (name: "home" | "userData") => Promise<string>;
 
   identity: {
     get: () => Promise<string>;

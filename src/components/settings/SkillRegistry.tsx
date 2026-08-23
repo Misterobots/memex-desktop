@@ -20,40 +20,48 @@ function parseFrontmatter(md: string): { name?: string; version?: string; descri
 // Scanner — walks common skill directories looking for SKILL.md
 // ---------------------------------------------------------------------------
 async function scanSkills(bridge: NonNullable<ReturnType<typeof desktop>>): Promise<SkillEntry[]> {
-  const roots = [
-    `${process.env.USERPROFILE ?? "~"}/.claude/skills`,
-    `${process.env.USERPROFILE ?? "~"}/.claude`,
+  const [cwd, home] = await Promise.all([bridge.cwd(), bridge.path("home")]);
+  const roots: Array<{ path: string; scope: "project" | "user" }> = [
+    { path: `${cwd}/.claude/skills`, scope: "project" },
+    { path: `${cwd}/.claude`, scope: "project" },
+    { path: `${home}/.claude/skills`, scope: "user" },
+    { path: `${home}/.claude`, scope: "user" },
   ];
-  const found: SkillEntry[] = [];
+  const byName = new Map<string, SkillEntry>();
 
   for (const root of roots) {
     try {
-      const entries = await bridge.fs.readDir(root);
+      const entries = await bridge.fs.readDir(root.path);
       for (const e of entries) {
         if (!e.isDir) continue;
         try {
-          const skillMd = await bridge.fs.readFile(`${e.path}/SKILL.md`);
+          const sourcePath = `${e.path}/SKILL.md`;
+          const skillMd = await bridge.fs.readFile(sourcePath);
           const fm = parseFrontmatter(skillMd);
-          const stat = entries.find((x) => x.path === e.path);
-          found.push({
-            id:          e.path,
-            name:        fm.name ?? e.name,
+          const name = fm.name ?? e.name;
+          const entry: SkillEntry = {
+            id:          `${root.scope}:${e.path}`,
+            name,
             version:     fm.version ?? "1.0",
             enabled:     true,
-            sourcePath:  `${e.path}/SKILL.md`,
-            description: fm.description ?? skillMd.split("\n").find((l) => l.trim() && !l.startsWith("#") && !l.startsWith("-")) ?? "",
-            modifiedAt:  stat ? new Date().toISOString() : new Date().toISOString(),
-          });
+            sourcePath,
+            scope:       root.scope,
+            description: fm.description ?? skillMd.split(/\r?\n/).find((l) => l.trim() && !l.startsWith("#") && !l.startsWith("-")) ?? "",
+            modifiedAt:  new Date().toISOString(),
+          };
+          const key = name.trim().toLowerCase();
+          // Roots are ordered project-first, then user; first match wins.
+          if (!byName.has(key)) byName.set(key, entry);
         } catch {
-          // No SKILL.md in this dir — skip
+          // No readable SKILL.md in this directory — skip.
         }
       }
     } catch {
-      // Root doesn't exist — skip
+      // Root doesn't exist or is outside the current workspace policy — skip.
     }
   }
 
-  return found;
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // ---------------------------------------------------------------------------
@@ -94,7 +102,7 @@ export function SkillRegistry() {
       null, 2
     );
     // Write to desktop
-    const dest = `${process.env.USERPROFILE ?? "~"}/Desktop/memex-skills-export.json`;
+    const dest = `${await bridge.path("home")}/Desktop/memex-skills-export.json`;
     try {
       await bridge.fs.writeFile(dest, payload);
       alert(`Exported to ${dest}`);
@@ -110,7 +118,7 @@ export function SkillRegistry() {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted">
-          Skills are SKILL.md files found in <code className="font-mono">~/.claude/skills/</code>.
+          Project skills in <code className="font-mono">.claude/</code> override user skills in <code className="font-mono">~/.claude/</code>.
         </p>
         <div className="flex gap-2">
           <button onClick={load}
@@ -148,6 +156,7 @@ export function SkillRegistry() {
               <div className="flex items-baseline gap-2">
                 <span className="text-sm font-medium text-text">{s.name}</span>
                 <span className="text-[10px] text-muted">v{s.version}</span>
+                {s.scope && <span className="text-[10px] text-accent2">{s.scope}</span>}
               </div>
               {s.description && (
                 <p className="text-xs text-muted truncate mt-0.5">{s.description.slice(0, 80)}</p>

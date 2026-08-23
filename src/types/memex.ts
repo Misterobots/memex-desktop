@@ -238,4 +238,5 @@ export interface SkillEntry {
   sourcePath:  string;
   description: string;
   modifiedAt:  string;
+  scope?:       "project" | "user";
 }

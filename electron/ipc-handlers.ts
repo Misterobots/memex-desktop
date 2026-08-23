@@ -348,6 +348,7 @@ export function registerAllIpc(ctx: IpcContext): void {
     return { ok: true, ...record };
   });
   ipcMain.handle("app:getCwd",       () => process.cwd());
+  ipcMain.handle("app:getPath",     (_e, name: "home" | "userData") => app.getPath(name));
   ipcMain.handle("app:getVersion",   () => app.getVersion());
   ipcMain.handle("app:openExternal", (_e, url: string) => shell.openExternal(url));
 

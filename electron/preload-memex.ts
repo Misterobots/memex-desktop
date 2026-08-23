@@ -37,6 +37,8 @@ function bridgeNamespace(
 contextBridge.exposeInMainWorld("memex", {
   isDesktop: true,
   version:   () => ipcRenderer.invoke("app:getVersion"),
+  cwd:       () => ipcRenderer.invoke("app:getCwd") as Promise<string>,
+  path:      (name: "home" | "userData") => ipcRenderer.invoke("app:getPath", name) as Promise<string>,
 
   // Identity — who is using this desktop instance
   identity: {
