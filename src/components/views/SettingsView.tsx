@@ -4,6 +4,7 @@ import { useStore } from "../../lib/store";
 import { getAgentRuntime } from "../../lib/runtime-urls";
 import { apiFetch } from "../../lib/api-fetch";
 import { SkillRegistry } from "../settings/SkillRegistry";
+import { McpBridge } from "../settings/McpBridge";
 import { ShortcutCapture } from "../settings/ShortcutCapture";
 import { GitHubPushConnect } from "../settings/GitHubPushConnect";
 import { Hooks } from "../settings/Hooks";
@@ -673,6 +674,10 @@ export function SettingsView() {
       </Section>
 
       {/* ── GitHub — Pull Requests ── */}
+      <Section title="MCP Bridge">
+        <McpBridge />
+      </Section>
+
       <Section title="GitHub — Pull Requests">
         <GitHubPushConnect />
       </Section>
