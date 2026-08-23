@@ -1,9 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { ipc } from "../../lib/ipc";
+import { desktop } from "../../lib/desktop";
 
 interface Props {
   path: string;
   onClose: () => void;
+}
+
+function lspLanguage(path: string): string {
+  const suffix = ext(path);
+  return suffix === "py" ? "py" : suffix === "rs" ? "rs" : suffix === "go" ? "go" : "ts";
+}
+
+function fileUri(path: string): string {
+  const normalized = path.replace(/\\/g, "/");
+  return normalized.startsWith("/") ? `file://${normalized}` : `file:///${normalized}`;
 }
 
 function ext(path: string) {
@@ -15,6 +26,7 @@ export function FileEditor({ path, onClose }: Props) {
   const [original, setOriginal] = useState("");
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState("");
+  const [diagnostics, setDiagnostics] = useState<Array<{ severity?: number; message: string; range?: { start?: { line?: number; character?: number } } }>>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const filename = path.split(/[/\\]/).pop() ?? path;
@@ -26,6 +38,29 @@ export function FileEditor({ path, onClose }: Props) {
       .catch((e) => setError(String(e)));
   }, [path]);
 
+  // Connect the native language server for this file when one is available.
+  useEffect(() => {
+    const bridge = desktop();
+    if (!bridge || !content || !path.includes(".")) return;
+    const uri = fileUri(path);
+    const rootPath = path.replace(/[\\/][^\\/]*$/, "") || path;
+    const rootUri = fileUri(rootPath);
+    let alive = true;
+    const onNotification = (event: { method: string; params: unknown }) => {
+      if (event.method !== "textDocument/publishDiagnostics") return;
+      const params = event.params as { uri?: string; diagnostics?: Array<{ severity?: number; message: string; range?: { start?: { line?: number; character?: number } } }> };
+      if (params.uri === uri && alive) setDiagnostics(params.diagnostics ?? []);
+    };
+    const unsubscribe = bridge.lsp.onNotification(onNotification);
+    void bridge.lsp.start(`.${ext(path)}`, rootUri).then((started) => {
+      if (started && alive) {
+        bridge.lsp.notify(lspLanguage(path), rootUri, "textDocument/didOpen", {
+          textDocument: { uri, languageId: ext(path), version: 1, text: content },
+        });
+      }
+    });
+    return () => { alive = false; unsubscribe(); };
+  }, [path, content === null]);
   // Auto-resize textarea
   useEffect(() => {
     const ta = textareaRef.current;
@@ -107,6 +142,16 @@ export function FileEditor({ path, onClose }: Props) {
         </div>
       )}
 
+      {diagnostics.length > 0 && (
+        <div className="border-t border-border/60 bg-surface2/40 px-4 py-2 space-y-1 max-h-28 overflow-y-auto">
+          <div className="text-[10px] uppercase tracking-wide text-muted">Diagnostics</div>
+          {diagnostics.map((diagnostic, index) => (
+            <div key={`${diagnostic.message}-${index}`} className={`text-xs ${diagnostic.severity === 1 ? "text-red-400" : diagnostic.severity === 2 ? "text-yellow" : "text-muted"}`}>
+              {diagnostic.range?.start?.line !== undefined ? `${diagnostic.range.start.line + 1}: ` : ""}{diagnostic.message}
+            </div>
+          ))}
+        </div>
+      )}
       {/* Status bar */}
       <div className="flex items-center justify-between px-4 py-1 border-t border-border/60 bg-surface text-faint text-xs flex-shrink-0">
         <span className="font-mono">{ext(path)}</span>
