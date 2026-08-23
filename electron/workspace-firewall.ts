@@ -10,7 +10,7 @@
  * All audit decisions are appended to userData/audit.jsonl.
  */
 import { join, normalize, isAbsolute } from "path";
-import { appendFileSync } from "fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "fs";
 import { BrowserWindow, dialog } from "electron";
 
 // ---------------------------------------------------------------------------
@@ -40,7 +40,7 @@ export interface AuditEvent {
 // Default policy — workspace mode, roots empty (any path inside CWD)
 // ---------------------------------------------------------------------------
 const DEFAULT_POLICY: WorkspacePolicy = {
-  roots:      [],
+  roots:      [process.cwd()],
   mode:       "workspace",
   allowShell: true,
   allowWrite: true,
@@ -53,20 +53,42 @@ export class WorkspaceFirewall {
   private policy:       WorkspacePolicy = { ...DEFAULT_POLICY };
   private sessionAllow: Set<string>     = new Set(); // paths/cmds approved for session
   private auditPath:    string;
+  private policyPath:   string;
 
   constructor(userData: string) {
     this.auditPath = join(userData, "audit.jsonl");
+    this.policyPath = join(userData, "workspace-policy.json");
+    this.loadPolicy();
+  }
+
+  private loadPolicy(): void {
+    if (!existsSync(this.policyPath)) return;
+    try {
+      const saved = JSON.parse(readFileSync(this.policyPath, "utf-8")) as Partial<WorkspacePolicy>;
+      const mode = saved.mode === "trusted" || saved.mode === "ask" || saved.mode === "workspace" ? saved.mode : DEFAULT_POLICY.mode;
+      const roots = Array.isArray(saved.roots)
+        ? saved.roots.filter((root): root is string => typeof root === "string").map((root) => this.canon(root))
+        : DEFAULT_POLICY.roots;
+      this.policy = { ...DEFAULT_POLICY, ...saved, mode, roots, allowShell: saved.allowShell !== false, allowWrite: saved.allowWrite !== false };
+    } catch {
+      this.policy = { ...DEFAULT_POLICY };
+    }
+  }
+
+  private persistPolicy(): void {
+    try { writeFileSync(this.policyPath, JSON.stringify(this.policy, null, 2), "utf-8"); } catch {}
   }
 
   setPolicy(policy: Partial<WorkspacePolicy>) {
-    this.policy = { ...DEFAULT_POLICY, ...policy };
+    this.policy = { ...this.policy, ...policy, roots: (policy.roots ?? this.policy.roots).map((root) => this.canon(root)) };
+    this.persistPolicy();
   }
 
   getPolicy(): WorkspacePolicy { return this.policy; }
 
   addRoot(root: string) {
     const abs = this.canon(root);
-    if (!this.policy.roots.includes(abs)) this.policy.roots.push(abs);
+    if (!this.policy.roots.includes(abs)) { this.policy.roots.push(abs); this.persistPolicy(); }
   }
 
   clearSessionApprovals() { this.sessionAllow.clear(); }
@@ -86,9 +108,11 @@ export class WorkspaceFirewall {
   }
 
   private insideRoots(p: string): boolean {
-    if (this.policy.roots.length === 0) return true; // no roots = open
     const cp = this.canon(p);
-    return this.policy.roots.some((r) => cp.startsWith(r + "\\") || cp.startsWith(r + "/") || cp === r);
+    // An empty root list is fail-closed to the process workspace. It must
+    // never mean that every absolute path is implicitly trusted.
+    const roots: string[] = this.policy.roots.length > 0 ? this.policy.roots : [this.canon(process.cwd())];
+    return roots.some((r: string) => cp.startsWith(r + "\\") || cp.startsWith(r + "/") || cp === r);
   }
 
   // ---------------------------------------------------------------------------
@@ -218,9 +242,13 @@ export class WorkspaceFirewall {
       if (this.isSessionApproved(key)) return true;
       return this.prompt("pty:create", cwd ?? "no cwd", key, win, `Open terminal${cwd ? `\nDirectory: ${cwd}` : " (no workspace directory)"}`);
     }
-    // workspace mode, cwd outside roots — allow but audit
-    this.audit({ action: "pty:create", subject: cwd ?? "no cwd", decision: "allowed", mode: this.policy.mode });
-    return true;
+    // Workspace mode is also fail-closed for terminals outside configured roots.
+    const key = `pty:${cwd ?? ""}`;
+    if (this.isSessionApproved(key)) {
+      this.audit({ action: "pty:create", subject: cwd ?? "no cwd", decision: "approved_session", mode: this.policy.mode });
+      return true;
+    }
+    return this.prompt("pty:create", cwd ?? "no cwd", key, win, `Open terminal outside workspace${cwd ? `\nDirectory: ${cwd}` : " (no workspace directory)"}`);
   }
 
   // ---------------------------------------------------------------------------
