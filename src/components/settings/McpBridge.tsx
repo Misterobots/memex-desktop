@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
-import { getMcpClientConfig, getMcpHealth, type McpHealth } from "../../lib/mcp-api";
+import { getMcpClientConfig, getMcpHealth, normalizeMcpClientConfig, type McpHealth, type McpClientConfig } from "../../lib/mcp-api";
 
 export function McpBridge() {
   const [health, setHealth] = useState<McpHealth | null>(null);
-  const [config, setConfig] = useState<Record<string, unknown> | null>(null);
+  const [config, setConfig] = useState<McpClientConfig | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
     setLoading(true);
     const [nextHealth, nextConfig] = await Promise.all([getMcpHealth(), getMcpClientConfig()]);
-    setHealth(nextHealth); setConfig(nextConfig); setLoading(false);
+    setHealth(nextHealth); setConfig(nextConfig ? normalizeMcpClientConfig(nextConfig) : null); setLoading(false);
   };
 
   useEffect(() => { void load(); }, []);
@@ -25,6 +25,9 @@ export function McpBridge() {
           <div className="flex justify-between"><span className="text-muted">Status</span><span className={health.enabled ? "text-green" : "text-yellow"}>{health.enabled ? "Enabled" : "Disabled"}</span></div>
           <div className="flex justify-between"><span className="text-muted">Server</span><span className="text-text">{health.server_name ?? "—"}</span></div>
           <div className="flex justify-between"><span className="text-muted">Tools</span><span className="text-text">{health.tools_registered ?? 0}</span></div>
+          <div className="flex justify-between"><span className="text-muted">Resources</span><span className="text-text">{health.resources_registered ?? (config?.resourcesSupported ? "supported" : 0)}</span></div>
+          <div className="flex justify-between"><span className="text-muted">Prompts</span><span className="text-text">{health.prompts_registered ?? (config?.promptsSupported ? "supported" : 0)}</span></div>
+          <div className="flex justify-between"><span className="text-muted">Transports</span><span className="text-text">{health.transports?.join(", ") || config?.servers.map((server) => server.transport).filter((value, index, list) => list.indexOf(value) === index).join(", ") || "—"}</span></div>
         </div>
       ) : <p className="text-xs text-muted">MCP bridge unavailable for the active profile.</p>}
       {config && <details className="text-xs"><summary className="cursor-pointer text-muted hover:text-text">View client configuration</summary><pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-canvas p-2 text-[10px] text-muted">{JSON.stringify(config, null, 2)}</pre></details>}

@@ -25,6 +25,8 @@ import { ArtifactStore }   from "./artifact-store";
 import { HooksStore }      from "./hooks-store";
 import { BrowserPane }     from "./browser-pane";
 import { registerRemoteAuthIpc } from "./remote-auth";
+import { PermissionStore }    from "./permission-store";
+import { WorktreeManager }    from "./worktree-manager";
 
 // `electron .` does not reliably set NODE_ENV. app.isPackaged is the actual
 // distinction that matters for electron-updater: source/dev launches must
@@ -43,6 +45,8 @@ let runs:       RunStore;
 let evals:      EvalStore;
 let artifacts:  ArtifactStore;
 let hooks:      HooksStore;
+let permissions: PermissionStore;
+let worktrees:   WorktreeManager;
 const lsp     = new LspManager(() => mainWindow);
 const browser = new BrowserBridge();
 const browserPane = new BrowserPane(() => mainWindow);
@@ -68,6 +72,8 @@ app.whenReady().then(() => {
   evals     = new EvalStore(userData);
   artifacts = new ArtifactStore(userData);
   hooks     = new HooksStore(userData);
+  permissions = new PermissionStore(userData);
+  worktrees   = new WorktreeManager(userData);
   setBridgeAllowedIds(config.getAllowedExtensionIds());
 
   mainWindow = createMainWindow(config, getTray, () => isQuitting);
@@ -86,7 +92,7 @@ app.whenReady().then(() => {
   registerNativeHost();
   browser.start((msg) => mainWindow?.webContents.send("browser:message", msg));
 
-  registerAllIpc({ config, firewall, lsp, browser, browserPane, runs, evals, artifacts, hooks, getMain, startHealthLoop: doStartHealthLoop });
+  registerAllIpc({ config, firewall, permissions, worktrees, lsp, browser, browserPane, runs, evals, artifacts, hooks, getMain, startHealthLoop: doStartHealthLoop });
 
   app.on("activate", () => {
     if (mainWindow) { mainWindow.show(); mainWindow.focus(); }

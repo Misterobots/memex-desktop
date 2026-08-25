@@ -7,6 +7,33 @@ import { getAgentRuntime } from "./runtime-urls";
 import { apiFetch } from "./api-fetch";
 import type { Task, TaskWorker } from "../types/memex";
 
+export type TaskUpdate = Partial<Pick<Task, "title" | "scope" | "branch">> & { prompt?: string };
+export interface TaskMutationResult { ok: boolean; status: number; error?: string; }
+
+export function normalizeTask(value: unknown): Task | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Partial<Task>;
+  if (typeof item.coordination_id !== "string" || typeof item.status !== "string") return null;
+  return {
+    ...item,
+    coordination_id: item.coordination_id,
+    status: item.status as Task["status"],
+    phase: typeof item.phase === "number" ? item.phase : 0,
+    workers_total: typeof item.workers_total === "number" ? item.workers_total : 0,
+    workers_completed: typeof item.workers_completed === "number" ? item.workers_completed : 0,
+    workers_failed: typeof item.workers_failed === "number" ? item.workers_failed : 0,
+    approval_state: item.approval_state === "pending" || item.approval_state === "approved" || item.approval_state === "denied" ? item.approval_state : "none",
+    started_at: typeof item.started_at === "number" ? item.started_at : Date.now(),
+  };
+}
+
+export function normalizeTaskList(value: unknown): Task[] {
+  if (!value || typeof value !== "object") return [];
+  const source = value as { runs?: unknown; tasks?: unknown };
+  const entries = Array.isArray(source.runs) ? source.runs : Array.isArray(source.tasks) ? source.tasks : [];
+  return entries.map(normalizeTask).filter((task): task is Task => task !== null);
+}
+
 export async function listTasks(status: "all" | "running" = "all"): Promise<Task[]> {
   try {
     const r = await apiFetch(`${getAgentRuntime()}/v1/tasks?status=${status}`, {
@@ -14,7 +41,7 @@ export async function listTasks(status: "all" | "running" = "all"): Promise<Task
     });
     if (!r.ok) return [];
     const data = await r.json();
-    return Array.isArray(data?.runs) ? data.runs : [];
+    return normalizeTaskList(data);
   } catch {
     return [];
   }
@@ -26,7 +53,11 @@ export async function getTask(id: string): Promise<{ run: Task; workers: TaskWor
       signal: AbortSignal.timeout(8000),
     });
     if (!r.ok) return null;
-    return await r.json();
+    const data = await r.json();
+    const run = normalizeTask(data?.run ?? data?.task);
+    if (!run) return null;
+    const workers = Array.isArray(data?.workers) ? data.workers.filter((worker: unknown): worker is TaskWorker => !!worker && typeof worker === "object" && typeof (worker as TaskWorker).worker_id === "string") : [];
+    return { run, workers };
   } catch {
     return null;
   }
@@ -62,6 +93,23 @@ export async function stopTask(id: string): Promise<boolean> {
     return r.ok;
   } catch {
     return false;
+  }
+}
+
+/** Update mutable task metadata/prompt without changing its approval state. */
+export async function updateTask(id: string, update: TaskUpdate): Promise<TaskMutationResult> {
+  try {
+    const r = await apiFetch(`${getAgentRuntime()}/v1/tasks/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (r.ok) return { ok: true, status: r.status };
+    const data = await r.json().catch(() => ({}));
+    return { ok: false, status: r.status, error: typeof data?.detail === "string" ? data.detail : undefined };
+  } catch {
+    return { ok: false, status: 0 };
   }
 }
 export async function setTaskApproval(id: string, decision: "approve" | "deny"): Promise<boolean> {

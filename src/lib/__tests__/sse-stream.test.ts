@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeSSEDelta } from "../sse-stream";
+import { normalizeSSEDelta, runEventTypeForSSE } from "../sse-stream";
 
 describe("normalizeSSEDelta", () => {
   it("maps DevHarness events to stable renderer types", () => {
@@ -10,5 +10,11 @@ describe("normalizeSSEDelta", () => {
   });
   it("preserves plain text deltas without rich payload data", () => {
     expect(normalizeSSEDelta({ type: "content", content: "hello" })).toMatchObject({ type: "message", content: "hello", data: undefined });
+  });
+
+  it("maps runtime events to the run inspector contract", () => {
+    expect(runEventTypeForSSE(normalizeSSEDelta({ type: "approval_requested", content: "write" })!)).toBe("permission");
+    expect(runEventTypeForSSE(normalizeSSEDelta({ type: "file_change", content: "file.ts" })!)).toBe("file_write");
+    expect(runEventTypeForSSE(normalizeSSEDelta({ type: "continuation", content: "resuming" })!)).toBe("status");
   });
 });

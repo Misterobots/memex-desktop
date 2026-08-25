@@ -132,6 +132,7 @@ export type RunEventType =
   | "memory_read"
   | "memory_write"
   | "file_write"
+  | "status"
   | "error"
   | "done";
 

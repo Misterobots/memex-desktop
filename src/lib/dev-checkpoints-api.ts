@@ -19,6 +19,11 @@ export interface DevCheckpoint {
   error?: string;
 }
 
+/** The only tool safe to replay is the oldest still-pending tool. */
+export function nextReplayTool(checkpoint: DevCheckpoint): DevCheckpointTool | null {
+  return checkpoint.pending_tools[0] ?? null;
+}
+
 export async function getDevCheckpoint(sessionId: string): Promise<DevCheckpoint | null> {
   try {
     const response = await apiFetch(
@@ -37,6 +42,12 @@ export async function replayDevTool(
   callId: string,
 ): Promise<{ ok: boolean; status?: string; next_call_id?: string | null; error?: string }> {
   try {
+    const checkpoint = await getDevCheckpoint(sessionId);
+    const next = checkpoint && nextReplayTool(checkpoint);
+    if (!next) return { ok: false, error: "No replayable pending tool for this session" };
+    if (next.call_id !== callId) {
+      return { ok: false, error: `Replay must be ordered; expected ${next.call_id}` };
+    }
     const response = await apiFetch(
       `${getAgentRuntime()}/api/v1/dev/checkpoints/${encodeURIComponent(sessionId)}/replay`,
       {
@@ -51,4 +62,14 @@ export async function replayDevTool(
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Replay request failed" };
   }
+}
+
+/** Replay exactly the next pending tool, preserving checkpoint order. */
+export async function replayNextDevTool(
+  sessionId: string,
+): Promise<{ ok: boolean; status?: string; next_call_id?: string | null; error?: string }> {
+  const checkpoint = await getDevCheckpoint(sessionId);
+  const next = checkpoint && nextReplayTool(checkpoint);
+  if (!next) return { ok: false, error: "No replayable pending tool for this session" };
+  return replayDevTool(sessionId, next.call_id);
 }

@@ -11,6 +11,7 @@ import { BrowserView } from "./BrowserView";
 import { ipc } from "../../lib/ipc";
 import { SessionList } from "../sidebar/SessionList";
 import { PrintWorkflowPanel } from "../dev/PrintWorkflowPanel";
+import { WorktreePanel } from "../dev/WorktreePanel";
 
 type PrimaryPane = "chat" | "editor" | "tasks" | "print";
 type BottomPane  = "terminal" | "browser" | "none";
@@ -24,6 +25,7 @@ export function DevView() {
   const [primary, setPrimary]       = useState<PrimaryPane>("chat");
   const [bottomPane, setBottomPane] = useState<BottomPane>("none");
   const [openFile, setOpenFile]     = useState<string | null>(null);
+  const [worktreesOpen, setWorktreesOpen] = useState(false);
 
   const termId = `term-${session?.id ?? `project-${cwd || "unselected"}`}`;
 
@@ -75,7 +77,7 @@ export function DevView() {
       )}
 
       {/* Main workspace */}
-      <div className="flex flex-col flex-1 min-w-0">
+      <div className="relative flex flex-col flex-1 min-w-0">
         {/* Top toolbar */}
         <div className="flex items-center gap-1 px-3 h-9 border-b border-border/60 bg-surface flex-shrink-0">
           {(["chat", "editor", "tasks", "print"] as PrimaryPane[]).map((p) => (
@@ -91,6 +93,11 @@ export function DevView() {
           ))}
           <div className="flex-1" />
           <WorkspaceSafetyBadge />
+          {cwd && <button
+            onClick={() => setWorktreesOpen((open) => !open)}
+            className={`px-2.5 py-1 text-xs rounded-md transition-colors ${worktreesOpen ? "text-accent bg-accent/10" : "text-faint hover:text-text"}`}
+            title="Create and switch isolated Git worktrees"
+          >Worktrees</button>}
           <button
             onClick={toggleTerminal}
             className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-colors ${
@@ -119,6 +126,8 @@ export function DevView() {
             Browser
           </button>
         </div>
+
+        {worktreesOpen && cwd && <WorktreePanel repoPath={cwd} onSelect={(path) => { setCwd(path); setWorktreesOpen(false); }} />}
 
         {/* Pane area */}
         <div className="flex flex-col flex-1 min-h-0">

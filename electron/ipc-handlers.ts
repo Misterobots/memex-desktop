@@ -34,6 +34,8 @@ import type { RunStore }               from "./run-store";
 import type { EvalStore }              from "./eval-store";
 import type { ArtifactStore }          from "./artifact-store";
 import type { HooksStore }             from "./hooks-store";
+import type { PermissionStore }        from "./permission-store";
+import type { WorktreeManager }        from "./worktree-manager";
 import { fireHooks }                   from "./hooks-runner";
 import { runOpenScad, type RenderParams } from "./openscad-runner";
 import { autoWireStore }                  from "./ipc-autowire";
@@ -90,6 +92,8 @@ function getLocalCadBridgeToken(): string {
 export interface IpcContext {
   config:    ConfigStore;
   firewall:  WorkspaceFirewall;
+  permissions: PermissionStore;
+  worktrees:  WorktreeManager;
   lsp:       LspManager;
   browser:   BrowserBridge;
   browserPane: BrowserPane;
@@ -102,7 +106,7 @@ export interface IpcContext {
 }
 
 export function registerAllIpc(ctx: IpcContext): void {
-  const { config, firewall, lsp, browser, browserPane, runs, evals, artifacts, hooks, getMain, startHealthLoop } = ctx;
+  const { config, firewall, permissions, worktrees, lsp, browser, browserPane, runs, evals, artifacts, hooks, getMain, startHealthLoop } = ctx;
 
   // ── Identity ──────────────────────────────────────────────────────────────
   ipcMain.handle("identity:get", () => getCurrentUid());
@@ -392,6 +396,10 @@ export function registerAllIpc(ctx: IpcContext): void {
   }) => {
     const main = getMain();
     if (!main) return { approved: false, scope: "once" as const };
+    const owner = getCurrentUid();
+    const workspaceKey = JSON.stringify(firewall.getPolicy().roots.slice().sort());
+    const stored = permissions.isApproved(owner, workspaceKey, opts.toolName);
+    if (stored) return { approved: true, scope: stored };
     main.show(); main.focus();
     const argsSummary = Object.entries(opts.toolInput).slice(0, 3)
       .map(([k, v]) => `${k}: ${String(v).slice(0, 60)}`).join("\n");
@@ -406,7 +414,12 @@ export function registerAllIpc(ctx: IpcContext): void {
     });
     const scopes = ["once", "session", "workspace", "deny"] as const;
     const chosen  = scopes[response] ?? "deny";
-    return { approved: chosen !== "deny", scope: chosen === "deny" ? "once" : chosen };
+    if (chosen === "deny") return { approved: false, scope: "once" as const };
+    if (chosen === "session" || chosen === "workspace") {
+      const persisted = permissions.grant(owner, workspaceKey, opts.toolName, chosen);
+      if (!persisted) return { approved: false, scope: "once" as const };
+    }
+    return { approved: true, scope: chosen };
   });
 
   // ── Workspace firewall (pure passthrough) ─────────────────────────────────
@@ -414,6 +427,18 @@ export function registerAllIpc(ctx: IpcContext): void {
   // Aliased on its own — "workspace:clearSession" (preload/desktop.ts's name)
   // differs from the store's actual clearSessionApprovals() method name.
   autoWireStore("workspace", firewall, { clearSession: "clearSessionApprovals" });
+
+  // ── Git worktree lifecycle ───────────────────────────────────────────────
+  ipcMain.handle("worktree:list", (_e, repoPath?: string) => worktrees.list(repoPath));
+  ipcMain.handle("worktree:enter", async (_e, repoPath: string, baseRef?: string, label?: string) => {
+    if (!await firewall.checkWrite(repoPath, getMain())) throw new Error("Permission denied");
+    return worktrees.enter(repoPath, baseRef, label);
+  });
+  ipcMain.handle("worktree:exit", async (_e, id: string, force?: boolean) => {
+    const record = worktrees.list().find((item) => item.id === id);
+    if (!record || !await firewall.checkWrite(record.repoPath, getMain())) throw new Error("Permission denied");
+    return worktrees.exit(id, force === true);
+  });
 
   // ── Runtime config profiles ───────────────────────────────────────────────
   // setActive stays hand-written: it broadcasts config:changed and restarts

@@ -1,6 +1,6 @@
 import { getAgentRuntime } from "./runtime-urls";
 import { desktop }         from "./desktop";
-import type { EventType, MemexMode, TokenUsage, ClarificationCard } from "../types/memex";
+import type { EventType, MemexMode, TokenUsage, ClarificationCard, RunEventType } from "../types/memex";
 
 export interface SSEEvent {
   type: EventType;
@@ -12,6 +12,19 @@ export interface SSEEvent {
   /** Full raw delta for rich (non-text) events — lets new structured event types
    *  reach the UI without a parser change. Undefined for plain text tokens. */
   data?: Record<string, unknown>;
+}
+
+/** Map runtime/SSE events to the stable run-inspector event contract. */
+export function runEventTypeForSSE(event: SSEEvent): RunEventType {
+  const rawType = typeof event.data?.type === "string" ? event.data.type : event.type;
+  if (rawType === "tool_start" || rawType === "tool_result" || event.type === "tool_call_start" || event.type === "tool_call_result") return "tool_call";
+  if (rawType === "approval_requested" || rawType === "approval_granted" || rawType === "approval_denied" || rawType === "tool_approval_needed") return "permission";
+  if (rawType === "memory_read") return "memory_read";
+  if (rawType === "memory_write") return "memory_write";
+  if (rawType === "file_change") return "file_write";
+  if (rawType === "error" || event.type === "log") return "error";
+  if (event.type === "message" || event.type === "response" || event.type === "thought") return "message_chunk";
+  return "status";
 }
 
 export interface StreamOptions {
@@ -61,6 +74,20 @@ export function streamChat(opts: StreamOptions): () => void {
   const controller = new AbortController();
   const bridge     = desktop();
   let runId: string | undefined;
+  const recording = Boolean(bridge?.runs && opts.runMeta);
+  const pendingRunEvents: Array<{ type: RunEventType; payload: Record<string, unknown> }> = [];
+  const recordRunEvent = (type: RunEventType, payload: Record<string, unknown>) => {
+    if (!recording || !bridge?.runs) return;
+    if (!runId) {
+      pendingRunEvents.push({ type, payload });
+      return;
+    }
+    void bridge.runs.addEvent(runId, type, payload);
+  };
+  const flushPendingRunEvents = () => {
+    if (!runId || !bridge?.runs) return;
+    for (const event of pendingRunEvents.splice(0)) void bridge.runs.addEvent(runId, event.type, event.payload);
+  };
 
   // Open a run record if the bridge is available
   if (bridge?.runs && opts.runMeta) {
@@ -73,7 +100,10 @@ export function streamChat(opts: StreamOptions): () => void {
       message:   userMsg.slice(0, 200),
     }).then((r) => {
       runId = r?.id;
-      if (runId) opts.onRunStarted?.(runId);
+      if (runId) {
+        flushPendingRunEvents();
+        opts.onRunStarted?.(runId);
+      }
     });
   }
 
@@ -100,11 +130,13 @@ export function streamChat(opts: StreamOptions): () => void {
       try {
         const chunk = JSON.parse(data);
         if (chunk.usage) {
-          opts.onUsage?.({
+          const usage = {
             promptTokens: chunk.usage.prompt_tokens ?? 0,
             completionTokens: chunk.usage.completion_tokens ?? 0,
             totalTokens: chunk.usage.total_tokens ?? 0,
-          });
+          } satisfies TokenUsage;
+          opts.onUsage?.(usage);
+          recordRunEvent("status", { kind: "usage", usage });
         }
         const delta = chunk?.choices?.[0]?.delta;
         if (!delta || (!delta.type && !delta.content)) continue;
@@ -122,7 +154,15 @@ export function streamChat(opts: StreamOptions): () => void {
           }
         }
         const normalized = normalizeSSEDelta(delta as Record<string, unknown>);
-        if (normalized) opts.onEvent(normalized);
+        if (normalized) {
+          opts.onEvent(normalized);
+          recordRunEvent(runEventTypeForSSE(normalized), {
+            ...normalized.data,
+            content: normalized.content,
+            agent_name: normalized.agent_name,
+            pioneer_name: normalized.pioneer_name,
+          });
+        }
 
       } catch {}
     }
@@ -153,8 +193,13 @@ export function streamChat(opts: StreamOptions): () => void {
           const detail = failureDetail ? `: ${failureDetail.slice(0, 500)}` : "";
           opts.onError(new Error(`agent_runtime returned ${status}${detail}`));
         }
-        else { if (runId) bridge.runs?.end(runId, "done"); opts.onDone(); }
+        else {
+          recordRunEvent("done", { status: "done" });
+          if (runId) bridge.runs?.end(runId, "done");
+          opts.onDone();
+        }
       } else if (event.kind === "error") {
+        recordRunEvent("error", { message: String(event.value ?? "Stream failed") });
         if (runId) bridge.runs?.end(runId, "error");
         opts.onError(new Error(String(event.value ?? "Stream failed")));
       }
@@ -180,11 +225,13 @@ export function streamChat(opts: StreamOptions): () => void {
         await consumeChunk(value);
       }
 
+      recordRunEvent("done", { status: "done" });
       if (runId) bridge?.runs?.end(runId, "done");
       opts.onDone();
     })
     .catch((err) => {
       if (err.name !== "AbortError") {
+        recordRunEvent("error", { message: err instanceof Error ? err.message : String(err) });
         if (runId) bridge?.runs?.end(runId, "error");
         opts.onError(err);
       } else {

@@ -202,6 +202,12 @@ contextBridge.exposeInMainWorld("memex", {
   // Workspace capability firewall
   workspace: bridgeNamespace("workspace", { getPolicy: "getPolicy", setPolicy: "setPolicy", addRoot: "addRoot", clearSession: "clearSession" }),
 
+  worktrees: {
+    list:  (repoPath?: string) => ipcRenderer.invoke("worktree:list", repoPath),
+    enter: (repoPath: string, baseRef?: string, label?: string) => ipcRenderer.invoke("worktree:enter", repoPath, baseRef, label),
+    exit:  (id: string, force?: boolean) => ipcRenderer.invoke("worktree:exit", id, force),
+  },
+
   // Runtime configuration profiles
   config: {
     ...bridgeNamespace("config", {

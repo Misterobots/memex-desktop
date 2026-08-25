@@ -27,6 +27,15 @@ export interface ArtifactRecord {
   sizeBytes?: number;
 }
 
+export interface WorktreeRecord {
+  id: string;
+  repoPath: string;
+  path: string;
+  branch: string;
+  baseRef: string;
+  createdAt: string;
+}
+
 export type HookEvent = "run:start" | "run:end";
 export interface Hook {
   id:        string;
@@ -235,6 +244,12 @@ export interface MemexBridge {
     setPolicy:    (policy: { roots?: string[]; mode?: string; allowShell?: boolean; allowWrite?: boolean }) => Promise<void>;
     addRoot:      (root: string) => Promise<void>;
     clearSession: () => Promise<void>;
+  };
+
+  worktrees: {
+    list:  (repoPath?: string) => Promise<WorktreeRecord[]>;
+    enter: (repoPath: string, baseRef?: string, label?: string) => Promise<WorktreeRecord>;
+    exit:  (id: string, force?: boolean) => Promise<{ removed: boolean; branchDeleted: boolean; branch: string }>;
   };
 
   config: {

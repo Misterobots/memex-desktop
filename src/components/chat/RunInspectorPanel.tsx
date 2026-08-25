@@ -26,6 +26,7 @@ const EVENT_ICON: Record<RunEventType, string> = {
   memory_read:    "🧠",
   memory_write:   "✏",
   file_write:     "📄",
+  status:         "•",
   error:          "✕",
   done:           "✓",
 };
@@ -37,6 +38,7 @@ const EVENT_COLOR: Record<RunEventType, string> = {
   memory_read:    "text-purple-400",
   memory_write:   "text-purple-400",
   file_write:     "text-blue-400",
+  status:         "text-text/50",
   error:          "text-red-400",
   done:           "text-green-400",
 };

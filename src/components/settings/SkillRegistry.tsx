@@ -1,21 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { desktop }  from "../../lib/desktop";
 import type { SkillEntry } from "../../types/memex";
+import { mergeSkillsByPrecedence, parseSkillFrontmatter } from "../../lib/skills";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function parseFrontmatter(md: string): { name?: string; version?: string; description?: string } {
-  const m = md.match(/^---\n([\s\S]*?)\n---/);
-  if (!m) return {};
-  const out: Record<string, string> = {};
-  for (const line of m[1].split("\n")) {
-    const [k, ...rest] = line.split(":");
-    if (k && rest.length) out[k.trim()] = rest.join(":").trim();
-  }
-  return out;
-}
-
 // ---------------------------------------------------------------------------
 // Scanner — walks common skill directories looking for SKILL.md
 // ---------------------------------------------------------------------------
@@ -27,9 +17,9 @@ async function scanSkills(bridge: NonNullable<ReturnType<typeof desktop>>): Prom
     { path: `${home}/.claude/skills`, scope: "user" },
     { path: `${home}/.claude`, scope: "user" },
   ];
-  const byName = new Map<string, SkillEntry>();
+  const found: SkillEntry[] = [];
 
-  for (const root of roots) {
+  for (const root of roots.sort((a, b) => a.scope.localeCompare(b.scope) || a.path.localeCompare(b.path))) {
     try {
       const entries = await bridge.fs.readDir(root.path);
       for (const e of entries) {
@@ -37,7 +27,7 @@ async function scanSkills(bridge: NonNullable<ReturnType<typeof desktop>>): Prom
         try {
           const sourcePath = `${e.path}/SKILL.md`;
           const skillMd = await bridge.fs.readFile(sourcePath);
-          const fm = parseFrontmatter(skillMd);
+          const fm = parseSkillFrontmatter(skillMd);
           const name = fm.name ?? e.name;
           const entry: SkillEntry = {
             id:          `${root.scope}:${e.path}`,
@@ -49,9 +39,7 @@ async function scanSkills(bridge: NonNullable<ReturnType<typeof desktop>>): Prom
             description: fm.description ?? skillMd.split(/\r?\n/).find((l) => l.trim() && !l.startsWith("#") && !l.startsWith("-")) ?? "",
             modifiedAt:  new Date().toISOString(),
           };
-          const key = name.trim().toLowerCase();
-          // Roots are ordered project-first, then user; first match wins.
-          if (!byName.has(key)) byName.set(key, entry);
+          found.push(entry);
         } catch {
           // No readable SKILL.md in this directory — skip.
         }
@@ -61,7 +49,7 @@ async function scanSkills(bridge: NonNullable<ReturnType<typeof desktop>>): Prom
     }
   }
 
-  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+  return mergeSkillsByPrecedence(found);
 }
 
 // ---------------------------------------------------------------------------
@@ -73,13 +61,19 @@ export function SkillRegistry() {
   const [enabled,   setEnabled]   = useState<Set<string>>(new Set());
   const [loading,   setLoading]   = useState(false);
   const [exporting, setExporting] = useState(false);
+  const skillsRef = useRef<SkillEntry[]>([]);
 
   const load = useCallback(async () => {
     if (!bridge) return;
     setLoading(true);
     const found = await scanSkills(bridge);
+    const previousSkills = skillsRef.current;
+    skillsRef.current = found;
     setSkills(found);
-    setEnabled(new Set(found.filter((s) => s.enabled).map((s) => s.id)));
+    setEnabled((previous) => {
+      const previousByName = new Map(previousSkills.map((skill) => [skill.name.trim().toLowerCase(), previous.has(skill.id)]));
+      return new Set(found.filter((skill) => previousByName.get(skill.name.trim().toLowerCase()) ?? skill.enabled).map((skill) => skill.id));
+    });
     setLoading(false);
   }, [bridge]);
 
