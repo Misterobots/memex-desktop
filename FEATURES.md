@@ -97,9 +97,9 @@ The remaining parity work is concentrated in five areas:
 
 ### P0 — reliability and safety
 
-- Add end-to-end crash-recovery smoke tests covering sandbox, Task, and MCP replay.
+- Add deployed crash-recovery smoke tests covering sandbox, Task, and MCP replay; local approval/checkpoint/resume/compaction coverage now exists.
 - Keep approval policy enforcement and native dialogs aligned as additional backend runtimes are added.
-- Add end-to-end smoke tests covering approval → tool execution → diff → resume → compaction.
+- Add deployed smoke coverage for approval → tool execution → diff → resume → compaction.
 
 ### P1 — parity and extensibility
 
@@ -131,5 +131,5 @@ The remaining scope is now concentrated in higher-level integration and parity:
 
 - `memex-desktop`: TypeScript typecheck passed; 47 tests passed across 12 files, including conversation-sync retry/coalescing coverage and streaming checkpoint integration changes.
 - `Agent_Swarm`: neutral history checkpoint round-trip, AST, permission, event-recovery, queue, publish, and MCP transport checks passed; repository pytest collection remains blocked by the optional `modelscope` dependency.
-- Targeted Agent_Swarm regression tests passed for stable event persistence/recovery, scoped task queues, idempotent publish confirmation, MCP transports, DevHarness history, and permissions; the full suite remains blocked by the optional `modelscope` dependency, and the full handoff contract module is skipped when `prometheus_client` is unavailable.
+- Targeted Agent_Swarm regression tests passed for stable event persistence/recovery, approved tool checkpoint/resume/compaction flow, scoped task queues, idempotent publish confirmation, MCP transports, DevHarness history, and permissions; the full suite remains blocked by the optional `modelscope` dependency, and the full handoff contract module is skipped when `prometheus_client` is unavailable.
 - Both repositories are clean after their current checkpoint commits; pushes remain intentionally unperformed.
