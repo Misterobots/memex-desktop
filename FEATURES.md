@@ -76,9 +76,9 @@ The remaining parity work is concentrated in five areas:
 | File type handlers | **Shipped** | `.memex` and `.claude` associations plus open-file routing exist. |
 | Native permission bridge | **Shipped / scoped** | Electron dialogs and preload APIs now forward approve/deny decisions to the DevHarness runtime, with owner/workspace-scoped auto-approve grants. Cross-runtime deployed smoke coverage remains. |
 | Session export and artifacts | **Shipped** | Redacted session export, artifact store, run-linked files/diffs/reports, and artifact viewer exist. |
-| Multiple windows | **Partial** | Main and quick-entry windows exist; broader multi-window workspace semantics are not implemented. |
-| Global shortcut customization | **Partial** | Configurable shortcut plumbing exists, but parity with the full desktop shortcut surface is incomplete. |
-| Browser / computer-use bridge | **Partial** | Browser bridge and browser pane exist; full computer-use safety controls and extension-native messaging are not implemented. |
+| Multiple windows | **Shipped / scoped** | Main and quick-entry windows coexist with tray lifecycle and workspace-safe routing; broader multi-workspace window semantics remain outside the current shell. |
+| Global shortcut customization | **Shipped / scoped** | Users can configure the global quick-entry, show-window, and new-chat bindings, with live re-registration; the full shortcut surface is intentionally narrower. |
+| Browser / computer-use bridge | **Shipped / scoped** | Native browser pane and allowlisted, handshake-protected Chrome native-messaging bridge exist; broader computer-use safety automation remains outside the current shell. |
 
 ### 5. Memex differentiators — functionality beyond baseline parity
 
@@ -110,10 +110,10 @@ The remaining parity work is concentrated in five areas:
 
 ### P2 — product polish and optional integrations
 
-- USD cost estimates where provider pricing is available.
-- Broader shortcut and multi-window behavior.
-- Vim mode.
-- Chrome extension/native messaging.
+- Add provider-specific USD pricing when a runtime reports reliable price metadata; local Ollama runs now report an explicit `$0.00` estimate.
+- Add broader multi-workspace window semantics if that becomes a product requirement.
+- Add Vim mode if the native editor becomes a primary keyboard-driven workflow.
+- Expand computer-use safety automation beyond the existing allowlisted native-messaging bridge.
 - Provider-native Codex/Claude authentication if direct account-backed model sessions become a requirement.
 
 ## Reconciliation notes

@@ -9,15 +9,23 @@ const DOT: Record<string, string> = {
   checking:     "bg-yellow status-dot-active",
 };
 
-/** Session token total — sum of per-message usage. Local models, so no USD cost. */
+/** Session token total — provider cost is shown when the runtime reports it. */
 function SessionUsage() {
   const { activeSession } = useStore();
   const session = activeSession();
   if (!session) return null;
 
-  let inTok = 0, outTok = 0;
+  let inTok = 0, outTok = 0, costUsd = 0;
+  let hasCost = false;
   for (const m of session.messages) {
-    if (m.usage) { inTok += m.usage.promptTokens; outTok += m.usage.completionTokens; }
+    if (m.usage) {
+      inTok += m.usage.promptTokens;
+      outTok += m.usage.completionTokens;
+      if (typeof m.usage.costUsd === "number" && Number.isFinite(m.usage.costUsd)) {
+        costUsd += m.usage.costUsd;
+        hasCost = true;
+      }
+    }
   }
   const total = inTok + outTok;
   if (total === 0) return null;
@@ -25,9 +33,9 @@ function SessionUsage() {
   return (
     <span
       className="text-xs text-faint px-2 py-1 rounded-md bg-surface border border-border/60"
-      title={`${inTok.toLocaleString()} in · ${outTok.toLocaleString()} out · local model (no API cost)`}
+      title={`${inTok.toLocaleString()} in · ${outTok.toLocaleString()} out${hasCost ? ` · estimated $${costUsd.toFixed(4)}` : " · provider cost unavailable"}`}
     >
-      {fmtTokens(total)} tok
+      {fmtTokens(total)} tok{hasCost ? ` · $${costUsd.toFixed(2)}` : ""}
     </span>
   );
 }

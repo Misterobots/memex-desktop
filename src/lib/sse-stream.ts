@@ -152,6 +152,9 @@ export function streamChat(opts: StreamOptions): () => void {
             promptTokens: chunk.usage.prompt_tokens ?? 0,
             completionTokens: chunk.usage.completion_tokens ?? 0,
             totalTokens: chunk.usage.total_tokens ?? 0,
+            costUsd: typeof chunk.usage.cost_usd === "number"
+              ? chunk.usage.cost_usd
+              : typeof chunk.usage.total_cost === "number" ? chunk.usage.total_cost : undefined,
           } satisfies TokenUsage;
           opts.onUsage?.(usage);
           recordRunEvent("status", { kind: "usage", usage });

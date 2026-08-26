@@ -108,6 +108,8 @@ export interface TokenUsage {
   promptTokens:     number;
   completionTokens: number;
   totalTokens:      number;
+  /** Provider-reported estimate in USD; absent when the runtime has no price data. */
+  costUsd?:         number;
 }
 
 export interface ChatMessage {
