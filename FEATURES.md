@@ -46,7 +46,7 @@ The remaining parity work is concentrated in five areas:
 | Git operations | **Shipped** | Status, diff, branch, commit, and related operations are available. |
 | Diff review | **Shipped** | Desktop line diff/review modal and task/web diff views exist. |
 | Task planning / TodoWrite | **Shipped** | TodoWrite-style events and task cards render in the Agent_Swarm UI. |
-| Task board and task composer | **Partial** | Backend task APIs and desktop task UI exist; the full TaskCreate/Update/Get/List/Stop lifecycle is not yet one consistent contract. |
+| Task board and task composer | **Partial / lifecycle complete** | Backend and desktop now share create/update/get/list/stop/approval/diff/push task routes. Merge/publish semantics and broader task event history remain. |
 | Project-scoped workspaces | **Shipped** | Dev projects, blank projects, live-repo selection, and project-scoped task routing exist. |
 | Git worktree isolation | **Partial / shipped manager** | Desktop has an explicit owner-scoped worktree manager with generated branches, clean-tree protection, list/create/remove operations, and cleanup controls. Merge/publish semantics remain backend/project-policy work. |
 | LSP diagnostics | **Partial** | Native Electron LSP manager exists; Agent_Swarm's web editor consumes LSP diagnostics. The native desktop renderer does not yet expose the same editor integration. |
@@ -57,7 +57,7 @@ The remaining parity work is concentrated in five areas:
 
 | Capability | Status | Evidence / notes |
 |---|---|---|
-| MCP bridge | **Partial / contract complete** | `MCPBridgeServer` exposes HTTP JSON-RPC tools/skills plus standard resources/prompts, capability metadata, truthful health, and client configuration. It is not yet a full stdio/SSE/WebSocket MCP host. |
+| MCP bridge | **Shipped / contract complete** | `MCPBridgeServer` exposes HTTP, SSE, WebSocket, and stdio JSON-RPC transports, standard resources/prompts, capability metadata, truthful health, and client configuration. |
 | Built-in skills | **Shipped** | Skill registry, resolution, MCP descriptors, web tools, bash parsing, and fabrication skills exist. |
 | Claude-style Markdown skills | **Shipped / scoped** | User/project Markdown skill discovery, CRLF-safe frontmatter parsing, deterministic project-over-user precedence, and reload-safe enablement are implemented. |
 | Persistent memory | **Shipped** | MemPalace plus owner-aware session summaries and memory recall are integrated. |
@@ -97,7 +97,7 @@ The remaining parity work is concentrated in five areas:
 
 ### P0 — reliability and safety
 
-- Unify the desktop and Agent_Swarm event schema for tool start, approval, result, file change, todo, usage, continuation, and error events.
+- Extend the stable event envelope to every non-DevHarness provider stream and add durable backend event history.
 - Add end-to-end crash-recovery smoke tests covering sandbox, Task, and MCP replay.
 - Keep approval policy enforcement and native dialogs aligned as additional backend runtimes are added.
 - Finish per-project concurrency, branch cleanup, and merge/publish semantics for live-repo worktrees.
@@ -105,8 +105,8 @@ The remaining parity work is concentrated in five areas:
 
 ### P1 — parity and extensibility
 
-- Implement full MCP host compatibility: stdio, SSE, WebSocket, configuration discovery, and server lifecycle. HTTP resources/prompts are complete.
-- Complete the task lifecycle contract: create, update, get, list, stop, approval, diff, and completion/publish.
+- Add transport integration tests against the deployed MCP runtime and complete server lifecycle controls.
+- Add task merge/publish lifecycle semantics on top of the now-complete task CRUD/stop/approval/diff contract.
 - Decide whether notebook editing and LSP diagnostics should be brought into the native desktop renderer or remain web-UI capabilities.
 - Add a first-class REPL tool, or explicitly document terminal-based REPL support as the product choice.
 

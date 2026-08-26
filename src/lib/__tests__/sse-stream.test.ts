@@ -12,6 +12,18 @@ describe("normalizeSSEDelta", () => {
     expect(normalizeSSEDelta({ type: "content", content: "hello" })).toMatchObject({ type: "message", content: "hello", data: undefined });
   });
 
+  it("preserves the backend stable event envelope", () => {
+    const event = normalizeSSEDelta({
+      type: "tool_result",
+      content: "ok",
+      run_id: "run-1",
+      seq: 4,
+      event_ts: "2026-08-25T00:00:00Z",
+      event: { type: "tool_result", run_id: "run-1", seq: 4, ts: "2026-08-25T00:00:00Z", payload: { ok: true } },
+    });
+    expect(event).toMatchObject({ run_id: "run-1", seq: 4, event: { payload: { ok: true } } });
+  });
+
   it("maps runtime events to the run inspector contract", () => {
     expect(runEventTypeForSSE(normalizeSSEDelta({ type: "approval_requested", content: "write" })!)).toBe("permission");
     expect(runEventTypeForSSE(normalizeSSEDelta({ type: "file_change", content: "file.ts" })!)).toBe("file_write");

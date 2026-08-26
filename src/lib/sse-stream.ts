@@ -5,6 +5,16 @@ import type { EventType, MemexMode, TokenUsage, ClarificationCard, RunEventType 
 export interface SSEEvent {
   type: EventType;
   content: string;
+  run_id?: string;
+  seq?: number;
+  event_ts?: string;
+  event?: {
+    type: string;
+    run_id: string;
+    seq: number;
+    ts: string;
+    payload: Record<string, unknown>;
+  };
   agent_name?: string;
   pioneer_name?: string;
   /** Structured payload for clarification_card events (rides outside `content`). */
@@ -64,6 +74,10 @@ export function normalizeSSEDelta(delta: Record<string, unknown>): SSEEvent | nu
   return {
     type: eventType,
     content,
+    run_id: typeof delta.run_id === "string" ? delta.run_id : undefined,
+    seq: typeof delta.seq === "number" ? delta.seq : undefined,
+    event_ts: typeof delta.event_ts === "string" ? delta.event_ts : undefined,
+    event: delta.event && typeof delta.event === "object" ? delta.event as SSEEvent["event"] : undefined,
     agent_name: typeof delta.agent_name === "string" ? delta.agent_name : undefined,
     pioneer_name: typeof delta.pioneer_name === "string" ? delta.pioneer_name : undefined,
     clarification: delta.clarification as SSEEvent["clarification"],
