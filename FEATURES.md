@@ -74,7 +74,7 @@ The remaining parity work is concentrated in five areas:
 | Connection health loop | **Shipped / verify** | Native health probes push status to the renderer; failure/recovery behavior needs runtime smoke coverage. |
 | Auto-update | **Shipped / verify** | `electron-updater`, status events, download, and install paths exist. |
 | File type handlers | **Shipped** | `.memex` and `.claude` associations plus open-file routing exist. |
-| Native permission bridge | **Shipped / partial policy** | Electron dialogs and preload APIs exist; backend policy still needs one canonical enforcement path. |
+| Native permission bridge | **Shipped / scoped** | Electron dialogs and preload APIs now forward approve/deny decisions to the DevHarness runtime, with owner/workspace-scoped auto-approve grants. Cross-runtime deployed smoke coverage remains. |
 | Session export and artifacts | **Shipped** | Redacted session export, artifact store, run-linked files/diffs/reports, and artifact viewer exist. |
 | Multiple windows | **Partial** | Main and quick-entry windows exist; broader multi-window workspace semantics are not implemented. |
 | Global shortcut customization | **Partial** | Configurable shortcut plumbing exists, but parity with the full desktop shortcut surface is incomplete. |
@@ -98,7 +98,7 @@ The remaining parity work is concentrated in five areas:
 ### P0 — reliability and safety
 
 - Add deployed crash-recovery smoke tests covering sandbox, Task, and MCP replay; local approval/checkpoint/resume/compaction coverage now exists.
-- Keep approval policy enforcement and native dialogs aligned as additional backend runtimes are added.
+- Extend approval-policy parity checks to any additional backend runtimes as they are added.
 - Add deployed smoke coverage for approval → tool execution → diff → resume → compaction.
 
 ### P1 — parity and extensibility
@@ -131,5 +131,5 @@ The remaining scope is now concentrated in higher-level integration and parity:
 
 - `memex-desktop`: TypeScript typecheck passed; 47 tests passed across 12 files, including conversation-sync retry/coalescing coverage and streaming checkpoint integration changes.
 - `Agent_Swarm`: neutral history checkpoint round-trip, AST, permission, event-recovery, queue, publish, and MCP transport checks passed; repository pytest collection remains blocked by the optional `modelscope` dependency.
-- Targeted Agent_Swarm regression tests passed for stable event persistence/recovery, approved tool checkpoint/resume/compaction flow, scoped task queues, idempotent publish confirmation, MCP transports, DevHarness history, and permissions; the full suite remains blocked by the optional `modelscope` dependency, and the full handoff contract module is skipped when `prometheus_client` is unavailable.
+- Targeted Agent_Swarm regression tests passed for stable event persistence/recovery, approved tool checkpoint/resume/compaction flow, scoped approval state, scoped task queues, idempotent publish confirmation, MCP transports, DevHarness history, and permissions; the full suite remains blocked by the optional `modelscope` dependency, and the full handoff contract module is skipped when `prometheus_client` is unavailable.
 - Both repositories are clean after their current checkpoint commits; pushes remain intentionally unperformed.

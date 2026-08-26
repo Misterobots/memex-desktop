@@ -44,6 +44,8 @@ export interface StreamOptions {
   /** Ollama model id to route to (e.g. "qwen3-coder:30b"). Defaults to "swarm". */
   model?: string;
   sessionId?: string;
+  /** Workspace identity sent with dev approval decisions. */
+  workspaceKey?: string;
   alreadySteered?: boolean;
   /** Resume a server-side DevHarness checkpoint after explicit tool replay. */
   devResume?: boolean;
@@ -128,6 +130,7 @@ export function streamChat(opts: StreamOptions): () => void {
     session_id: opts.sessionId ?? "default_session",
     already_steered: opts.alreadySteered ?? false,
     dev_resume: opts.devResume ?? false,
+    workspace_key: opts.workspaceKey ?? opts.sessionId ?? "default-workspace",
     ...opts.modeFlags,
   });
 
@@ -141,6 +144,7 @@ export function streamChat(opts: StreamOptions): () => void {
       const data = line.slice(6).trim();
       if (!data || data === "[DONE]") continue;
 
+      let approvalEvent = false;
       try {
         const chunk = JSON.parse(data);
         if (chunk.usage) {
@@ -167,6 +171,33 @@ export function streamChat(opts: StreamOptions): () => void {
             if (!approved) continue;
           }
         }
+        if (rawType === "tool_approval_needed" && bridge?.api) {
+          approvalEvent = true;
+          const callId = typeof delta.tool_call_id === "string" ? delta.tool_call_id : "";
+          const toolName = typeof delta.tool_name === "string" ? delta.tool_name : "unknown_tool";
+          if (!callId) continue;
+          const { approved, scope } = await bridge.permissions.request({
+            toolName,
+            toolInput: (delta.tool_input && typeof delta.tool_input === "object")
+              ? delta.tool_input as Record<string, unknown> : {},
+            callId,
+          });
+          const action = approved ? "approve" : "deny";
+          const auto = approved && scope !== "once" ? scope : "none";
+          const response = await bridge.api.request({
+            url: `${getAgentRuntime()}/api/v1/dev/${action}/${encodeURIComponent(callId)}`,
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              auto,
+              tool_name: toolName,
+              workspace_key: opts.workspaceKey ?? opts.sessionId ?? "default-workspace",
+            }),
+          });
+          if (response.status < 200 || response.status >= 300) {
+            throw new Error(`Approval ${action} failed (${response.status})`);
+          }
+        }
         const normalized = normalizeSSEDelta(delta as Record<string, unknown>);
         if (normalized) {
           opts.onEvent(normalized);
@@ -178,7 +209,14 @@ export function streamChat(opts: StreamOptions): () => void {
           });
         }
 
-      } catch {}
+      } catch (error) {
+        // JSON/shape errors in ordinary telemetry are non-fatal, but an
+        // approval bridge failure must surface: the backend is waiting on the
+        // decision and silently swallowing this would leave the stream hung.
+        if (approvalEvent) {
+          opts.onError(error instanceof Error ? error : new Error("Approval bridge failed"));
+        }
+      }
     }
   };
   const decoder = new TextDecoder();

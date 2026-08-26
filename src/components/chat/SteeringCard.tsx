@@ -48,6 +48,7 @@ export function SteeringCard({ card }: Props) {
       mode,
       modeFlags: MODE_FLAGS[mode],
       sessionId,
+      workspaceKey: session.workspaceKey,
       onEvent: (e) => {
         appendEvent(sessionId, assistantId, e as MessageEvent);
         if (e.type === "message" || e.type === "response") {

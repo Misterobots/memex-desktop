@@ -131,6 +131,7 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
       model: selectedModel,
       modeFlags: { ...MODE_FLAGS[mode], ...extraFlags },
       sessionId,
+      workspaceKey,
       runMeta: { profile: "default" },
       onRunStarted: (runId) => {
         updateMessageRunId(sessionId, assistantId, runId);

@@ -45,3 +45,9 @@ stable envelope below.
 ## Event schema
 
 Stream and persisted run events should retain a stable `type`, `run_id`, `seq`, and structured payload. Tool start/result, approval requested/granted/denied, file change, todo/status, usage, continuation, error, and done events should not be silently dropped or renamed per client surface.
+
+Dev approval decisions from native clients must POST back to the runtime's
+owner-scoped `/api/v1/dev/approve/{call_id}` or `/api/v1/dev/deny/{call_id}`
+route. Persisted session/workspace auto-approve grants must be keyed by the
+same authenticated owner and workspace identity; a grant from one workspace
+must not authorize another.
