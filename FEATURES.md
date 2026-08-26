@@ -112,7 +112,7 @@ The remaining parity work is concentrated in five areas:
 
 - Add provider-specific USD pricing when a runtime reports reliable price metadata; local Ollama runs now report an explicit `$0.00` estimate.
 - Add broader multi-workspace window semantics if that becomes a product requirement.
-- Add Vim mode if the native editor becomes a primary keyboard-driven workflow.
+- Expand the native editor's scoped Vim mode beyond basic navigation, insert, delete, and open-line commands if it becomes a primary keyboard-driven workflow.
 - Expand computer-use safety automation beyond the existing allowlisted native-messaging bridge.
 - Provider-native Codex/Claude authentication if direct account-backed model sessions become a requirement.
 

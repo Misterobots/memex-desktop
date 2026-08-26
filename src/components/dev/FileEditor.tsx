@@ -27,6 +27,8 @@ export function FileEditor({ path, onClose }: Props) {
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState("");
   const [diagnostics, setDiagnostics] = useState<Array<{ severity?: number; message: string; range?: { start?: { line?: number; character?: number } } }>>([]);
+  const [vimEnabled, setVimEnabled] = useState(false);
+  const [vimMode, setVimMode] = useState<"insert" | "normal">("insert");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const contentRef = useRef<string | null>(null);
   const lspDocumentRef = useRef<{ bridge: NonNullable<ReturnType<typeof desktop>>; lang: string; rootUri: string; uri: string; version: number } | null>(null);
@@ -111,6 +113,87 @@ export function FileEditor({ path, onClose }: Props) {
     if ((e.ctrlKey || e.metaKey) && e.key === "s") {
       e.preventDefault();
       save();
+      return;
+    }
+    if (!vimEnabled || content === null) return;
+
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setVimMode("normal");
+      return;
+    }
+    if (vimMode === "insert") return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const move = (position: number) => {
+      requestAnimationFrame(() => {
+        textarea.focus();
+        textarea.setSelectionRange(position, position);
+      });
+    };
+    const replace = (next: string, position: number) => {
+      setContent(next);
+      contentRef.current = next;
+      move(position);
+    };
+    const lineStart = content.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+    const lineEndIndex = content.indexOf("\n", start);
+    const lineEnd = lineEndIndex === -1 ? content.length : lineEndIndex;
+
+    e.preventDefault();
+    switch (e.key) {
+      case "i":
+        setVimMode("insert");
+        break;
+      case "a":
+        setVimMode("insert");
+        move(Math.min(content.length, end + 1));
+        break;
+      case "0":
+        move(lineStart);
+        break;
+      case "$":
+        move(lineEnd);
+        break;
+      case "h":
+      case "ArrowLeft":
+        move(Math.max(0, start - 1));
+        break;
+      case "l":
+      case "ArrowRight":
+        move(Math.min(content.length, end + 1));
+        break;
+      case "j":
+      case "ArrowDown": {
+        const column = start - lineStart;
+        const nextLineStart = lineEndIndex === -1 ? content.length : lineEndIndex + 1;
+        const nextLineEndIndex = content.indexOf("\n", nextLineStart);
+        const nextLineEnd = nextLineEndIndex === -1 ? content.length : nextLineEndIndex;
+        move(Math.min(nextLineStart + column, nextLineEnd));
+        break;
+      }
+      case "k":
+      case "ArrowUp": {
+        const previousLineEnd = Math.max(0, lineStart - 1);
+        const previousLineStart = content.lastIndexOf("\n", Math.max(0, previousLineEnd - 1)) + 1;
+        const column = start - lineStart;
+        move(Math.min(previousLineStart + column, previousLineEnd));
+        break;
+      }
+      case "x":
+        if (start < content.length) replace(content.slice(0, start) + content.slice(start + 1), start);
+        break;
+      case "o":
+        replace(content.slice(0, lineEnd) + "\n" + content.slice(lineEnd), lineEnd + 1);
+        setVimMode("insert");
+        break;
+      case "O":
+        replace(content.slice(0, lineStart) + "\n" + content.slice(lineStart), lineStart);
+        setVimMode("insert");
+        break;
     }
   };
 
@@ -121,6 +204,13 @@ export function FileEditor({ path, onClose }: Props) {
         <div className="flex items-center gap-2">
           <span className="text-text font-mono text-xs">{filename}</span>
           {dirty && <span className="w-1.5 h-1.5 rounded-full bg-accent" title="Unsaved changes" />}
+          <button
+            onClick={() => { setVimEnabled((enabled) => !enabled); setVimMode("insert"); }}
+            className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${vimEnabled ? "text-accent border-accent/50" : "text-faint border-border/60"}`}
+            title="Toggle basic Vim navigation and editing mode"
+          >
+            Vim
+          </button>
         </div>
         <div className="flex items-center gap-2">
           {dirty && (
@@ -180,7 +270,7 @@ export function FileEditor({ path, onClose }: Props) {
       {/* Status bar */}
       <div className="flex items-center justify-between px-4 py-1 border-t border-border/60 bg-surface text-faint text-xs flex-shrink-0">
         <span className="font-mono">{ext(path)}</span>
-        <span>{dirty ? "Modified" : "Saved"}</span>
+        <span>{vimEnabled ? `Vim · ${vimMode}` : dirty ? "Modified" : "Saved"}</span>
       </div>
     </div>
   );
