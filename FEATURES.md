@@ -46,9 +46,9 @@ The remaining parity work is concentrated in five areas:
 | Git operations | **Shipped** | Status, diff, branch, commit, and related operations are available. |
 | Diff review | **Shipped** | Desktop line diff/review modal and task/web diff views exist. |
 | Task planning / TodoWrite | **Shipped** | TodoWrite-style events and task cards render in the Agent_Swarm UI. |
-| Task board and task composer | **Partial / lifecycle complete** | Backend and desktop now share create/update/get/list/stop/approval/diff/push task routes. Merge/publish semantics and broader task event history remain. |
+| Task board and task composer | **Shipped / scoped** | Backend and desktop share create/update/get/list/stop/approval/diff/push task routes, stable event history, and owner-scoped merge/publish state. Deployed end-to-end recovery smoke coverage remains. |
 | Project-scoped workspaces | **Shipped** | Dev projects, blank projects, live-repo selection, and project-scoped task routing exist. |
-| Git worktree isolation | **Partial / merge complete** | Desktop has an explicit owner-scoped worktree manager with generated branches, clean-tree protection, list/create/remove/merge operations, conflict aborts, and cleanup controls. Publish and per-project concurrency policy remain. |
+| Git worktree isolation | **Shipped / scoped** | Desktop has an explicit owner-scoped worktree manager with generated branches, clean-tree protection, list/create/remove/merge operations, conflict aborts, and cleanup controls; backend live-repo locks are project-scoped and publish status is explicit. Deployed smoke coverage remains. |
 | LSP diagnostics | **Partial** | Native Electron LSP manager exists; Agent_Swarm's web editor consumes LSP diagnostics. The native desktop renderer does not yet expose the same editor integration. |
 | Notebook editing | **Partial** | Agent_Swarm web UI has a notebook viewer/editor; the native `memex-desktop` renderer does not. |
 | REPL tool | **Gap** | A terminal can run a REPL, but there is no dedicated REPL lifecycle/state/tool contract. |
@@ -97,16 +97,14 @@ The remaining parity work is concentrated in five areas:
 
 ### P0 — reliability and safety
 
-- Extend the stable event envelope to every non-DevHarness provider stream and add durable backend event history.
 - Add end-to-end crash-recovery smoke tests covering sandbox, Task, and MCP replay.
 - Keep approval policy enforcement and native dialogs aligned as additional backend runtimes are added.
-- Finish per-project concurrency and publish semantics for live-repo worktrees.
 - Add end-to-end smoke tests covering approval → tool execution → diff → resume → compaction.
 
 ### P1 — parity and extensibility
 
 - Add transport integration tests against the deployed MCP runtime and complete server lifecycle controls.
-- Add task merge/publish lifecycle semantics on top of the now-complete task CRUD/stop/approval/diff contract.
+- Add deployed end-to-end smoke coverage for task merge/publish lifecycle and retry recovery.
 - Decide whether notebook editing and LSP diagnostics should be brought into the native desktop renderer or remain web-UI capabilities.
 - Add a first-class REPL tool, or explicitly document terminal-based REPL support as the product choice.
 
@@ -124,7 +122,7 @@ The previous roadmap incorrectly marked these as missing: auto-start, health mon
 
 The remaining scope is now concentrated in higher-level integration and parity:
 
-- **Worktree isolation** has first-class create/remove/merge lifecycle support; publish and per-project concurrency policy remain.
+- **Worktree isolation** has first-class create/remove/merge lifecycle support; live-repo concurrency is project-scoped and publish state is explicit, with deployed smoke coverage remaining.
 - **MCP integration** has all four configured transports and capability-backed resources/prompts; deployed-runtime lifecycle testing remains.
 - **Skills** support deterministic user/project Markdown loading; LSP and notebooks remain web-UI capabilities that are not feature-complete in the native renderer.
 - **Cost tracking** means token tracking today; per-session USD estimates are still absent.
@@ -133,5 +131,5 @@ The remaining scope is now concentrated in higher-level integration and parity:
 
 - `memex-desktop`: TypeScript typecheck passed; 30 tests passed, including conversation-sync retry/coalescing coverage and streaming checkpoint integration changes.
 - `Agent_Swarm`: neutral history checkpoint round-trip, AST, and permission behavior checks passed; repository pytest remains blocked by the existing `uv` trampoline permission error.
-- Both repositories contain uncommitted work; treat current implementation status as a working-tree audit, not a release tag.
-- Agent_Swarm's broad compile check was blocked by existing `__pycache__` filesystem permissions; this did not establish a source syntax failure.
+- Targeted Agent_Swarm regression tests passed for event envelopes, scoped task queues, MCP transports, DevHarness history, and permissions; the full suite remains blocked by the optional `modelscope` dependency, and the full handoff contract module is skipped when `prometheus_client` is unavailable.
+- Both repositories are clean after their current checkpoint commits; pushes remain intentionally unperformed.
