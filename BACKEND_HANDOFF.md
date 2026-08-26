@@ -30,9 +30,15 @@ Extend the owner-scoped dev checkpoint response:
 
 The endpoint must reject changes after terminal completion unless explicitly supported, preserve approval state, and remain owner/project scoped.
 
+The task lifecycle also exposes owner-scoped `POST /v1/tasks/{coordination_id}/stop`,
+`GET /v1/tasks/{coordination_id}/diff`, approval/denial, and
+`GET /v1/tasks/{coordination_id}/events?after_seq=...` routes. Stop must be
+durable and cooperative for queued or active work; event responses use the
+stable envelope below.
+
 ## MCP capability and transport contract
 
-`GET /api/v1/mcp/health` should expose `tools_registered`, `resources_registered`, `prompts_registered`, and `transports` (values: `http`, `sse`, `websocket`, `stdio`).
+`GET /api/v1/mcp/health` should expose `tools_registered`, `resources_registered`, `prompts_registered`, and `transports` (values: `http`, `sse`, `websocket`, `stdio`). The current backend mounts all four transports.
 
 `GET /api/v1/mcp/client-config` may use either `mcpServers` or `servers`. Each descriptor should identify one transport and its endpoint/command. Resources and prompts should be advertised through explicit capability flags and implemented with standard JSON-RPC method names (`resources/list`, `resources/read`, `prompts/list`, `prompts/get`).
 

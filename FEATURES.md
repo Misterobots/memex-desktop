@@ -122,12 +122,11 @@ The remaining parity work is concentrated in five areas:
 
 The previous roadmap incorrectly marked these as missing: auto-start, health monitoring, updater, file handlers, native permission dialogs, session resume, context/token UI, and diff review. They are now implemented or substantially implemented in the current source.
 
-The previous roadmap also overstated these capabilities:
+The remaining scope is now concentrated in higher-level integration and parity:
 
-- **Worktree isolation** is currently stronger as container isolation than as Git worktree management.
-- **MCP integration** is a useful HTTP bridge, not yet full transport-level MCP compatibility.
-- **Skills** are primarily registry/built-in skills, not yet full Claude-style Markdown skill loading.
-- **LSP and notebooks** exist in the Agent_Swarm web UI but are not feature-complete across the native desktop renderer.
+- **Worktree isolation** has first-class create/remove/merge lifecycle support; publish and per-project concurrency policy remain.
+- **MCP integration** has all four configured transports and capability-backed resources/prompts; deployed-runtime lifecycle testing remains.
+- **Skills** support deterministic user/project Markdown loading; LSP and notebooks remain web-UI capabilities that are not feature-complete in the native renderer.
 - **Cost tracking** means token tracking today; per-session USD estimates are still absent.
 
 ## Validation snapshot
