@@ -51,6 +51,7 @@ The remaining parity work is concentrated in five areas:
 | Git worktree isolation | **Shipped / scoped** | Desktop has an explicit owner-scoped worktree manager with generated branches, clean-tree protection, list/create/remove/merge operations, conflict aborts, and cleanup controls; backend live-repo locks are project-scoped and publish status is explicit. Deployed smoke coverage remains. |
 | LSP diagnostics | **Shipped / scoped** | Native Electron editor surfaces publishDiagnostics for TypeScript, Python, Rust, and Go, and sends didOpen/didChange/didClose document lifecycle notifications. Full language-server coverage remains environment-dependent. |
 | Notebook editing | **Shipped / scoped** | Native renderer opens `.ipynb` files as editable code/Markdown/raw cells, preserves metadata and outputs, and saves valid notebook JSON. Cell execution remains available through Terminal rather than a bundled kernel. |
+| Vim editing | **Shipped / scoped** | Native file editing supports a toggleable normal/insert mode with movement, character deletion, and open-line commands; the full Vim command language is intentionally out of scope. |
 | REPL tool | **Shipped / scoped** | The native Terminal pane provides a persistent PTY suitable for Python, Node, and shell REPL sessions. A separate model-call `repl` tool contract is intentionally not exposed; terminal REPL is the product choice. |
 
 ### 3. High impact — extensibility and model context
@@ -110,11 +111,7 @@ The remaining parity work is concentrated in five areas:
 
 ### P2 — product polish and optional integrations
 
-- Add provider-specific USD pricing when a runtime reports reliable price metadata; local Ollama runs now report an explicit `$0.00` estimate.
-- Add broader multi-workspace window semantics if that becomes a product requirement.
-- Expand the native editor's scoped Vim mode beyond basic navigation, insert, delete, and open-line commands if it becomes a primary keyboard-driven workflow.
-- Expand computer-use safety automation beyond the existing allowlisted native-messaging bridge.
-- Provider-native Codex/Claude authentication if direct account-backed model sessions become a requirement.
+No committed P2 implementation gaps remain in the current product scope. Runtime-reported provider pricing, scoped Vim editing, configurable global shortcuts, main/quick-entry windows, and the allowlisted browser bridge are implemented. Broader multi-workspace windows, a full Vim command language, deeper computer-use automation, and direct Codex/Claude account login remain future options only if product requirements change.
 
 ## Reconciliation notes
 
@@ -124,8 +121,8 @@ The remaining scope is now concentrated in higher-level integration and parity:
 
 - **Worktree isolation** has first-class create/remove/merge lifecycle support; live-repo concurrency is project-scoped and publish state is explicit, with deployed smoke coverage remaining.
 - **MCP integration** has all four configured transports and capability-backed resources/prompts; deployed-runtime lifecycle testing remains.
-- **Skills** support deterministic user/project Markdown loading; native notebook editing and scoped LSP diagnostics are available, while integrated notebook kernel execution remains outside the renderer.
-- **Cost tracking** means token tracking today; per-session USD estimates are still absent.
+- **Skills** support deterministic user/project Markdown loading; native notebook editing, scoped LSP diagnostics, and scoped Vim editing are available, while integrated notebook kernel execution remains outside the renderer.
+- **Cost tracking** includes token totals and provider-reported USD estimates; local Ollama runs explicitly report zero cost and unknown provider prices remain unlabeled.
 
 ## Validation snapshot
 
