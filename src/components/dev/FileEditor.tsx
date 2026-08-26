@@ -28,20 +28,25 @@ export function FileEditor({ path, onClose }: Props) {
   const [error, setError]       = useState("");
   const [diagnostics, setDiagnostics] = useState<Array<{ severity?: number; message: string; range?: { start?: { line?: number; character?: number } } }>>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const contentRef = useRef<string | null>(null);
+  const lspDocumentRef = useRef<{ bridge: NonNullable<ReturnType<typeof desktop>>; lang: string; rootUri: string; uri: string; version: number } | null>(null);
 
   const filename = path.split(/[/\\]/).pop() ?? path;
   const dirty    = content !== null && content !== original;
 
   useEffect(() => {
+    setContent(null);
+    setDiagnostics([]);
+    contentRef.current = null;
     ipc.readFile(path)
-      .then((c) => { setContent(c); setOriginal(c); })
+      .then((c) => { contentRef.current = c; setContent(c); setOriginal(c); })
       .catch((e) => setError(String(e)));
   }, [path]);
 
   // Connect the native language server for this file when one is available.
   useEffect(() => {
     const bridge = desktop();
-    if (!bridge || !content || !path.includes(".")) return;
+    if (!bridge || content === null || !path.includes(".")) return;
     const uri = fileUri(path);
     const rootPath = path.replace(/[\\/][^\\/]*$/, "") || path;
     const rootUri = fileUri(rootPath);
@@ -54,13 +59,33 @@ export function FileEditor({ path, onClose }: Props) {
     const unsubscribe = bridge.lsp.onNotification(onNotification);
     void bridge.lsp.start(`.${ext(path)}`, rootUri).then((started) => {
       if (started && alive) {
+        const document = { bridge, lang: lspLanguage(path), rootUri, uri, version: 1 };
+        lspDocumentRef.current = document;
         bridge.lsp.notify(lspLanguage(path), rootUri, "textDocument/didOpen", {
-          textDocument: { uri, languageId: ext(path), version: 1, text: content },
+          textDocument: { uri, languageId: ext(path), version: document.version, text: contentRef.current ?? "" },
         });
       }
     });
-    return () => { alive = false; unsubscribe(); };
+    return () => {
+      alive = false;
+      if (lspDocumentRef.current?.uri === uri) {
+        bridge.lsp.notify(lspLanguage(path), rootUri, "textDocument/didClose", { textDocument: { uri } });
+        lspDocumentRef.current = null;
+      }
+      unsubscribe();
+    };
   }, [path, content === null]);
+
+  useEffect(() => {
+    contentRef.current = content;
+    const document = lspDocumentRef.current;
+    if (!document || content === null) return;
+    document.version += 1;
+    document.bridge.lsp.notify(document.lang, document.rootUri, "textDocument/didChange", {
+      textDocument: { uri: document.uri, version: document.version },
+      contentChanges: [{ text: content }],
+    });
+  }, [content]);
   // Auto-resize textarea
   useEffect(() => {
     const ta = textareaRef.current;
