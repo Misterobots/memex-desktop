@@ -135,9 +135,10 @@ export class BrowserBridge {
           if (
             m.type !== "handshake" ||
             typeof m.extensionId !== "string" ||
-            m.extensionId.length === 0
+            !/^[a-z]{32}$/.test(m.extensionId) ||
+            m.protocolVersion !== PROTOCOL_VERSION
           ) {
-            this.sendFrame(socket, { type: "handshake_rejected", reason: "handshake required" });
+            this.sendFrame(socket, { type: "handshake_rejected", reason: "invalid handshake" });
             socket.destroy();
             return;
           }
