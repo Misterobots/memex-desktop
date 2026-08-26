@@ -22,6 +22,14 @@ export interface WorktreeExitResult {
   branch: string;
 }
 
+export interface WorktreeMergeResult {
+  merged: boolean;
+  branch: string;
+  targetBranch: string;
+  removed: boolean;
+  branchDeleted: boolean;
+}
+
 function inside(root: string, candidate: string): boolean {
   const base = normalize(root);
   const target = normalize(candidate);
@@ -47,11 +55,45 @@ export class WorktreeManager {
     const path = join(root, ".memex-worktrees", `${safeWorktreeSlug(label)}-${id.slice(0, 8)}`);
     if (!inside(root, path)) throw new Error("Worktree path escaped repository root");
 
-    await this.git(root, ["worktree", "add", "-b", branch, path, baseRef]);
-    const record: WorktreeRecord = { id, repoPath: root, path, branch, baseRef, createdAt: new Date().toISOString() };
+    const resolvedBase = baseRef === "HEAD"
+      ? ((await this.git(root, ["branch", "--show-current"])).stdout.trim() || "HEAD")
+      : baseRef;
+    await this.git(root, ["worktree", "add", "-b", branch, path, resolvedBase]);
+    const record: WorktreeRecord = { id, repoPath: root, path, branch, baseRef: resolvedBase, createdAt: new Date().toISOString() };
     this.records.push(record);
     this.persist();
     return record;
+  }
+
+  async merge(id: string): Promise<WorktreeMergeResult> {
+    const record = this.records.find((item) => item.id === id);
+    if (!record) throw new Error("Unknown worktree");
+    const rootStatus = await this.git(record.repoPath, ["status", "--porcelain"]);
+    if (rootStatus.stdout.trim()) throw new Error("Repository root has uncommitted changes; review or stash them first");
+    const targetBranch = (await this.git(record.repoPath, ["branch", "--show-current"])).stdout.trim();
+    if (targetBranch !== record.baseRef) {
+      throw new Error(`Repository root must be on ${record.baseRef} before merging`);
+    }
+
+    try {
+      await this.git(record.repoPath, ["merge", "--no-ff", "--no-edit", record.branch]);
+    } catch (error) {
+      try { await this.git(record.repoPath, ["merge", "--abort"]); } catch { /* preserve original error */ }
+      throw error;
+    }
+
+    await this.git(record.repoPath, ["worktree", "remove", record.path]);
+    let branchDeleted = false;
+    try {
+      await this.git(record.repoPath, ["branch", "-d", record.branch]);
+      branchDeleted = true;
+    } catch {
+      // A merged branch should normally delete cleanly; retain it if Git
+      // refuses so the user's commits remain recoverable.
+    }
+    this.records = this.records.filter((item) => item.id !== id);
+    this.persist();
+    return { merged: true, branch: record.branch, targetBranch, removed: true, branchDeleted };
   }
 
   async exit(id: string, force = false): Promise<WorktreeExitResult> {

@@ -439,6 +439,11 @@ export function registerAllIpc(ctx: IpcContext): void {
     if (!record || !await firewall.checkWrite(record.repoPath, getMain())) throw new Error("Permission denied");
     return worktrees.exit(id, force === true);
   });
+  ipcMain.handle("worktree:merge", async (_e, id: string) => {
+    const record = worktrees.list().find((item) => item.id === id);
+    if (!record || !await firewall.checkWrite(record.repoPath, getMain())) throw new Error("Permission denied");
+    return worktrees.merge(id);
+  });
 
   // ── Runtime config profiles ───────────────────────────────────────────────
   // setActive stays hand-written: it broadcasts config:changed and restarts

@@ -48,7 +48,7 @@ The remaining parity work is concentrated in five areas:
 | Task planning / TodoWrite | **Shipped** | TodoWrite-style events and task cards render in the Agent_Swarm UI. |
 | Task board and task composer | **Partial / lifecycle complete** | Backend and desktop now share create/update/get/list/stop/approval/diff/push task routes. Merge/publish semantics and broader task event history remain. |
 | Project-scoped workspaces | **Shipped** | Dev projects, blank projects, live-repo selection, and project-scoped task routing exist. |
-| Git worktree isolation | **Partial / shipped manager** | Desktop has an explicit owner-scoped worktree manager with generated branches, clean-tree protection, list/create/remove operations, and cleanup controls. Merge/publish semantics remain backend/project-policy work. |
+| Git worktree isolation | **Partial / merge complete** | Desktop has an explicit owner-scoped worktree manager with generated branches, clean-tree protection, list/create/remove/merge operations, conflict aborts, and cleanup controls. Publish and per-project concurrency policy remain. |
 | LSP diagnostics | **Partial** | Native Electron LSP manager exists; Agent_Swarm's web editor consumes LSP diagnostics. The native desktop renderer does not yet expose the same editor integration. |
 | Notebook editing | **Partial** | Agent_Swarm web UI has a notebook viewer/editor; the native `memex-desktop` renderer does not. |
 | REPL tool | **Gap** | A terminal can run a REPL, but there is no dedicated REPL lifecycle/state/tool contract. |
@@ -100,7 +100,7 @@ The remaining parity work is concentrated in five areas:
 - Extend the stable event envelope to every non-DevHarness provider stream and add durable backend event history.
 - Add end-to-end crash-recovery smoke tests covering sandbox, Task, and MCP replay.
 - Keep approval policy enforcement and native dialogs aligned as additional backend runtimes are added.
-- Finish per-project concurrency, branch cleanup, and merge/publish semantics for live-repo worktrees.
+- Finish per-project concurrency and publish semantics for live-repo worktrees.
 - Add end-to-end smoke tests covering approval → tool execution → diff → resume → compaction.
 
 ### P1 — parity and extensibility

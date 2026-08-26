@@ -250,6 +250,7 @@ export interface MemexBridge {
     list:  (repoPath?: string) => Promise<WorktreeRecord[]>;
     enter: (repoPath: string, baseRef?: string, label?: string) => Promise<WorktreeRecord>;
     exit:  (id: string, force?: boolean) => Promise<{ removed: boolean; branchDeleted: boolean; branch: string }>;
+    merge: (id: string) => Promise<{ merged: boolean; branch: string; targetBranch: string; removed: boolean; branchDeleted: boolean }>;
   };
 
   config: {

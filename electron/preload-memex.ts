@@ -206,6 +206,7 @@ contextBridge.exposeInMainWorld("memex", {
     list:  (repoPath?: string) => ipcRenderer.invoke("worktree:list", repoPath),
     enter: (repoPath: string, baseRef?: string, label?: string) => ipcRenderer.invoke("worktree:enter", repoPath, baseRef, label),
     exit:  (id: string, force?: boolean) => ipcRenderer.invoke("worktree:exit", id, force),
+    merge: (id: string) => ipcRenderer.invoke("worktree:merge", id),
   },
 
   // Runtime configuration profiles

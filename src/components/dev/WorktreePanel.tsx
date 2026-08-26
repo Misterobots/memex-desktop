@@ -39,6 +39,18 @@ export function WorktreePanel({ repoPath, onSelect }: { repoPath: string; onSele
     } finally { setBusy(false); }
   };
 
+  const merge = async (record: WorktreeRecord) => {
+    if (!bridge || busy || !window.confirm(`Merge ${record.branch} into ${record.baseRef}?`)) return;
+    setBusy(true); setError(null);
+    try {
+      await bridge.worktrees.merge(record.id);
+      setRecords((previous) => previous.filter((item) => item.id !== record.id));
+      onSelect(record.repoPath);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not merge worktree");
+    } finally { setBusy(false); }
+  };
+
   return (
     <div className="absolute right-3 top-10 z-40 w-80 rounded-xl border border-border/60 bg-canvas p-3 shadow-2xl">
       <div className="flex items-center justify-between mb-2">
@@ -59,6 +71,7 @@ export function WorktreePanel({ repoPath, onSelect }: { repoPath: string; onSele
                 <div className="truncate text-[10px] text-muted">{record.path}</div>
               </button>
               <div className="mt-1.5 flex gap-2">
+                <button onClick={() => void merge(record)} disabled={busy} className="text-[10px] text-accent2 hover:underline disabled:opacity-50">Merge</button>
                 <button onClick={() => void exit(record)} disabled={busy} className="text-[10px] text-red-400 hover:underline disabled:opacity-50">Remove</button>
                 <button onClick={() => void exit(record, true)} disabled={busy} className="text-[10px] text-muted hover:text-red-400 disabled:opacity-50">Force remove</button>
               </div>
