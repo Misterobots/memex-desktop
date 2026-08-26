@@ -97,14 +97,14 @@ The remaining parity work is concentrated in five areas:
 
 ### P0 — reliability and safety
 
-- Add deployed crash-recovery smoke tests covering sandbox, Task, and MCP replay; local approval/checkpoint/resume/compaction coverage now exists.
+- Run the opt-in deployed crash-recovery smoke tests covering sandbox, Task, and MCP replay; local approval/checkpoint/resume/compaction coverage now exists.
 - Extend approval-policy parity checks to any additional backend runtimes as they are added.
-- Add deployed smoke coverage for approval → tool execution → diff → resume → compaction.
+- Run deployed smoke coverage for approval → tool execution → diff → resume → compaction.
 
 ### P1 — parity and extensibility
 
-- Add transport integration tests against the deployed MCP runtime and complete server lifecycle controls.
-- Add deployed end-to-end smoke coverage for task merge/publish lifecycle and retry recovery.
+- Complete deployed MCP server lifecycle controls; an opt-in read-only health/config/SSE smoke harness now exists.
+- Run deployed end-to-end smoke coverage for task merge/publish lifecycle and retry recovery.
 - Decide whether notebook editing and LSP diagnostics should be brought into the native desktop renderer or remain web-UI capabilities.
 - Add a first-class REPL tool, or explicitly document terminal-based REPL support as the product choice.
 
@@ -129,7 +129,7 @@ The remaining scope is now concentrated in higher-level integration and parity:
 
 ## Validation snapshot
 
-- `memex-desktop`: TypeScript typecheck passed; 47 tests passed across 12 files, including conversation-sync retry/coalescing coverage and streaming checkpoint integration changes.
+- `memex-desktop`: TypeScript typecheck passed; 49 tests passed across 14 files, including approval-bridge, conversation-sync retry/coalescing, and streaming checkpoint integration coverage.
 - `Agent_Swarm`: neutral history checkpoint round-trip, AST, permission, event-recovery, queue, publish, and MCP transport checks passed; repository pytest collection remains blocked by the optional `modelscope` dependency.
 - Targeted Agent_Swarm regression tests passed for stable event persistence/recovery, approved tool checkpoint/resume/compaction flow, scoped approval state, scoped task queues, idempotent publish confirmation, MCP transports, DevHarness history, and permissions; the full suite remains blocked by the optional `modelscope` dependency, and the full handoff contract module is skipped when `prometheus_client` is unavailable.
 - Both repositories are clean after their current checkpoint commits; pushes remain intentionally unperformed.
