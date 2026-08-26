@@ -31,8 +31,8 @@ The remaining parity work is concentrated in five areas:
 | Multi-agent swarm coordination | **Shipped** | Lamport coordination, role-based workers, synthesis, and run persistence exist. |
 | Per-session Docker sandbox | **Shipped** | Agent_Swarm creates disposable session containers and routes sandbox calls through session identity. |
 | Workspace firewall | **Shipped** | Native file, shell, PTY, and workspace operations are guarded. |
-| Tool approval prompts | **Partial** | Native approve-once/session/workspace dialogs and backend approval events exist. `plan`, `acceptEdits`, and admin-gated `bypass` now have distinct runtime semantics, and pending approval IDs are owner-bound; durable owner-scoped policy and fail-closed enforcement still need hardening. |
-| Session resume | **Partial** | Conversations resume from Postgres; desktop checkpoints turns before and during streaming, while Agent_Swarm persists owner-scoped neutral-history checkpoints. Explicit, ordered replay and continuation now work for direct sandbox tools; Task/MCP replay remains intentionally unsupported. |
+| Tool approval prompts | **Shipped / scoped** | Native approve-once/session/workspace dialogs and backend approval events exist. `plan`, `acceptEdits`, and admin-gated `bypass` have distinct runtime semantics, pending approval IDs are owner-bound, and durable owner/workspace-scoped policy fails closed. |
+| Session resume | **Shipped / scoped** | Conversations resume from Postgres; desktop and Agent_Swarm checkpoints persist owner-scoped neutral history. Explicit, ordered replay and continuation cover direct sandbox, read-only MCP, and Task calls; end-to-end crash recovery smoke coverage remains. |
 | Context compaction | **Shipped / verify** | Manual and automatic compaction, compacting UI state, summaries, and context meters exist. Needs an end-to-end recovery test. |
 | Token usage display | **Shipped** | Prompt/completion/total token counts appear in the chat/status surfaces. USD estimates are not implemented for local-model usage. |
 | Run/event inspection | **Shipped** | Run inspector, tool lifecycle events, approvals, artifacts, agent graph, and Langfuse tracing exist. |
@@ -48,7 +48,7 @@ The remaining parity work is concentrated in five areas:
 | Task planning / TodoWrite | **Shipped** | TodoWrite-style events and task cards render in the Agent_Swarm UI. |
 | Task board and task composer | **Partial** | Backend task APIs and desktop task UI exist; the full TaskCreate/Update/Get/List/Stop lifecycle is not yet one consistent contract. |
 | Project-scoped workspaces | **Shipped** | Dev projects, blank projects, live-repo selection, and project-scoped task routing exist. |
-| Git worktree isolation | **Gap / partial equivalent** | Containers isolate most work; explicit EnterWorktree/ExitWorktree, branch lifecycle, cleanup, and merge semantics are not implemented as first-class tools. |
+| Git worktree isolation | **Partial / shipped manager** | Desktop has an explicit owner-scoped worktree manager with generated branches, clean-tree protection, list/create/remove operations, and cleanup controls. Merge/publish semantics remain backend/project-policy work. |
 | LSP diagnostics | **Partial** | Native Electron LSP manager exists; Agent_Swarm's web editor consumes LSP diagnostics. The native desktop renderer does not yet expose the same editor integration. |
 | Notebook editing | **Partial** | Agent_Swarm web UI has a notebook viewer/editor; the native `memex-desktop` renderer does not. |
 | REPL tool | **Gap** | A terminal can run a REPL, but there is no dedicated REPL lifecycle/state/tool contract. |
@@ -57,9 +57,9 @@ The remaining parity work is concentrated in five areas:
 
 | Capability | Status | Evidence / notes |
 |---|---|---|
-| MCP bridge | **Partial** | `MCPBridgeServer` exposes HTTP JSON-RPC tools/skills with capability checks. It is not yet a full stdio/SSE/WebSocket MCP host and lacks broad resource/prompt compatibility. |
+| MCP bridge | **Partial / contract complete** | `MCPBridgeServer` exposes HTTP JSON-RPC tools/skills plus standard resources/prompts, capability metadata, truthful health, and client configuration. It is not yet a full stdio/SSE/WebSocket MCP host. |
 | Built-in skills | **Shipped** | Skill registry, resolution, MCP descriptors, web tools, bash parsing, and fabrication skills exist. |
-| Claude-style Markdown skills | **Gap / partial equivalent** | Built-in Python skills are registered; user/project Markdown skill discovery, precedence, and scope rules are not yet equivalent. |
+| Claude-style Markdown skills | **Shipped / scoped** | User/project Markdown skill discovery, CRLF-safe frontmatter parsing, deterministic project-over-user precedence, and reload-safe enablement are implemented. |
 | Persistent memory | **Shipped** | MemPalace plus owner-aware session summaries and memory recall are integrated. |
 | Hooks | **Partial** | Desktop hooks have consent and audit paths; cross-runtime lifecycle coverage and durable policy parity remain incomplete. |
 | Slash commands | **Shipped / narrower surface** | `/swarm`, `/plan`, `/research`, `/design`, `/workshop`, `/think`, `/compact`, `/memory`, and related commands exist. Claude Code's full command surface is intentionally not replicated. |
@@ -98,15 +98,14 @@ The remaining parity work is concentrated in five areas:
 ### P0 — reliability and safety
 
 - Unify the desktop and Agent_Swarm event schema for tool start, approval, result, file change, todo, usage, continuation, and error events.
-- Extend explicit, ordered replay to Task/MCP calls; direct sandbox-tool replay, recovery inspection, and continuation are now in place.
-- Move approval policy toward one durable, owner-scoped, fail-closed enforcement layer; retain native dialogs as the presentation layer.
-- Finish per-project concurrency, branch cleanup, and explicit worktree semantics for live-repo work.
+- Add end-to-end crash-recovery smoke tests covering sandbox, Task, and MCP replay.
+- Keep approval policy enforcement and native dialogs aligned as additional backend runtimes are added.
+- Finish per-project concurrency, branch cleanup, and merge/publish semantics for live-repo worktrees.
 - Add end-to-end smoke tests covering approval → tool execution → diff → resume → compaction.
 
 ### P1 — parity and extensibility
 
-- Implement full MCP host compatibility: stdio, SSE, WebSocket, configuration discovery, resources, prompts, and server lifecycle.
-- Add user/project Markdown skill discovery with deterministic precedence and reload behavior.
+- Implement full MCP host compatibility: stdio, SSE, WebSocket, configuration discovery, and server lifecycle. HTTP resources/prompts are complete.
 - Complete the task lifecycle contract: create, update, get, list, stop, approval, diff, and completion/publish.
 - Decide whether notebook editing and LSP diagnostics should be brought into the native desktop renderer or remain web-UI capabilities.
 - Add a first-class REPL tool, or explicitly document terminal-based REPL support as the product choice.
