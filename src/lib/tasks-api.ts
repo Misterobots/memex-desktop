@@ -96,6 +96,31 @@ export async function stopTask(id: string): Promise<boolean> {
   }
 }
 
+export interface TaskEvent {
+  type: string;
+  run_id: string;
+  seq: number;
+  ts: string;
+  payload: Record<string, unknown>;
+}
+
+export async function getTaskEvents(id: string, afterSeq = -1): Promise<TaskEvent[]> {
+  try {
+    const r = await apiFetch(
+      `${getAgentRuntime()}/v1/tasks/${encodeURIComponent(id)}/events?after_seq=${afterSeq}`,
+      { signal: AbortSignal.timeout(8000) },
+    );
+    if (!r.ok) return [];
+    const data = await r.json();
+    return Array.isArray(data?.events) ? data.events.filter((event: unknown): event is TaskEvent =>
+      !!event && typeof event === "object" && typeof (event as TaskEvent).run_id === "string" &&
+      typeof (event as TaskEvent).seq === "number" && typeof (event as TaskEvent).type === "string"
+    ) : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Update mutable task metadata/prompt without changing its approval state. */
 export async function updateTask(id: string, update: TaskUpdate): Promise<TaskMutationResult> {
   try {
