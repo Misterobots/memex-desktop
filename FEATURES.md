@@ -50,7 +50,7 @@ The remaining parity work is concentrated in five areas:
 | Project-scoped workspaces | **Shipped** | Dev projects, blank projects, live-repo selection, and project-scoped task routing exist. |
 | Git worktree isolation | **Shipped / scoped** | Desktop has an explicit owner-scoped worktree manager with generated branches, clean-tree protection, list/create/remove/merge operations, conflict aborts, and cleanup controls; backend live-repo locks are project-scoped and publish status is explicit. Deployed smoke coverage remains. |
 | LSP diagnostics | **Partial** | Native Electron LSP manager exists; Agent_Swarm's web editor consumes LSP diagnostics. The native desktop renderer does not yet expose the same editor integration. |
-| Notebook editing | **Partial** | Agent_Swarm web UI has a notebook viewer/editor; the native `memex-desktop` renderer does not. |
+| Notebook editing | **Shipped / scoped** | Native renderer opens `.ipynb` files as editable code/Markdown/raw cells, preserves metadata and outputs, and saves valid notebook JSON. Cell execution remains available through Terminal rather than a bundled kernel. |
 | REPL tool | **Gap** | A terminal can run a REPL, but there is no dedicated REPL lifecycle/state/tool contract. |
 
 ### 3. High impact — extensibility and model context
@@ -105,7 +105,7 @@ The remaining parity work is concentrated in five areas:
 
 - Complete deployed MCP server lifecycle controls; an opt-in read-only health/config/SSE smoke harness now exists.
 - Run deployed end-to-end smoke coverage for task merge/publish lifecycle and retry recovery.
-- Decide whether notebook editing and LSP diagnostics should be brought into the native desktop renderer or remain web-UI capabilities.
+- Add optional native notebook kernel execution if notebook workflows require an integrated runtime.
 - Add a first-class REPL tool, or explicitly document terminal-based REPL support as the product choice.
 
 ### P2 — product polish and optional integrations
@@ -124,7 +124,7 @@ The remaining scope is now concentrated in higher-level integration and parity:
 
 - **Worktree isolation** has first-class create/remove/merge lifecycle support; live-repo concurrency is project-scoped and publish state is explicit, with deployed smoke coverage remaining.
 - **MCP integration** has all four configured transports and capability-backed resources/prompts; deployed-runtime lifecycle testing remains.
-- **Skills** support deterministic user/project Markdown loading; LSP and notebooks remain web-UI capabilities that are not feature-complete in the native renderer.
+- **Skills** support deterministic user/project Markdown loading; native notebook editing is now available, while LSP diagnostics and integrated notebook kernel execution remain outside the renderer.
 - **Cost tracking** means token tracking today; per-session USD estimates are still absent.
 
 ## Validation snapshot

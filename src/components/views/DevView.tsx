@@ -5,6 +5,7 @@ import { ConversationPane } from "../chat/ConversationPane";
 import { InputBar } from "../layout/InputBar";
 import { TerminalPane } from "../dev/TerminalPane";
 import { FileEditor } from "../dev/FileEditor";
+import { NotebookEditor } from "../dev/NotebookEditor";
 import { WorkspaceSafetyBadge } from "../dev/WorkspaceSafetyBadge";
 import { ProjectTasksPane } from "../dev/ProjectTasksPane";
 import { BrowserView } from "./BrowserView";
@@ -139,10 +140,11 @@ export function DevView() {
             ) : primary === "tasks" ? (
               <ProjectTasksPane cwd={cwd} />
             ) : primary === "editor" && openFile ? (
-              <FileEditor
-                path={openFile}
-                onClose={() => { setOpenFile(null); setPrimary("chat"); }}
-              />
+              openFile.toLowerCase().endsWith(".ipynb") ? (
+                <NotebookEditor path={openFile} onClose={() => { setOpenFile(null); setPrimary("chat"); }} />
+              ) : (
+                <FileEditor path={openFile} onClose={() => { setOpenFile(null); setPrimary("chat"); }} />
+              )
             ) : (
               <div className="flex flex-col flex-1 min-h-0">
                 {empty ? (
