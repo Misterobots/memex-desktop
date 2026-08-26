@@ -131,5 +131,5 @@ The remaining scope is now concentrated in higher-level integration and parity:
 
 - `memex-desktop`: TypeScript typecheck passed; 30 tests passed, including conversation-sync retry/coalescing coverage and streaming checkpoint integration changes.
 - `Agent_Swarm`: neutral history checkpoint round-trip, AST, and permission behavior checks passed; repository pytest remains blocked by the existing `uv` trampoline permission error.
-- Targeted Agent_Swarm regression tests passed for event envelopes, scoped task queues, MCP transports, DevHarness history, and permissions; the full suite remains blocked by the optional `modelscope` dependency, and the full handoff contract module is skipped when `prometheus_client` is unavailable.
+- Targeted Agent_Swarm regression tests passed for stable event persistence/recovery, scoped task queues, idempotent publish confirmation, MCP transports, DevHarness history, and permissions; the full suite remains blocked by the optional `modelscope` dependency, and the full handoff contract module is skipped when `prometheus_client` is unavailable.
 - Both repositories are clean after their current checkpoint commits; pushes remain intentionally unperformed.
