@@ -104,7 +104,7 @@ The remaining parity work is concentrated in five areas:
 
 ### P1 — parity and extensibility
 
-- Complete deployed MCP server lifecycle controls; an opt-in read-only health/config/SSE smoke harness now exists.
+- Complete deployed MCP server lifecycle controls; Turing-host health/config/SSE discovery now passes, while a public authenticated task-flow smoke remains.
 - Run deployed end-to-end smoke coverage for task merge/publish lifecycle and retry recovery.
 - Add optional native notebook kernel execution if notebook workflows require an integrated runtime.
 - Keep terminal-backed REPL behavior covered by PTY lifecycle and workspace-permission tests; no separate model-call REPL tool is planned.
@@ -129,4 +129,4 @@ The remaining scope is now concentrated in higher-level integration and parity:
 - `memex-desktop`: TypeScript and Electron typechecks passed; 51 tests passed across 15 files, including approval-bridge, notebook round-tripping, conversation-sync retry/coalescing, and streaming checkpoint integration coverage.
 - `Agent_Swarm`: neutral history checkpoint round-trip, AST, permission, event-recovery, queue, publish, and MCP transport checks passed; repository pytest collection remains blocked by the optional `modelscope` dependency.
 - Targeted Agent_Swarm regression tests passed for stable event persistence/recovery, approved tool checkpoint/resume/compaction flow, scoped approval state, scoped task queues, idempotent publish confirmation, MCP transports, DevHarness history, and permissions; the full suite remains blocked by the optional `modelscope` dependency, and the full handoff contract module is skipped when `prometheus_client` is unavailable.
-- Both repositories are clean after their current checkpoint commits; pushes remain intentionally unperformed.
+- Both repositories are clean after their current checkpoint commits; desktop and backend `main` refs are pushed, and the backend runtime is deployed on Turing.
