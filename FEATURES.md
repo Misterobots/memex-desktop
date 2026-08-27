@@ -71,7 +71,7 @@ The remaining parity work is concentrated in five areas:
 | Capability | Status | Evidence / notes |
 |---|---|---|
 | Electron native shell | **Shipped** | Local React renderer, tray behavior, quick entry, native controls, authenticated IPC, and PTY bridge exist. |
-| Auto-start on login | **Shipped / verify** | `setLoginItemSettings` and `--startup` handling exist; the Windows NSIS package builds successfully, while installed login-item behavior remains runtime-unverified. |
+| Auto-start on login | **Shipped / verify** | `setLoginItemSettings` and `--startup` handling exist; the Windows NSIS package was launched successfully in `--startup` mode with the main window hidden, while installed login-item registration remains runtime-unverified. |
 | Connection health loop | **Shipped / verify** | Native health probes push status to the renderer; failure/recovery behavior needs runtime smoke coverage. |
 | Auto-update | **Shipped / verify** | `electron-updater`, status events, download, and install paths exist; the packaged feed metadata is generated, while live update discovery/install remains runtime-unverified. |
 | File type handlers | **Shipped** | `.memex` and `.claude` associations plus open-file routing exist. |
@@ -126,7 +126,7 @@ The remaining scope is now concentrated in higher-level integration and parity:
 
 ## Validation snapshot
 
-- `memex-desktop`: renderer and Electron typechecks passed; 51 tests passed across 15 files, and the Windows NSIS installer was produced as `release/Memex Desktop Setup 0.1.25.exe`.
+- `memex-desktop`: renderer and Electron typechecks passed; 51 tests passed across 15 files; the Windows NSIS installer was produced as `release/Memex Desktop Setup 0.1.25.exe`; and the unpacked packaged app initialized responsively in `--startup` mode with no visible main window.
 - `Agent_Swarm`: targeted regression checks passed for stable event persistence/recovery, approved tool checkpoint/resume/compaction flow, scoped approval state, scoped task queues, idempotent publish confirmation, MCP transports, DevHarness history, and permissions (11 tests passed in the focused run). The full suite and handoff contract module remain environment-constrained: the contract import initializes `leibniz_agent` storage against the configured PostgreSQL service, whose local credentials are unavailable.
 - Deployed checks: the Turing runtime passes MCP health, HTTP/SSE/WebSocket/stdio client configuration, SSE endpoint discovery, JSON-RPC initialize/tools/resources/prompts, and container-stability checks. The authenticated public DevHarness checkpoint list is reachable and currently empty; no recovery fixture exists for a destructive end-to-end replay test.
 - Both repositories are clean after their current checkpoint commits; desktop and backend `main` refs are pushed, and the backend runtime is deployed on Turing.
