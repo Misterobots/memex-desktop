@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import { useStore } from "../../lib/store";
 import { isDesktop } from "../../lib/desktop";
 import type { AppTab } from "../../types/memex";
+import { getMyPermissions, type FeatureKey } from "../../lib/user-permissions";
 
 // Tabs requiring the Electron native bridge (local terminal/editor/FS, local
 // run store) — hidden when running as a web app.
@@ -10,11 +12,13 @@ interface TabDef {
   id: AppTab;
   label: string;
   icon: JSX.Element;
+  feature?: FeatureKey;
 }
 
 const TABS: TabDef[] = [
   {
     id: "chat",
+    feature: "chat",
     label: "Chat",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -24,6 +28,7 @@ const TABS: TabDef[] = [
   },
   {
     id: "dev",
+    feature: "code",
     label: "Code",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -33,6 +38,7 @@ const TABS: TabDef[] = [
   },
   {
     id: "research",
+    feature: "research",
     label: "Research",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -43,6 +49,7 @@ const TABS: TabDef[] = [
   },
   {
     id: "goals",
+    feature: "routines",
     label: "Routines",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -54,6 +61,7 @@ const TABS: TabDef[] = [
   },
   {
     id: "design",
+    feature: "design",
     label: "Design",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -65,6 +73,7 @@ const TABS: TabDef[] = [
   },
   {
     id: "art",
+    feature: "art",
     label: "Art",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -76,6 +85,7 @@ const TABS: TabDef[] = [
   },
   {
     id: "memory",
+    feature: "memory",
     label: "Memory",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -87,10 +97,20 @@ const TABS: TabDef[] = [
   },
   {
     id: "eval",
+    feature: "eval",
     label: "Eval",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
         <path d="M2 2h4v4H2zM10 2h4v4h-4zM2 10h4v4H2zM10 10h4v4h-4z" />
+      </svg>
+    ),
+  },
+  {
+    id: "admin",
+    label: "Admin",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <circle cx="8" cy="5" r="2.5" /><path d="M3 14c.4-3 2-4.5 5-4.5s4.6 1.5 5 4.5M12.5 2.5l1 1 1.5-1.5" />
       </svg>
     ),
   },
@@ -108,8 +128,22 @@ const TABS: TabDef[] = [
 
 export function TabBar() {
   const { activeTab, setActiveTab } = useStore();
+  const [features, setFeatures] = useState<Partial<Record<FeatureKey, boolean>> | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    getMyPermissions().then((policy) => { if (alive) { setFeatures(policy.features); setIsAdmin(Boolean(policy.is_admin)); } }).catch(() => { if (alive) setFeatures(null); });
+    return () => { alive = false; };
+  }, []);
   const web = !isDesktop();
-  const tabs = web ? TABS.filter((t) => !DESKTOP_ONLY.includes(t.id)) : TABS;
+  const tabs = TABS.filter((tab) =>
+    !(web && DESKTOP_ONLY.includes(tab.id)) &&
+    (tab.id !== "admin" || isAdmin) &&
+    (!tab.feature || features?.[tab.feature] !== false));
+
+  useEffect(() => {
+    if (features && !tabs.some((tab) => tab.id === activeTab)) setActiveTab("chat");
+  }, [activeTab, features, setActiveTab]);
 
   return (
     <div className="flex items-center gap-1 px-2 sm:px-3 h-12 bg-canvas border-b border-border/60 flex-shrink-0 overflow-x-auto no-scrollbar">

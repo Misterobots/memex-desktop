@@ -1,4 +1,4 @@
-export type AppTab = "chat" | "dev" | "research" | "goals" | "design" | "art" | "memory" | "eval" | "settings";
+export type AppTab = "chat" | "dev" | "research" | "goals" | "design" | "art" | "memory" | "eval" | "admin" | "settings";
 
 /** Conversational products own separate histories and lifecycle state. */
 export type ExperienceId = "chat" | "code" | "research" | "goals" | "product_design" | "design";

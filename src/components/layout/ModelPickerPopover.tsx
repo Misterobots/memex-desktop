@@ -3,6 +3,7 @@ import { apiFetch } from "../../lib/api-fetch";
 import { desktop, type RuntimeProfile } from "../../lib/desktop";
 import { getAgentRuntime } from "../../lib/runtime-urls";
 import { useStore } from "../../lib/store";
+import { getMyPermissions } from "../../lib/user-permissions";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -28,7 +29,7 @@ export function ModelPickerPopover() {
 
   const [open,   setOpen]   = useState(false);
   const [models, setModels] = useState<CatalogModel[]>([]);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [canSelectModels, setCanSelectModels] = useState(false);
   const [accessResolved, setAccessResolved] = useState(false);
   const [query,  setQuery]  = useState("");
   const ref = useRef<HTMLDivElement>(null);
@@ -57,25 +58,20 @@ export function ModelPickerPopover() {
 
   useEffect(() => {
     let alive = true;
-    apiFetch(`${getAgentRuntime()}/api/v1/identity`, { signal: AbortSignal.timeout(6000) })
-      .then((response) => response.ok ? response.json() : null)
-      .then((data) => {
-        if (!alive) return;
-        const level = String(data?.caller_identity?.security_level ?? "").toUpperCase();
-        setIsAdmin(level === "L3_ADMIN" || level === "L4_SYSTEM");
-      })
-      .catch(() => { if (alive) setIsAdmin(false); })
+    getMyPermissions()
+      .then((policy) => { if (alive) setCanSelectModels(Boolean(policy.features.model_selection)); })
+      .catch(() => { if (alive) setCanSelectModels(false); })
       .finally(() => { if (alive) setAccessResolved(true); });
     return () => { alive = false; };
   }, []);
 
   const load = useCallback(async () => {
-    if (!isAdmin) return;
+    if (!canSelectModels) return;
     const response = await apiFetch(`${getAgentRuntime()}/v1/models`, { signal: AbortSignal.timeout(8000) });
     if (!response.ok) return;
     const data = await response.json();
     setModels(Array.isArray(data?.data) ? data.data : []);
-  }, [isAdmin]);
+  }, [canSelectModels]);
 
   // Reload when popover opens
   useEffect(() => { if (open) load(); }, [open, load]);
@@ -110,7 +106,7 @@ export function ModelPickerPopover() {
     setQuery("");
   };
 
-  if (!accessResolved || !isAdmin) {
+  if (!accessResolved || !canSelectModels) {
     return <span className="px-2 py-1 text-xs text-muted" title="Memex selects the approved default model">Memex default</span>;
   }
 
