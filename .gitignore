@@ -1,6 +1,8 @@
 node_modules/
 dist/
 dist-hero-badges/
+dist-notebooklm/
+dist-pet-designer/
 dist-electron/
 release/
 *.log
