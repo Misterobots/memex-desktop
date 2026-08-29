@@ -19,6 +19,15 @@ const STATE_CLASS: Record<HeroWorkState, string> = {
   failed: "hero-state-failed",
 };
 
+const STATE_ROW: Record<HeroWorkState, number> = {
+  created: 0,
+  working: 7,
+  waiting: 6,
+  review: 8,
+  complete: 3,
+  failed: 5,
+};
+
 interface Props {
   hero: HeroManifest;
   state: HeroWorkState;
@@ -50,7 +59,15 @@ export function HeroBadge({ hero, state, onSelect, selected = false }: Props) {
         <div className="hero-work-surface" aria-hidden="true">
           <div className="hero-work-prop">{hero.vignette.prop ?? "work"}</div>
           <div className="hero-sprite" aria-label={`${hero.displayName} ${STATE_LABEL[state].toLowerCase()}`}>
-            {hero.sprite.previewSrc ? (
+            {hero.sprite.atlasSrc ? (
+              <div
+                className="hero-atlas-sprite"
+                style={{
+                  "--hero-row": STATE_ROW[state],
+                  backgroundImage: `url(${hero.sprite.atlasSrc})`,
+                } as CSSProperties}
+              />
+            ) : hero.sprite.previewSrc ? (
               <img src={hero.sprite.previewSrc} alt="" />
             ) : (
               <div className="hero-sprite-placeholder">
