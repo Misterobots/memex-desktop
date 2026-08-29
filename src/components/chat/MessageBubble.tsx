@@ -2,6 +2,7 @@ import type { ChatDisplayMode, ChatMessage } from "../../types/memex";
 import { StatusEvent }  from "./StatusEvent";
 import { AgentTrace }   from "./AgentTrace";
 import { SteeringCard } from "./SteeringCard";
+import { SwarmHeroStrip } from "../swarm/SwarmHeroStrip";
 
 // Lazy import to avoid hard dep on ChatView context when used outside it
 import { useInspector } from "../views/ChatView";
@@ -78,6 +79,10 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
           <div className="space-y-1.5">
             {agentEvents.map((e, i) => <AgentTrace key={i} event={e} />)}
           </div>
+        )}
+
+        {agentEvents.length > 0 && (message.mode === "swarm" || message.mode === "research") && (
+          <SwarmHeroStrip events={agentEvents} discipline={message.mode === "research" ? "research" : "code"} />
         )}
 
         {clarification?.clarification && (

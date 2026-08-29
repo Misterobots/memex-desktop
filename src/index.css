@@ -109,6 +109,7 @@ p + p { margin-top: 12px; }
 .hero-description { min-height: 38px; padding: 10px 12px 0; color: #8b8b94; font-size: 11px; line-height: 1.45; }
 .hero-badge-footer { display: flex; justify-content: space-between; gap: 8px; padding: 10px 12px 12px; color: #5b5b66; font-size: 10px; }
 .hero-lab button:focus-visible, .hero-lab select:focus-visible { outline: 2px solid #00cca8; outline-offset: 2px; }
+.swarm-hero-strip { padding: 12px; border: 1px solid #26262b; border-radius: 12px; background: #0f0f13; }
 
 @media (prefers-reduced-motion: reduce) {
   .hero-state-working .hero-sprite, .hero-state-created .hero-sprite, .hero-state-complete .hero-sprite, .hero-state-working .hero-state-dot, .hero-state-created .hero-state-dot { animation: none; }
