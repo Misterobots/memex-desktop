@@ -17,7 +17,7 @@ http://127.0.0.1:5174/?experimental=hero-badges
 
 The lab currently exercises:
 
-- code and research hero pools;
+- the full Agent_Swarm execution roster: 15 code heroes and 4 research heroes;
 - role-specific desk, terminal, library, and lab vignette themes;
 - created, working, waiting, review, complete, and failed states;
 - keyboard-selectable badge cards and reduced-motion behavior;
@@ -25,7 +25,8 @@ The lab currently exercises:
 - explicit historical identity/cue fields for named historical figures; the sprite brief must use these fields rather than generic role archetypes.
 
 The renderer-only build is intentionally independent of Electron and the normal
-Memex shell. Ada now uses the validated `public/pets/ada-architect-v2.webp`
-atlas; the other demo heroes retain the operability placeholder. The
+Memex shell. Ada, Linus, and Sagan use validated art; the remaining roster uses
+the contract-safe placeholder until its historical environmental scene is
+validated. The
 environment remains a separate vignette layer so transparent sprites can be
 reused by the future user pet designer.

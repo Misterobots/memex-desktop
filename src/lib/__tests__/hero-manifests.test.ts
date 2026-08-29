@@ -5,7 +5,7 @@ describe("swarm hero manifests", () => {
   it("keeps stable unique identities and the v2 sprite contract", () => {
     const ids = DEMO_HEROES.map((hero) => hero.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(DEMO_HEROES).toHaveLength(3);
+    expect(DEMO_HEROES).toHaveLength(19);
     for (const hero of DEMO_HEROES) {
       expect(hero.sprite).toMatchObject({ spriteVersionNumber: 2, cellWidth: 192, cellHeight: 208 });
       expect(hero.vignette.title).toBeTruthy();
@@ -24,7 +24,17 @@ describe("swarm hero manifests", () => {
   });
 
   it("separates code and research hero pools", () => {
-    expect(heroesForDiscipline("code").map((hero) => hero.id)).toEqual(["ada-architect", "linus-builder"]);
-    expect(heroesForDiscipline("research").map((hero) => hero.id)).toEqual(["sagan-verifier"]);
+    expect(heroesForDiscipline("code")).toHaveLength(15);
+    expect(heroesForDiscipline("research").map((hero) => hero.id)).toEqual([
+      "shannon-researcher",
+      "minsky-researcher",
+      "johnson-researcher",
+      "sagan-verifier",
+    ]);
+    expect(heroesForDiscipline("code").map((hero) => hero.displayName)).toEqual([
+      "Charles Babbage", "Edsger Dijkstra", "Margaret Hamilton", "Donald Knuth",
+      "Ada Lovelace", "Dennis Ritchie", "Vint Cerf", "Linus Torvalds", "Radia Perlman",
+      "Edgar Codd", "Grace Hopper", "George Boole", "Tony Hoare", "Alan Turing", "Barbara Liskov",
+    ]);
   });
 });

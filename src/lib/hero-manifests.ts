@@ -1,46 +1,42 @@
 import type { HeroDiscipline, HeroManifest } from "../types/hero";
 
-export const DEMO_HEROES: HeroManifest[] = [
-  {
-    id: "ada-architect",
-    displayName: "Ada Lovelace",
-    historicalIdentity: "Augusta Ada King, Countess of Lovelace",
-    historicalEra: "1815–1852",
-    historicalCues: ["Victorian mathematician", "analytical engine notes", "early algorithm design"],
-    role: "Computing pioneer",
-    discipline: "code",
-    accent: "#00cca8",
-    avatarGlyph: "A",
-    vignette: { title: "Architecture desk", description: "Maps the system before the swarm builds it.", scene: "desk", prop: "diagram" },
-    sprite: { atlasSrc: "/pets/ada-architect-v2.webp", spriteVersionNumber: 2, cellWidth: 192, cellHeight: 208 },
-  },
-  {
-    id: "linus-builder",
-    displayName: "Linus Torvalds",
-    historicalIdentity: "Linus Torvalds",
-    historicalEra: "born 1969",
-    historicalCues: ["Finnish software engineer", "Linux kernel", "open-source collaboration"],
-    role: "Software engineer",
-    discipline: "code",
-    accent: "#60a5fa",
-    avatarGlyph: "L",
-    vignette: { title: "Build station", description: "Turns the plan into tested working code.", scene: "terminal", prop: "terminal" },
-    sprite: { atlasSrc: "/heroes/linus-torvalds-v2.webp", previewSrc: "/heroes/linus-torvalds-90s.png", interactionSrc: "/heroes/linus-code-session-12.webp", spriteVersionNumber: 2, cellWidth: 192, cellHeight: 208 },
-  },
-  {
-    id: "sagan-verifier",
-    displayName: "Carl Sagan",
-    historicalIdentity: "Carl Edward Sagan",
-    historicalEra: "1934–1996",
-    historicalCues: ["astronomer", "science communicator", "cosmic perspective"],
-    role: "Astronomer and communicator",
-    discipline: "research",
-    accent: "#e0b341",
-    avatarGlyph: "S",
-    vignette: { title: "Evidence lab", description: "Checks claims, gaps, and confidence before synthesis.", scene: "lab", prop: "evidence" },
-    sprite: { previewSrc: "/heroes/carl-sagan-90s.png", interactionSrc: "/heroes/sagan-research-session-12.webp", spriteVersionNumber: 2, cellWidth: 192, cellHeight: 208 },
-  },
+type PioneerSeed = Omit<HeroManifest, "sprite">;
+const SPRITE_CONTRACT = { spriteVersionNumber: 2 as const, cellWidth: 192 as const, cellHeight: 208 as const };
+const scene = (title: string, description: string, kind: HeroManifest["vignette"]["scene"], prop: string): HeroManifest["vignette"] => ({ title, description, scene: kind, prop });
+
+/** Mirrors Agent_Swarm's coordination/pioneers.py execution pools. */
+const EXECUTION_HEROES: PioneerSeed[] = [
+  { id: "shannon-researcher", displayName: "Claude Shannon", historicalIdentity: "Claude Elwood Shannon", historicalEra: "1916–2001", historicalCues: ["information theory", "Bell Labs", "communication systems"], role: "Information theorist", discipline: "research", accent: "#f59e0b", avatarGlyph: "S", vignette: scene("Information lab", "Measures uncertainty and signal before synthesis.", "lab", "signal") },
+  { id: "minsky-researcher", displayName: "Marvin Minsky", historicalIdentity: "Marvin Lee Minsky", historicalEra: "1927–2016", historicalCues: ["AI pioneer", "MIT AI Laboratory", "society of mind"], role: "AI pioneer", discipline: "research", accent: "#f59e0b", avatarGlyph: "M", vignette: scene("Cognitive lab", "Breaks a hard question into interacting mental models.", "lab", "models") },
+  { id: "johnson-researcher", displayName: "Katherine Johnson", historicalIdentity: "Katherine Coleman Goble Johnson", historicalEra: "1918–2020", historicalCues: ["NASA mathematician", "orbital mechanics", "precision computation"], role: "Computing mathematician", discipline: "research", accent: "#f59e0b", avatarGlyph: "J", vignette: scene("Trajectory desk", "Checks the mathematics behind each research conclusion.", "desk", "trajectory") },
+  { id: "babbage-architect", displayName: "Charles Babbage", historicalIdentity: "Charles Babbage", historicalEra: "1791–1871", historicalCues: ["Analytical Engine", "programmable computation", "mechanical design"], role: "Computing architect", discipline: "code", accent: "#3b82f6", avatarGlyph: "B", vignette: scene("Engine desk", "Lays out the architecture before the swarm builds it.", "desk", "engine") },
+  { id: "dijkstra-architect", displayName: "Edsger Dijkstra", historicalIdentity: "Edsger Wybe Dijkstra", historicalEra: "1930–2002", historicalCues: ["structured programming", "shortest-path algorithm", "formal correctness"], role: "Computer scientist", discipline: "code", accent: "#3b82f6", avatarGlyph: "D", vignette: scene("Proof desk", "Reduces the system to simple, reliable layers.", "desk", "proof") },
+  { id: "hamilton-architect", displayName: "Margaret Hamilton", historicalIdentity: "Margaret Hamilton", historicalEra: "born 1936", historicalCues: ["Apollo flight software", "software engineering", "fault tolerance"], role: "Software engineering pioneer", discipline: "code", accent: "#3b82f6", avatarGlyph: "H", vignette: scene("Flight software lab", "Designs software that stays dependable under pressure.", "lab", "flight code") },
+  { id: "knuth-coder", displayName: "Donald Knuth", historicalIdentity: "Donald Ervin Knuth", historicalEra: "born 1938", historicalCues: ["The Art of Computer Programming", "algorithm analysis", "TeX"], role: "Algorithm author", discipline: "code", accent: "#8b5cf6", avatarGlyph: "K", vignette: scene("Algorithm desk", "Studies the algorithm until every line earns its place.", "desk", "algorithm") },
+  { id: "ada-architect", displayName: "Ada Lovelace", historicalIdentity: "Augusta Ada King, Countess of Lovelace", historicalEra: "1815–1852", historicalCues: ["Victorian mathematician", "Analytical Engine notes", "first published algorithm"], role: "Computing pioneer", discipline: "code", accent: "#00cca8", avatarGlyph: "A", vignette: scene("Architecture desk", "Maps the system before the swarm builds it.", "desk", "diagram") },
+  { id: "ritchie-coder", displayName: "Dennis Ritchie", historicalIdentity: "Dennis MacAlistair Ritchie", historicalEra: "1941–2011", historicalCues: ["C language", "UNIX", "systems programming"], role: "Systems programmer", discipline: "code", accent: "#8b5cf6", avatarGlyph: "R", vignette: scene("Systems desk", "Turns a precise foundation into dependable infrastructure.", "terminal", "compiler") },
+  { id: "cerf-devops", displayName: "Vint Cerf", historicalIdentity: "Vinton Gray Cerf", historicalEra: "born 1943", historicalCues: ["TCP/IP", "internet protocols", "network engineering"], role: "Internet engineer", discipline: "code", accent: "#10b981", avatarGlyph: "C", vignette: scene("Network console", "Keeps the swarm's systems connected and observable.", "terminal", "network") },
+  { id: "linus-builder", displayName: "Linus Torvalds", historicalIdentity: "Linus Torvalds", historicalEra: "born 1969", historicalCues: ["Finnish software engineer", "Linux kernel", "open-source collaboration"], role: "Software engineer", discipline: "code", accent: "#60a5fa", avatarGlyph: "L", vignette: scene("Build station", "Turns the plan into tested working code.", "terminal", "terminal") },
+  { id: "perlman-devops", displayName: "Radia Perlman", historicalIdentity: "Radia Joy Perlman", historicalEra: "born 1951", historicalCues: ["spanning-tree protocol", "network routing", "robust systems"], role: "Network engineer", discipline: "code", accent: "#10b981", avatarGlyph: "P", vignette: scene("Network lab", "Prevents the infrastructure from looping back on itself.", "lab", "routing") },
+  { id: "codd-analyst", displayName: "Edgar Codd", historicalIdentity: "Edgar Frank Codd", historicalEra: "1923–2003", historicalCues: ["relational model", "database theory", "normalization"], role: "Database theorist", discipline: "code", accent: "#06b6d4", avatarGlyph: "C", vignette: scene("Data desk", "Organizes evidence so relationships remain clear and queryable.", "desk", "relations") },
+  { id: "hopper-analyst", displayName: "Grace Hopper", historicalIdentity: "Grace Brewster Murray Hopper", historicalEra: "1906–1992", historicalCues: ["first compiler", "COBOL", "naval computing"], role: "Compiler pioneer", discipline: "code", accent: "#06b6d4", avatarGlyph: "H", vignette: scene("Compiler desk", "Translates human intent into precise machine work.", "terminal", "compiler") },
+  { id: "boole-analyst", displayName: "George Boole", historicalIdentity: "George Boole", historicalEra: "1815–1864", historicalCues: ["Boolean algebra", "logic", "foundations of computing"], role: "Logician", discipline: "code", accent: "#06b6d4", avatarGlyph: "B", vignette: scene("Logic desk", "Tests every branch of a claim before it enters the system.", "desk", "logic") },
+  { id: "hoare-verifier", displayName: "Tony Hoare", historicalIdentity: "Charles Antony Richard Hoare", historicalEra: "born 1934", historicalCues: ["Hoare logic", "quicksort", "formal verification"], role: "Formal methods pioneer", discipline: "code", accent: "#f43f5e", avatarGlyph: "H", vignette: scene("Verification desk", "Proves that the implementation satisfies its contract.", "desk", "contract") },
+  { id: "turing-verifier", displayName: "Alan Turing", historicalIdentity: "Alan Mathison Turing", historicalEra: "1912–1954", historicalCues: ["computability", "codebreaking", "machine intelligence"], role: "Computing theorist", discipline: "code", accent: "#f43f5e", avatarGlyph: "T", vignette: scene("Test desk", "Challenges the system with the question it must answer.", "terminal", "test") },
+  { id: "liskov-verifier", displayName: "Barbara Liskov", historicalIdentity: "Barbara Jane Liskov", historicalEra: "born 1939", historicalCues: ["data abstraction", "Liskov substitution principle", "distributed systems"], role: "Programming languages pioneer", discipline: "code", accent: "#f43f5e", avatarGlyph: "L", vignette: scene("Abstraction lab", "Checks that each component can safely stand in for its contract.", "lab", "abstraction") },
 ];
+
+const ART: Record<string, HeroManifest["sprite"]> = {
+  "ada-architect": { ...SPRITE_CONTRACT, atlasSrc: "/pets/ada-architect-v2.webp" },
+  "linus-builder": { ...SPRITE_CONTRACT, atlasSrc: "/heroes/linus-torvalds-v2.webp", previewSrc: "/heroes/linus-torvalds-90s.png", interactionSrc: "/heroes/linus-code-session-12.webp" },
+};
+
+const SAGAN: HeroManifest = {
+  id: "sagan-verifier", displayName: "Carl Sagan", historicalIdentity: "Carl Edward Sagan", historicalEra: "1934–1996", historicalCues: ["astronomer", "science communicator", "cosmic perspective"], role: "Astronomer and communicator", discipline: "research", accent: "#e0b341", avatarGlyph: "S", vignette: scene("Evidence lab", "Checks claims, gaps, and confidence before synthesis.", "lab", "evidence"),
+  sprite: { ...SPRITE_CONTRACT, previewSrc: "/heroes/carl-sagan-90s.png", interactionSrc: "/heroes/sagan-research-session-12.webp" },
+};
+
+export const DEMO_HEROES: HeroManifest[] = [...EXECUTION_HEROES.map((hero) => ({ ...hero, sprite: ART[hero.id] ?? { ...SPRITE_CONTRACT } })), SAGAN];
 
 export function heroesForDiscipline(discipline: HeroDiscipline): HeroManifest[] {
   return DEMO_HEROES.filter((hero) => hero.discipline === discipline);
