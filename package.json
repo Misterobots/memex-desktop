@@ -8,6 +8,8 @@
     "build":          "vite build && electron-builder",
     "build:renderer": "vite build --config vite.config.ts",
     "build:electron": "vite build",
+    "dev:notebooklm": "vite --config vite.notebooklm.config.ts --host 127.0.0.1",
+    "build:notebooklm": "vite build --config vite.notebooklm.config.ts",
     "typecheck":      "tsc --noEmit",
     "test":           "vitest run",
     "package":        "npm run typecheck && npm run build:electron && electron-builder",

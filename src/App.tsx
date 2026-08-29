@@ -7,6 +7,7 @@ import { checkHealth } from "./lib/memex-client";
 import { desktop, isDesktop } from "./lib/desktop";
 import { initRuntimeUrls } from "./lib/runtime-urls";
 import { fetchRemoteSessions } from "./lib/conv-sync";
+import { NotebookLMLab } from "./components/notebook/NotebookLMLab";
 
 export default function App() {
   const {
@@ -127,6 +128,10 @@ export default function App() {
 
   // Show nothing while wizard completion state is loading
   if (wizardDone === null) return null;
+
+  if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("experimental") === "notebooklm") {
+    return <NotebookLMLab />;
+  }
 
   return (
     <>
