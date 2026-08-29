@@ -10,6 +10,8 @@
     "build:electron": "vite build",
     "dev:notebooklm": "vite --config vite.notebooklm.config.ts --host 127.0.0.1",
     "build:notebooklm": "vite build --config vite.notebooklm.config.ts",
+    "dev:pet-designer": "vite --config vite.pet-designer.config.ts --host 127.0.0.1",
+    "build:pet-designer": "vite build --config vite.pet-designer.config.ts",
     "typecheck":      "tsc --noEmit",
     "test":           "vitest run",
     "package":        "npm run typecheck && npm run build:electron && electron-builder",

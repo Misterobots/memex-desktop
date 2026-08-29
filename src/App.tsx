@@ -8,6 +8,7 @@ import { desktop, isDesktop } from "./lib/desktop";
 import { initRuntimeUrls } from "./lib/runtime-urls";
 import { fetchRemoteSessions } from "./lib/conv-sync";
 import { NotebookLMLab } from "./components/notebook/NotebookLMLab";
+import { PetDesignerLab } from "./components/pet/PetDesignerLab";
 
 export default function App() {
   const {
@@ -131,6 +132,10 @@ export default function App() {
 
   if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("experimental") === "notebooklm") {
     return <NotebookLMLab />;
+  }
+
+  if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("experimental") === "pet-designer") {
+    return <PetDesignerLab />;
   }
 
   return (
