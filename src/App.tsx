@@ -7,6 +7,7 @@ import { checkHealth } from "./lib/memex-client";
 import { desktop, isDesktop } from "./lib/desktop";
 import { initRuntimeUrls } from "./lib/runtime-urls";
 import { fetchRemoteSessions } from "./lib/conv-sync";
+import { SwarmHeroLab } from "./components/swarm/SwarmHeroLab";
 
 export default function App() {
   const {
@@ -127,6 +128,13 @@ export default function App() {
 
   // Show nothing while wizard completion state is loading
   if (wizardDone === null) return null;
+
+  // Isolated visual/operability lab for the experimental swarm hero badges.
+  // It intentionally bypasses the configured app shell so new art and state
+  // behavior can be tested without changing the current product surface.
+  if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("experimental") === "hero-badges") {
+    return <SwarmHeroLab />;
+  }
 
   return (
     <>
