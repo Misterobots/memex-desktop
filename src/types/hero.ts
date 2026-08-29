@@ -12,6 +12,8 @@ export interface HeroV2Sprite {
   /** Codex-compatible v2 atlas; the badge may use a derived preview frame. */
   atlasSrc?: string;
   previewSrc?: string;
+  /** Profession-specific composed scene used while the hero is actively working. */
+  interactionSrc?: string;
   spriteVersionNumber: 2;
   cellWidth: 192;
   cellHeight: 208;
@@ -27,6 +29,10 @@ export interface HeroVignette {
 export interface HeroManifest {
   id: string;
   displayName: string;
+  /** Historical names are explicit so sprite art does not drift into generic archetypes. */
+  historicalIdentity?: string;
+  historicalEra?: string;
+  historicalCues?: string[];
   role: string;
   discipline: HeroDiscipline;
   accent: string;

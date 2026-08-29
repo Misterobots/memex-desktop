@@ -108,6 +108,8 @@ p + p { margin-top: 12px; }
 .hero-sprite-placeholder::before { position: absolute; top: -20px; left: 50%; width: 36px; height: 36px; border: 2px solid var(--hero-accent); border-radius: 50%; background: #16161a; content: ""; transform: translateX(-50%); }
 .hero-sprite-placeholder span { position: absolute; top: -11px; left: 50%; z-index: 1; color: var(--hero-accent); font-size: 12px; font-weight: 700; transform: translateX(-50%); }
 .hero-vignette-status { position: absolute; right: 12px; bottom: 10px; color: #ededf0; font-size: 10px; }
+.hero-interaction-layer { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; background: linear-gradient(145deg, color-mix(in srgb, var(--hero-accent) 13%, #16161a), #0d0d11 70%); }
+.hero-interaction-layer img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
 .hero-description { min-height: 38px; padding: 10px 12px 0; color: #8b8b94; font-size: 11px; line-height: 1.45; }
 .hero-badge-footer { display: flex; justify-content: space-between; gap: 8px; padding: 10px 12px 12px; color: #5b5b66; font-size: 10px; }
 .hero-lab button:focus-visible, .hero-lab select:focus-visible { outline: 2px solid #00cca8; outline-offset: 2px; }

@@ -11,6 +11,16 @@ describe("swarm hero manifests", () => {
       expect(hero.vignette.title).toBeTruthy();
     }
     expect(DEMO_HEROES.find((hero) => hero.id === "ada-architect")?.sprite.atlasSrc).toBe("/pets/ada-architect-v2.webp");
+    expect(DEMO_HEROES.find((hero) => hero.id === "ada-architect")?.historicalIdentity).toContain("Lovelace");
+    expect(DEMO_HEROES.find((hero) => hero.id === "linus-builder")?.historicalIdentity).toContain("Torvalds");
+    expect(DEMO_HEROES.find((hero) => hero.id === "linus-builder")?.sprite).toMatchObject({
+      atlasSrc: "/heroes/linus-torvalds-v2.webp",
+      previewSrc: "/heroes/linus-torvalds-90s.png",
+      interactionSrc: "/heroes/linus-code-session-12.webp",
+    });
+    expect(DEMO_HEROES.find((hero) => hero.id === "sagan-verifier")?.historicalIdentity).toContain("Sagan");
+    expect(DEMO_HEROES.find((hero) => hero.id === "sagan-verifier")?.sprite.previewSrc).toBe("/heroes/carl-sagan-90s.png");
+    expect(DEMO_HEROES.find((hero) => hero.id === "sagan-verifier")?.sprite.interactionSrc).toBe("/heroes/sagan-research-session-12.webp");
   });
 
   it("separates code and research hero pools", () => {

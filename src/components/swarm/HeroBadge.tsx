@@ -37,6 +37,7 @@ interface Props {
 
 export function HeroBadge({ hero, state, onSelect, selected = false }: Props) {
   const interactive = Boolean(onSelect);
+  const interactionSrc = state === "working" ? hero.sprite.interactionSrc : undefined;
   const badge = (
     <article
       className={`hero-badge ${selected ? "hero-badge-selected" : ""}`}
@@ -54,28 +55,36 @@ export function HeroBadge({ hero, state, onSelect, selected = false }: Props) {
       </div>
 
       <div className={`hero-vignette hero-scene-${hero.vignette.scene} ${STATE_CLASS[state]}`}>
-        <div className="hero-scene-grid" aria-hidden="true" />
         <div className="hero-scene-label">{hero.vignette.title}</div>
-        <div className="hero-work-surface" aria-hidden="true">
-          <div className="hero-work-prop">{hero.vignette.prop ?? "work"}</div>
-          <div className="hero-sprite" aria-label={`${hero.displayName} ${STATE_LABEL[state].toLowerCase()}`}>
-            {hero.sprite.atlasSrc ? (
-              <div
-                className="hero-atlas-sprite"
-                style={{
-                  "--hero-row": STATE_ROW[state],
-                  backgroundImage: `url(${hero.sprite.atlasSrc})`,
-                } as CSSProperties}
-              />
-            ) : hero.sprite.previewSrc ? (
-              <img src={hero.sprite.previewSrc} alt="" />
-            ) : (
-              <div className="hero-sprite-placeholder">
-                <span>{hero.avatarGlyph}</span>
-              </div>
-            )}
+        {interactionSrc ? (
+          <div className="hero-interaction-layer" aria-label={`${hero.displayName} working in their environment`}>
+            <img src={interactionSrc} alt="" />
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="hero-scene-grid" aria-hidden="true" />
+            <div className="hero-work-surface" aria-hidden="true">
+              <div className="hero-work-prop">{hero.vignette.prop ?? "work"}</div>
+              <div className="hero-sprite" aria-label={`${hero.displayName} ${STATE_LABEL[state].toLowerCase()}`}>
+                {hero.sprite.atlasSrc ? (
+                  <div
+                    className="hero-atlas-sprite"
+                    style={{
+                      "--hero-row": STATE_ROW[state],
+                      backgroundImage: `url(${hero.sprite.atlasSrc})`,
+                    } as CSSProperties}
+                  />
+                ) : hero.sprite.previewSrc ? (
+                  <img src={hero.sprite.previewSrc} alt="" />
+                ) : (
+                  <div className="hero-sprite-placeholder">
+                    <span>{hero.avatarGlyph}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
         <div className="hero-vignette-status">{STATE_LABEL[state]}</div>
       </div>
 

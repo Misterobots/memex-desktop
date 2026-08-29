@@ -6,9 +6,10 @@ import { HeroBadge } from "./HeroBadge";
 const STATES: HeroWorkState[] = ["created", "working", "waiting", "review", "complete", "failed"];
 
 export function SwarmHeroLab() {
+  const query = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
   const [discipline, setDiscipline] = useState<HeroDiscipline>("code");
   const [state, setState] = useState<HeroWorkState>("working");
-  const [selectedId, setSelectedId] = useState(DEMO_HEROES[0].id);
+  const [selectedId, setSelectedId] = useState(query?.get("hero") ?? DEMO_HEROES[0].id);
   const heroes = useMemo(() => heroesForDiscipline(discipline), [discipline]);
   const selected = heroes.find((hero) => hero.id === selectedId) ?? heroes[0];
 
@@ -71,7 +72,7 @@ export function SwarmHeroLab() {
             <div className="mt-4 border-t border-border/60 pt-4 text-xs text-muted">
               <div className="flex justify-between gap-3"><span>Identity</span><span className="font-mono text-text">{selected.id}</span></div>
               <div className="mt-2 flex justify-between gap-3"><span>Sprite contract</span><span className="font-mono text-text">192×208 / v2</span></div>
-              <div className="mt-2 flex justify-between gap-3"><span>Asset status</span><span className="text-yellow">placeholder</span></div>
+              <div className="mt-2 flex justify-between gap-3"><span>Asset status</span><span className={selected.sprite.atlasSrc ? "text-accent" : "text-yellow"}>{selected.sprite.atlasSrc ? "animated atlas" : "preview"}</span></div>
             </div>
           </aside>
         </div>

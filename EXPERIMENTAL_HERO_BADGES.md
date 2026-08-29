@@ -22,6 +22,7 @@ The lab currently exercises:
 - created, working, waiting, review, complete, and failed states;
 - keyboard-selectable badge cards and reduced-motion behavior;
 - stable `HeroManifest` identity plus the Codex-compatible v2 sprite contract.
+- explicit historical identity/cue fields for named historical figures; the sprite brief must use these fields rather than generic role archetypes.
 
 The renderer-only build is intentionally independent of Electron and the normal
 Memex shell. Ada now uses the validated `public/pets/ada-architect-v2.webp`
