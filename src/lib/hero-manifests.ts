@@ -28,16 +28,6 @@ export const DEMO_HEROES: HeroManifest[] = [
     sprite: { atlasSrc: "/heroes/linus-torvalds-v2.webp", previewSrc: "/heroes/linus-torvalds-90s.png", interactionSrc: "/heroes/linus-code-session-12.webp", spriteVersionNumber: 2, cellWidth: 192, cellHeight: 208 },
   },
   {
-    id: "mira-researcher",
-    displayName: "Mira",
-    role: "Source researcher",
-    discipline: "research",
-    accent: "#9580ff",
-    avatarGlyph: "M",
-    vignette: { title: "Research library", description: "Finds and compares the strongest sources.", scene: "library", prop: "sources" },
-    sprite: { spriteVersionNumber: 2, cellWidth: 192, cellHeight: 208 },
-  },
-  {
     id: "sagan-verifier",
     displayName: "Carl Sagan",
     historicalIdentity: "Carl Edward Sagan",
