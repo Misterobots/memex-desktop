@@ -10,6 +10,7 @@ describe("swarm hero manifests", () => {
       expect(hero.sprite).toMatchObject({ spriteVersionNumber: 2, cellWidth: 192, cellHeight: 208 });
       expect(hero.vignette.title).toBeTruthy();
     }
+    expect(DEMO_HEROES.find((hero) => hero.id === "ada-architect")?.sprite.atlasSrc).toBe("/pets/ada-architect-v2.webp");
   });
 
   it("separates code and research hero pools", () => {

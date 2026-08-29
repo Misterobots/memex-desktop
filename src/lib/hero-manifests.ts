@@ -9,7 +9,7 @@ export const DEMO_HEROES: HeroManifest[] = [
     accent: "#00cca8",
     avatarGlyph: "A",
     vignette: { title: "Architecture desk", description: "Maps the system before the swarm builds it.", scene: "desk", prop: "diagram" },
-    sprite: { spriteVersionNumber: 2, cellWidth: 192, cellHeight: 208 },
+    sprite: { atlasSrc: "/pets/ada-architect-v2.webp", spriteVersionNumber: 2, cellWidth: 192, cellHeight: 208 },
   },
   {
     id: "linus-builder",

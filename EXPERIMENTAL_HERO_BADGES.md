@@ -24,7 +24,7 @@ The lab currently exercises:
 - stable `HeroManifest` identity plus the Codex-compatible v2 sprite contract.
 
 The renderer-only build is intentionally independent of Electron and the normal
-Memex shell. The current silhouette is an operability placeholder. Generated v2 sprite assets
-will replace `sprite.previewSrc` without changing the badge or state APIs. The
+Memex shell. Ada now uses the validated `public/pets/ada-architect-v2.webp`
+atlas; the other demo heroes retain the operability placeholder. The
 environment remains a separate vignette layer so transparent sprites can be
 reused by the future user pet designer.
