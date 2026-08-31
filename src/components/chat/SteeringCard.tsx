@@ -9,7 +9,7 @@ interface Props {
 }
 
 /**
- * Renders a swarm clarification_card (structured: question + context + options)
+ * Renders a Collective clarification_card (structured: question + context + options)
  * and, on answer, sends the chosen option `value` as the next user message.
  * The backend loads the saved pending-context on that message (church.py →
  * routing/gates.py) and resumes the coordination with skip_project_gate=True.
@@ -65,7 +65,7 @@ export function SteeringCard({ card }: Props) {
   if (submitted) {
     return (
       <div className="text-xs text-muted font-mono border border-border/60 rounded-lg px-3 py-2">
-        ✓ {submitted} — swarm proceeding…
+        ✓ {submitted} — Collective proceeding…
       </div>
     );
   }
@@ -73,7 +73,7 @@ export function SteeringCard({ card }: Props) {
   return (
     <div className="border border-yellow/50 rounded-xl bg-surface overflow-hidden text-sm">
       <div className="px-4 py-2.5 border-b border-border/60 bg-canvas">
-        <p className="text-yellow text-[11px] font-mono mb-0.5 uppercase tracking-wide">Swarm needs input</p>
+        <p className="text-yellow text-[11px] font-mono mb-0.5 uppercase tracking-wide">Collective needs input</p>
         <p className="text-text">{card.question}</p>
         {card.context && <p className="text-muted text-xs mt-1">{card.context}</p>}
       </div>

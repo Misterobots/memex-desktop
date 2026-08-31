@@ -151,7 +151,7 @@ export function DevView() {
                   <div className="flex-1 flex flex-col items-center justify-center px-6 select-none">
                     <div className="max-w-conversation w-full text-center">
                       <div className="text-4xl text-accent mb-4 font-mono opacity-80">{"</>"}</div>
-                      <h1 className="text-xl text-text font-medium mb-2">Code with the swarm</h1>
+                      <h1 className="text-xl text-text font-medium mb-2">Code with the Collective</h1>
                       <p className="text-muted text-sm max-w-sm mx-auto">
                         {cwd
                           ? `Working in ${folderName}. Ask the agent to read, edit, and run code in this folder.`

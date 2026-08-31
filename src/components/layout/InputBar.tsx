@@ -19,10 +19,10 @@ const MODE_DOT: Record<MemexMode, string> = {
 };
 
 // One-line descriptions so the picker makes clear which mode does what — e.g.
-// code tasks belong in Swarm, not Research (which forces a research pipeline).
+// code tasks belong in Collective, not Research (which forces a research pipeline).
 const MODE_DESC: Record<MemexMode, string> = {
   chat:     "General conversation & Q&A",
-  swarm:    "Build & write code with agents",
+  swarm:    "Build & write code with the Collective",
   research: "Web/doc research & synthesis",
   design:   "Generate UI / HTML mockups",
   think:    "Extended step-by-step reasoning",

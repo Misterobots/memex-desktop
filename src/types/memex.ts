@@ -74,7 +74,8 @@ export const MODE_FLAGS: Record<MemexMode, Record<string, boolean>> = {
 
 export const MODE_LABELS: Record<MemexMode, string> = {
   chat:     "Chat",
-  swarm:    "Swarm",
+  // Keep the serialized key stable; Collective is the user-facing name.
+  swarm:    "Collective",
   research: "Research",
   design:   "Design",
   think:    "Think",
