@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Task, TaskWorker } from "../../types/memex";
-import { getTask, getTaskDiff, setTaskApproval, stopTask, type TaskDiff } from "../../lib/tasks-api";
+import { getTask, getTaskDiff, getTaskEvents, retryTask, setTaskApproval, stopTask, type TaskDiff, type TaskEvent } from "../../lib/tasks-api";
 import { WebDiffViewer } from "./WebDiffViewer";
 import { PushPreviewModal } from "./PushPreviewModal";
 
@@ -8,15 +8,25 @@ const WORKER_DOT: Record<string, string> = {
   running: "bg-yellow", completed: "bg-green", failed: "bg-red-400", pending: "bg-muted",
 };
 
-export function TaskDetailPanel({ id, onClose, onChange }: {
-  id: string; onClose: () => void; onChange?: () => void;
+function eventLabel(event: TaskEvent): string {
+  const payload = event.payload ?? {};
+  const detail = [payload.message, payload.status, payload.phase_name, payload.tool]
+    .find((value): value is string => typeof value === "string" && value.length > 0);
+  return detail ? `${event.type.replace(/_/g, " ")} · ${detail}` : event.type.replace(/_/g, " ");
+}
+
+export function TaskDetailPanel({ id, onClose, onChange, onRetry }: {
+  id: string; onClose: () => void; onChange?: () => void; onRetry?: (id: string) => void;
 }) {
   const [run,      setRun]      = useState<Task | null>(null);
   const [workers,  setWorkers]  = useState<TaskWorker[]>([]);
+  const [events,   setEvents]   = useState<TaskEvent[]>([]);
   const [diff,     setDiff]     = useState<TaskDiff | null>(null);
   const [diffMsg,  setDiffMsg]  = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [retryMsg, setRetryMsg] = useState<string | null>(null);
 
   // Gated GitHub push/PR (Phase F). Local-only: a page refresh losing the
   // shown PR link is acceptable — push/status exists for a defensive re-fetch
@@ -27,11 +37,15 @@ export function TaskDetailPanel({ id, onClose, onChange }: {
 
   const load = useCallback(async () => {
     const res = await getTask(id);
-    if (res) { setRun(res.run); setWorkers(res.workers); }
+    if (res) {
+      setRun(res.run);
+      setWorkers(res.workers);
+      setEvents((await getTaskEvents(id)).slice(-40));
+    }
   }, [id]);
 
   useEffect(() => {
-    setRun(null); setDiff(null); setDiffMsg(null);
+    setRun(null); setDiff(null); setDiffMsg(null); setEvents([]);
     setPushModalOpen(false); setPushedPrUrl(null);
     load();
   }, [load]);
@@ -68,6 +82,13 @@ export function TaskDetailPanel({ id, onClose, onChange }: {
     setApproving(true);
     if (await setTaskApproval(id, decision)) { await load(); onChange?.(); }
     setApproving(false);
+  };
+  const retry = async () => {
+    setRetrying(true); setRetryMsg(null);
+    const result = await retryTask(id);
+    if (result.coordination_id) { onRetry?.(result.coordination_id); onChange?.(); }
+    else setRetryMsg(result.error || "Retry could not be started.");
+    setRetrying(false);
   };
 
   if (!run) {
@@ -141,6 +162,20 @@ export function TaskDetailPanel({ id, onClose, onChange }: {
           </div>
         )}
 
+        {events.length > 0 && (
+          <div>
+            <div className="text-[10px] text-muted uppercase tracking-wide mb-1.5">Activity</div>
+            <div className="space-y-1.5 border-l border-border/60 pl-3">
+              {events.map((event) => (
+                <div key={`${event.run_id}-${event.seq}`} className="text-xs text-text/75 leading-relaxed">
+                  <span className="text-muted/70 mr-1.5">#{event.seq + 1}</span>
+                  {eventLabel(event)}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {done && (
           <div>
             <div className="text-[10px] text-muted uppercase tracking-wide mb-1">
@@ -153,6 +188,11 @@ export function TaskDetailPanel({ id, onClose, onChange }: {
 
       {done && (
         <div className="flex-shrink-0 border-t border-border/40 p-3">
+          <button onClick={retry} disabled={retrying}
+            className="w-full mb-2 px-3 py-2 text-sm rounded-lg border border-accent2/40 text-accent2 hover:bg-accent2/10 disabled:opacity-50">
+            {retrying ? "Starting retry…" : "Retry task"}
+          </button>
+          {retryMsg && <div className="text-center text-xs text-red-400 mb-2">{retryMsg}</div>}
           {decided ? (
             <div className={`text-center text-xs ${run.approval_state === "approved" ? "text-green" : "text-red-400"}`}>
               {run.approval_state === "approved" ? "✓ Approved" : "✕ Denied"}
