@@ -6,11 +6,20 @@ export function WorktreePanel({ repoPath, onSelect }: { repoPath: string; onSele
   const [records, setRecords] = useState<WorktreeRecord[]>([]);
   const [label, setLabel] = useState("task");
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!bridge || !repoPath) return;
-    setRecords(await bridge.worktrees.list(repoPath));
+    setLoading(true);
+    setError(null);
+    try {
+      setRecords(await bridge.worktrees.list(repoPath));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not load worktrees");
+    } finally {
+      setLoading(false);
+    }
   }, [bridge, repoPath]);
 
   useEffect(() => { void load(); }, [load]);
@@ -61,8 +70,13 @@ export function WorktreePanel({ repoPath, onSelect }: { repoPath: string; onSele
         <input value={label} onChange={(event) => setLabel(event.target.value)} className="min-w-0 flex-1 rounded-md border border-border/60 bg-surface2 px-2 py-1.5 text-xs text-text" placeholder="Task label" />
         <button onClick={() => void enter()} disabled={busy} className="rounded-md bg-accent px-2.5 py-1.5 text-xs text-canvas disabled:opacity-50">New</button>
       </div>
-      {error && <p className="mb-2 text-[10px] leading-relaxed text-red-400">{error}</p>}
-      {records.length === 0 ? <p className="text-[10px] text-muted">No isolated worktrees for this repository.</p> : (
+      {error && (
+        <div className="mb-2 rounded-md border border-red-400/30 bg-red-400/10 px-2 py-1.5 text-[10px] leading-relaxed text-red-400">
+          <p>{error}</p>
+          <button onClick={() => void load()} className="mt-1 text-red-300 hover:underline">Try again</button>
+        </div>
+      )}
+      {loading ? <p className="text-[10px] text-muted">Loading worktrees…</p> : records.length === 0 ? <p className="text-[10px] text-muted">No isolated worktrees for this repository.</p> : (
         <div className="space-y-1.5">
           {records.map((record) => (
             <div key={record.id} className="rounded-lg border border-border/40 bg-surface2/30 p-2">
