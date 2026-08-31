@@ -98,14 +98,14 @@ The remaining parity work is concentrated in five areas:
 
 ### P0 — reliability and safety
 
-- Run the opt-in deployed crash-recovery smoke tests covering sandbox, Task, and MCP replay; local approval/checkpoint/resume/compaction coverage now exists.
+- Run the opt-in deployed crash-recovery smoke tests covering sandbox, Task, and MCP replay; local approval/checkpoint/resume/compaction coverage now exists. The deployed ordered sandbox replay fixture passed on 2026-08-30. Direct task creation is now enabled explicitly on Turing and its authenticated create/owner-stop/durable-state/events contract passed on 2026-08-31. The deployed MCP replay fixture also passed on 2026-08-31: out-of-order replay returned 409, two allowlisted read-only calls replayed in order, and the checkpoint reached `ready_to_resume` before exact cleanup. Task merge/publish/retry remains separate follow-up coverage.
 - Extend approval-policy parity checks to any additional backend runtimes as they are added.
 - Run deployed smoke coverage for approval → tool execution → diff → resume → compaction.
 
 ### P1 — parity and extensibility
 
-- Complete deployed MCP server lifecycle controls; Turing-host health/config/SSE discovery now passes, while a public authenticated task-flow smoke remains.
-- Run deployed end-to-end smoke coverage for task merge/publish lifecycle and retry recovery.
+- Complete deployed MCP server lifecycle controls; Turing-host health/config/SSE discovery now passes, and the public authenticated direct-task create/stop/state/events smoke passes. MCP replay remains separate controlled-fixture coverage.
+- Run deployed end-to-end smoke coverage for task merge/publish lifecycle and retry recovery; this still requires a controlled authenticated task fixture with a completed or reviewable run.
 - Add optional native notebook kernel execution if notebook workflows require an integrated runtime.
 - Keep terminal-backed REPL behavior covered by PTY lifecycle and workspace-permission tests; no separate model-call REPL tool is planned.
 
@@ -120,15 +120,15 @@ The previous roadmap incorrectly marked these as missing: auto-start, health mon
 The remaining scope is now concentrated in higher-level integration and parity:
 
 - **Worktree isolation** has first-class create/remove/merge lifecycle support; live-repo concurrency is project-scoped and publish state is explicit, with deployed smoke coverage remaining.
-- **MCP integration** has all four configured transports and capability-backed resources/prompts; deployed-runtime lifecycle testing remains.
+- **MCP integration** has all four configured transports and capability-backed resources/prompts; deployed health/config and ordered read-only replay now pass. SPIRE socket mounting, Docker PID attestation, and X.509 SVID capability-token signing/verification now pass on Turing.
 - **Skills** support deterministic user/project Markdown loading; native notebook editing, scoped LSP diagnostics, and scoped Vim editing are available, while integrated notebook kernel execution remains outside the renderer.
 - **Cost tracking** includes token totals and provider-reported USD estimates; local Ollama runs explicitly report zero cost and unknown provider prices remain unlabeled.
 
 ## Validation snapshot
 
-- `memex-desktop`: renderer and Electron typechecks passed; 51 tests passed across 15 files; the Windows NSIS installer was produced as `release/Memex Desktop Setup 0.1.25.exe`; and the unpacked packaged app initialized responsively in `--startup` mode with no visible main window.
+- `memex-desktop`: renderer and Electron typechecks passed; 55 tests passed across 17 files on 2026-08-31; the Windows NSIS installer was produced as `release/Memex Desktop Setup 0.1.25.exe`; and the unpacked packaged app initialized responsively in `--startup` mode with no visible main window. The authenticated deployed `/dev` review confirmed the editor, terminal, goals, notes, workspace selector, and status controls render; the existing fixture did not exercise TodoCard, diff-chip, pioneer-activity, or trace rendering.
 - `Agent_Swarm`: the full suite passes with `796 passed, 7 skipped, 7 warnings`, including all six backend handoff-contract tests. Agent storage initialization is lazy, so importing the runtime no longer requires a live PostgreSQL login; actual agent execution still uses the configured database.
-- Deployed checks: after deploying the lazy-storage fix and restarting Turing's `agent_runtime`, the live PostgreSQL credential authenticated as `agno` to `agno_memory`, runtime import completed successfully, and MCP health remained healthy with 19 tools, 2 resources, and 2 prompts. The authenticated public DevHarness checkpoint list is reachable and currently empty; no recovery fixture exists for a destructive end-to-end replay test.
+- Deployed checks: after deploying the lazy-storage fix and restarting Turing's `agent_runtime`, the live PostgreSQL credential authenticated as `agno` to `agno_memory`, runtime import completed successfully, and MCP health remained healthy with 19 tools, 2 resources, and 2 prompts. The authenticated public DevHarness checkpoint list is reachable and currently empty. On 2026-08-30, an isolated durable checkpoint replay fixture executed the first ordered read-only sandbox call, returned `recovery_required` with the next call ID, and was removed afterward; no production data was changed. On 2026-08-31, direct task creation was enabled explicitly on Turing after adding scoped-dispatch compatibility; an authenticated no-tools task returned 202, owner stop returned 200, durable state became `cancelled`, events were present, and fresh runtime logs were clean. The same day, an isolated MCP replay fixture rejected an out-of-order call with 409, replayed `web_search` and `web_fetch` in order, reached `ready_to_resume`, and deleted exactly one synthetic checkpoint row. The SPIRE follow-up then verified the live socket mount, `pid: host` attestation, and an authenticated token-backed `web_fetch` with `SPIRE signing enabled`, valid SVID verification, and no fallback/error path. Task merge/publish/retry remains separate controlled-fixture coverage.
 - Dependency audit: production dependencies report 0 vulnerabilities after the `js-yaml` 4.3.1 lockfile update. The safe lockfile refresh plus the Vite 6.4.3 upgrade reduced the development audit to 10 findings (1 critical, 9 high); all remaining fixes require major Electron/electron-builder upgrades.
 - Security-upgrade trial: Electron 41.10.3 and electron-builder 26.15.3 reached 0 audit findings with Vite 6.4.3, PostCSS 8.5.26, and shell-quote 1.10.0 under the bundled Node 24.19.0 runtime, but packaging could not rebuild `node-pty` without Visual Studio Spectre-mitigated libraries. The Electron/electron-builder candidate was reverted; the release baseline now keeps Electron 31/electron-builder 24 while using the verified Vite 6.4.3 tranche.
 - Both repositories are clean after their current checkpoint commits; desktop and backend `main` refs are pushed, and the backend runtime is deployed on Turing.

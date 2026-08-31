@@ -27,9 +27,9 @@ const EXECUTION_HEROES: PioneerSeed[] = [
 ];
 
 const ART: Record<string, HeroManifest["sprite"]> = {
-  "shannon-researcher": { ...SPRITE_CONTRACT, previewSrc: "/heroes/claude-shannon-research-90s.png", interactionSrc: "/heroes/claude-shannon-research-12.webp" },
-  "minsky-researcher": { ...SPRITE_CONTRACT, previewSrc: "/heroes/marvin-minsky-research-90s.png", interactionSrc: "/heroes/marvin-minsky-research-12.webp" },
-  "johnson-researcher": { ...SPRITE_CONTRACT, previewSrc: "/heroes/katherine-johnson-research-90s.png", interactionSrc: "/heroes/katherine-johnson-research-12.webp" },
+  "shannon-researcher": { ...SPRITE_CONTRACT, previewSrc: "/heroes/claude-shannon-research-90s-refined.png", interactionSrc: "/heroes/claude-shannon-research-12-refined.webp" },
+  "minsky-researcher": { ...SPRITE_CONTRACT, previewSrc: "/heroes/marvin-minsky-research-90s-refined.png", interactionSrc: "/heroes/marvin-minsky-research-12-refined.webp" },
+  "johnson-researcher": { ...SPRITE_CONTRACT, previewSrc: "/heroes/katherine-johnson-research-90s-refined.png", interactionSrc: "/heroes/katherine-johnson-research-12-refined.webp" },
   "ada-architect": { ...SPRITE_CONTRACT, atlasSrc: "/pets/ada-architect-v2.webp" },
   "linus-builder": { ...SPRITE_CONTRACT, atlasSrc: "/heroes/linus-torvalds-v2.webp", previewSrc: "/heroes/linus-torvalds-90s.png", interactionSrc: "/heroes/linus-code-session-12.webp" },
 };

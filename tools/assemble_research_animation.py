@@ -2,9 +2,9 @@ from pathlib import Path
 from PIL import Image
 
 JOBS = [
-    ("exec-74bf1af2-d3d2-41bb-9e52-c6b117227b9e.png", "claude-shannon-research-12.webp"),
-    ("exec-e7c31038-19cb-4488-bdca-51cfeabd5e5c.png", "marvin-minsky-research-12.webp"),
-    ("exec-1278599c-2972-4637-b751-8e0eaa9608c6.png", "katherine-johnson-research-12.webp"),
+    ("exec-b2d3f638-cfbb-44c1-b255-a9f7d4ebbc9f.png", "claude-shannon-research-12-refined.webp"),
+    ("exec-6ce9bd76-145c-4f6f-b840-3c90ec9504a0.png", "marvin-minsky-research-12-refined.webp"),
+    ("exec-30f19dd4-c7b3-475c-9ca3-b2939551ba09.png", "katherine-johnson-research-12-refined.webp"),
 ]
 
 SOURCE_ROOT = Path(r"C:\Users\Compliance\.codex\generated_images\01a038ef-071c-72f3-ac66-70b7232f9baf")

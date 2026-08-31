@@ -19,6 +19,10 @@ describe("swarm hero manifests", () => {
       interactionSrc: "/heroes/linus-code-session-12.webp",
     });
     expect(DEMO_HEROES.find((hero) => hero.id === "sagan-verifier")?.historicalIdentity).toContain("Sagan");
+    expect(DEMO_HEROES.find((hero) => hero.id === "shannon-researcher")?.sprite.previewSrc).toBe("/heroes/claude-shannon-research-90s-refined.png");
+    expect(DEMO_HEROES.find((hero) => hero.id === "shannon-researcher")?.sprite.interactionSrc).toBe("/heroes/claude-shannon-research-12-refined.webp");
+    expect(DEMO_HEROES.find((hero) => hero.id === "minsky-researcher")?.sprite.previewSrc).toBe("/heroes/marvin-minsky-research-90s-refined.png");
+    expect(DEMO_HEROES.find((hero) => hero.id === "johnson-researcher")?.sprite.interactionSrc).toBe("/heroes/katherine-johnson-research-12-refined.webp");
     expect(DEMO_HEROES.find((hero) => hero.id === "sagan-verifier")?.sprite.previewSrc).toBe("/heroes/carl-sagan-90s.png");
     expect(DEMO_HEROES.find((hero) => hero.id === "sagan-verifier")?.sprite.interactionSrc).toBe("/heroes/sagan-research-session-12.webp");
   });

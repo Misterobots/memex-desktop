@@ -114,7 +114,8 @@ export function ProjectTasksPane({ cwd }: { cwd: string | null }) {
           }}
         />
       ) : selected ? (
-        <TaskDetailPanel id={selected} onClose={() => setSelected(null)} onChange={load} />
+        <TaskDetailPanel id={selected} onClose={() => setSelected(null)} onChange={load}
+          onRetry={(coordinationId) => { setSelected(coordinationId); load(); }} />
       ) : (
         <div className="hidden md:flex flex-1 items-center justify-center text-muted text-sm">
           Select a task to inspect

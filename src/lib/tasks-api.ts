@@ -96,6 +96,25 @@ export async function stopTask(id: string): Promise<boolean> {
   }
 }
 
+export async function retryTask(id: string): Promise<{ coordination_id?: string; status: number; error?: string }> {
+  try {
+    const r = await apiFetch(`${getAgentRuntime()}/v1/tasks/${encodeURIComponent(id)}/retry`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+      signal: AbortSignal.timeout(8000),
+    });
+    if (r.ok) {
+      const data = await r.json();
+      return { coordination_id: data?.coordination_id, status: r.status };
+    }
+    const data = await r.json().catch(() => ({}));
+    return { status: r.status, error: typeof data?.detail === "string" ? data.detail : undefined };
+  } catch {
+    return { status: 0 };
+  }
+}
+
 export interface TaskEvent {
   type: string;
   run_id: string;
