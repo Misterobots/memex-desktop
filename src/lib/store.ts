@@ -43,6 +43,7 @@ interface AppState {
   // Actions — sessions
   createSession: (experience?: ExperienceId, workspaceKey?: string) => string;
   setActiveSession: (id: string, experience?: ExperienceId) => void;
+  renameSession: (id: string, title: string) => void;
   deleteSession: (id: string) => void;
   addMessage: (sessionId: string, msg: ChatMessage) => void;
   mergeRemoteSessions: (remote: Session[]) => void;
@@ -121,6 +122,13 @@ export const useStore = create<AppState>()(
           },
         };
       }),
+
+      renameSession: (id, title) => set((s) => ({
+        sessions: s.sessions.map((session) => session.id === id
+          ? { ...session, title: title.trim().slice(0, 120) || session.title, updatedAt: Date.now() }
+          : session
+        ),
+      })),
 
       deleteSession: (id) =>
         set((s) => {
