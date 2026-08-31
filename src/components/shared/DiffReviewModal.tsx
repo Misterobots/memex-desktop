@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { diffLines, collapseContext } from "../../lib/diff";
 
 interface Props {
@@ -18,15 +18,35 @@ export function DiffReviewModal({ filePath, oldContent, newContent, onApprove, o
   const adds = hunks.filter((h) => h !== "..." && h.op === "insert").length;
   const dels = hunks.filter((h) => h !== "..." && h.op === "delete").length;
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onReject();
+      } else if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        onApprove();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onApprove, onReject]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="diff-review-title"
+      aria-describedby="diff-review-summary"
+    >
       <div className="bg-canvas border border-border/60 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col">
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-border/40 flex-shrink-0">
           <div>
-            <div className="text-sm font-semibold text-text">{filePath}</div>
-            <div className="text-xs text-muted mt-0.5">
+            <div id="diff-review-title" className="text-sm font-semibold text-text">{filePath}</div>
+            <div id="diff-review-summary" className="text-xs text-muted mt-0.5">
               <span className="text-green-400">+{adds}</span>
               {" / "}
               <span className="text-red-400">-{dels}</span>
@@ -88,13 +108,13 @@ export function DiffReviewModal({ filePath, oldContent, newContent, onApprove, o
             onClick={onApprove}
             className="flex-1 py-2 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent/80 transition-colors"
           >
-            Approve write
+            Approve write <span className="text-xs opacity-70">(Ctrl+Enter)</span>
           </button>
           <button
             onClick={onReject}
             className="flex-1 py-2 rounded-xl bg-surface2 border border-border/60 text-sm hover:bg-surface2/80 transition-colors"
           >
-            Reject
+            Reject <span className="text-xs opacity-70">(Esc)</span>
           </button>
         </div>
 
