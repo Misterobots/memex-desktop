@@ -92,6 +92,16 @@ export function DevView() {
               {p === "editor" ? (openFile ? openFile.split(/[/\\]/).pop() : "Editor") : p === "tasks" ? "Tasks" : p === "print" ? "Print" : "Agent"}
             </button>
           ))}
+          <button
+            onClick={() => ipc.openFolder().then((p) => p && setCwd(p))}
+            className="ml-1 max-w-[220px] flex items-center gap-1.5 px-2 py-1 text-xs text-muted rounded-md hover:bg-surface2 hover:text-text transition-colors truncate"
+            title={cwd ? `Change project folder\n${cwd}` : "Open a project folder"}
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" className="flex-shrink-0 text-accent">
+              <path d="M1.75 1A1.75 1.75 0 000 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0016 13.25V5.75A1.75 1.75 0 0014.25 4H8.5L6.75 2.25A1.75 1.75 0 005.56 1.75H1.75z" />
+            </svg>
+            <span className="truncate">{folderName ?? "Open project"}</span>
+          </button>
           <div className="flex-1" />
           <WorkspaceSafetyBadge />
           {cwd && <button
