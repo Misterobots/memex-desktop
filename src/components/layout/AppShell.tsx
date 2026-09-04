@@ -12,6 +12,10 @@ import { DevView } from "../views/DevView";
 import { SettingsView }   from "../views/SettingsView";
 import { EvalBenchView }  from "../views/EvalBenchView";
 import { UserPermissionsView } from "../views/UserPermissionsView";
+import { PullRequestsView } from "../views/PullRequestsView";
+import { SchedulesView } from "../views/SchedulesView";
+import { SkillsView } from "../views/SkillsView";
+import { SitesView } from "../views/SitesView";
 import { DiffReviewModal } from "../shared/DiffReviewModal";
 import { ExportPanel }     from "../shared/ExportPanel";
 import { DiffReviewContext, useDiffReviewStore } from "../../hooks/useDiffReview";
@@ -47,6 +51,10 @@ function AppShellInner() {
           {activeTab === "memory"    && <MemoryView />}
           {activeTab === "dev"       && <DevView />}
           {activeTab === "eval"      && <EvalBenchView />}
+          {activeTab === "pulls"     && <PullRequestsView />}
+          {activeTab === "schedules" && <SchedulesView />}
+          {activeTab === "skills"    && <SkillsView />}
+          {activeTab === "sites"     && <SitesView />}
           {activeTab === "admin"     && <UserPermissionsView />}
           {activeTab === "settings"  && <SettingsView />}
         </div>

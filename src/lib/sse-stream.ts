@@ -70,9 +70,18 @@ export function normalizeSSEDelta(delta: Record<string, unknown>): SSEEvent | nu
     approval_granted: "status", approval_denied: "status", continuation: "status",
   };
   const knownTypes: EventType[] = ["message", "status", "thought", "response", "log", "agent_event", "clarification_card", "tool_call_start", "tool_call_result"];
-  const eventType = typeMap[rawType] ?? (knownTypes.includes(rawType as EventType) ? rawType as EventType : "log");
+  const isActivitySignal = rawType === "turn_metadata" || rawType === "stream_mode" || rawType === "model_queue_status";
+  const eventType = typeMap[rawType] ?? (knownTypes.includes(rawType as EventType)
+    ? rawType as EventType : isActivitySignal ? "status" : "log");
   const rawContent = delta.content;
-  const content = typeof rawContent === "string" ? rawContent : rawType === "todo" ? "Updated task plan." : rawType === "file_change" ? "Proposed file changes." : JSON.stringify(rawContent ?? {});
+  const turnMetadata = delta.turnMetadata as Record<string, unknown> | undefined;
+  const content = typeof rawContent === "string" ? rawContent
+    : rawType === "turn_metadata" ? `${String(turnMetadata?.agentName ?? "Memex")} started this turn.`
+    : rawType === "stream_mode" ? `Stream mode: ${String(delta.streamMode ?? "working")}.`
+    : rawType === "model_queue_status" ? "Model queue status received."
+    : rawType === "todo" ? "Updated task plan."
+    : rawType === "file_change" ? "Proposed file changes."
+    : isActivitySignal ? `Runtime event: ${rawType}.` : JSON.stringify(rawContent ?? {});
   return {
     type: eventType,
     content,

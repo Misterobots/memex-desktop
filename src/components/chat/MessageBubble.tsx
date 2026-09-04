@@ -1,5 +1,6 @@
 import type { ChatDisplayMode, ChatMessage } from "../../types/memex";
 import { StatusEvent }  from "./StatusEvent";
+import { LiveActivity } from "./LiveActivity";
 import { AgentTrace }   from "./AgentTrace";
 import { SteeringCard } from "./SteeringCard";
 
@@ -68,10 +69,8 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
       </div>
 
       <div className="flex-1 min-w-0 space-y-2.5">
-        {statusEvents.length > 0 && (
-          <div className="space-y-1">
-            {statusEvents.map((e, i) => <StatusEvent key={i} event={e} />)}
-          </div>
+        {isActive ? <LiveActivity events={events} active={true} waiting={isWaiting} /> : statusEvents.length > 0 && (
+          <div className="space-y-1">{statusEvents.map((e, i) => <StatusEvent key={i} event={e} />)}</div>
         )}
 
         {agentEvents.length > 0 && (

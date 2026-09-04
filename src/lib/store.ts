@@ -8,6 +8,7 @@ import type {
 export const experienceForTab = (tab: AppTab): ExperienceId | null => {
   if (tab === "goals") return "goals";
   if (tab === "design") return "product_design";
+  if (tab === "sites") return "sites";
   if (tab === "art") return "design";
   if (tab === "dev") return "code";
   if (tab === "research") return "research";

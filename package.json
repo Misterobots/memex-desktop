@@ -1,17 +1,17 @@
 {
   "name": "memex-desktop",
-  "version": "0.1.25",
+  "version": "0.1.37",
   "description": "Memex Desktop — local-first AI development harness",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev":            "vite",
-    "build":          "vite build && electron-builder",
+    "dev": "vite",
+    "build": "vite build && electron-builder",
     "build:renderer": "vite build --config vite.config.ts",
     "build:electron": "vite build",
-    "typecheck":      "tsc --noEmit",
-    "test":           "vitest run",
-    "package":        "npm run typecheck && npm run build:electron && electron-builder",
-    "start":          "electron ."
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "package": "npm run typecheck && npm run build:electron && electron-builder",
+    "start": "electron ."
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",

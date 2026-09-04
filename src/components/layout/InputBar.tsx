@@ -107,12 +107,12 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
       id: assistantId, role: "assistant", content: "",
       events: [], timestamp: Date.now(), mode,
     } as ChatMessage);
-    if (experience === "code") {
-      appendEvent(sessionId, assistantId, {
-        type: "status",
-        content: "Starting Code agent…",
-      });
-    }
+    const activityLabel = experience === "code" ? "Starting Code agent…"
+      : experience === "sites" ? "Request sent — preparing the site workspace…"
+      : experience === "product_design" ? "Request sent — preparing the design workspace…"
+      : experience === "research" ? "Request sent — preparing research…"
+      : "Request sent — preparing Memex…";
+    appendEvent(sessionId, assistantId, { type: "status", content: activityLabel, receivedAt: Date.now() });
 
     // Persist an initial turn checkpoint before the first model token. The
     // debounced/retrying sync queue coalesces subsequent stream updates, so a
@@ -142,7 +142,7 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
         syncSession();
       },
       onEvent: (event) => {
-        appendEvent(sessionId, assistantId, event as MessageEvent);
+        appendEvent(sessionId, assistantId, { ...event, receivedAt: Date.now() } as MessageEvent);
         if (event.type === "message" || event.type === "response") {
           accumulated += event.content;
           updateMessageContent(sessionId, assistantId, accumulated);

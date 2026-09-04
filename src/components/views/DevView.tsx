@@ -13,17 +13,19 @@ import { ipc } from "../../lib/ipc";
 import { SessionList } from "../sidebar/SessionList";
 import { PrintWorkflowPanel } from "../dev/PrintWorkflowPanel";
 import { WorktreePanel } from "../dev/WorktreePanel";
+import { WorkspaceProjectsPanel } from "../dev/WorkspaceProjectsPanel";
+import { CodeUtilityMenu } from "../dev/CodeUtilityMenu";
 
-type PrimaryPane = "chat" | "editor" | "tasks" | "print";
+type PrimaryPane = "projects" | "chat" | "editor" | "tasks" | "print";
 type BottomPane  = "terminal" | "browser" | "none";
 
 export function DevView() {
-  const { cwd, setCwd, sidebarOpen, activeSession } = useStore();
+  const { cwd, setCwd, sidebarOpen, activeSession, setActiveTab } = useStore();
   const session    = activeSession("code", cwd);
   const empty      = !session || session.messages.length === 0;
   const folderName = cwd ? cwd.split(/[/\\]/).filter(Boolean).pop() : null;
 
-  const [primary, setPrimary]       = useState<PrimaryPane>("chat");
+  const [primary, setPrimary]       = useState<PrimaryPane>(cwd ? "chat" : "projects");
   const [bottomPane, setBottomPane] = useState<BottomPane>("none");
   const [openFile, setOpenFile]     = useState<string | null>(null);
   const [worktreesOpen, setWorktreesOpen] = useState(false);
@@ -81,7 +83,7 @@ export function DevView() {
       <div className="relative flex flex-col flex-1 min-w-0">
         {/* Top toolbar */}
         <div className="flex items-center gap-1 px-3 h-9 border-b border-border/60 bg-surface flex-shrink-0">
-          {(["chat", "editor", "tasks", "print"] as PrimaryPane[]).map((p) => (
+          {(["projects", "chat", "editor", "tasks", "print"] as PrimaryPane[]).map((p) => (
             <button
               key={p}
               onClick={() => setPrimary(p)}
@@ -89,10 +91,11 @@ export function DevView() {
                 primary === p ? "bg-surface2 text-text" : "text-faint hover:text-text"
               }`}
             >
-              {p === "editor" ? (openFile ? openFile.split(/[/\\]/).pop() : "Editor") : p === "tasks" ? "Tasks" : p === "print" ? "Print" : "Agent"}
+              {p === "projects" ? "Projects" : p === "editor" ? (openFile ? openFile.split(/[/\\]/).pop() : "Editor") : p === "tasks" ? "Tasks" : p === "print" ? "Print" : "Agent"}
             </button>
           ))}
           <div className="flex-1" />
+          <CodeUtilityMenu onProjects={() => setPrimary("projects")} onNavigate={setActiveTab} />
           <WorkspaceSafetyBadge />
           {cwd && <button
             onClick={() => setWorktreesOpen((open) => !open)}
@@ -135,7 +138,9 @@ export function DevView() {
           {/* Primary pane */}
           <div className={`flex flex-col flex-1 min-h-0 ${bottomPane !== "none" ? "border-b border-border/60" : ""}`}
                style={{ height: bottomPane !== "none" ? "60%" : "100%" }}>
-            {primary === "print" ? (
+            {primary === "projects" ? (
+              <WorkspaceProjectsPanel cwd={cwd} onOpen={(path) => { setCwd(path); setPrimary("chat"); }} />
+            ) : primary === "print" ? (
               <PrintWorkflowPanel />
             ) : primary === "tasks" ? (
               <ProjectTasksPane cwd={cwd} />

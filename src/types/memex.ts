@@ -1,7 +1,7 @@
-export type AppTab = "chat" | "dev" | "research" | "goals" | "design" | "art" | "memory" | "eval" | "admin" | "settings";
+export type AppTab = "chat" | "dev" | "research" | "goals" | "design" | "art" | "memory" | "eval" | "pulls" | "schedules" | "skills" | "sites" | "admin" | "settings";
 
 /** Conversational products own separate histories and lifecycle state. */
-export type ExperienceId = "chat" | "code" | "research" | "goals" | "product_design" | "design";
+export type ExperienceId = "chat" | "code" | "research" | "goals" | "product_design" | "sites" | "design";
 
 // ---------------------------------------------------------------------------
 // Task board types (mobile Codex loop — mirrors agent_runtime /v1/tasks)
@@ -169,6 +169,8 @@ export interface MessageEvent {
   /** Full raw delta for rich (non-text) events — generic escape hatch so new
    *  structured event types are available to renderers without a parser change. */
   data?: Record<string, unknown>;
+  /** Browser receipt time, used to make the live execution timeline legible. */
+  receivedAt?: number;
 }
 
 export interface Session {
