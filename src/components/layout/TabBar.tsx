@@ -176,6 +176,7 @@ export function TabBar() {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
+            aria-label={tab.label}
             className={`flex items-center gap-2 px-3 sm:px-3.5 py-1.5 rounded-lg text-sm transition-colors flex-shrink-0 whitespace-nowrap ${
               active
                 ? "bg-surface2 text-text"
