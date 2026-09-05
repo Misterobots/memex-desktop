@@ -41,22 +41,24 @@ function AppShellInner() {
     <DiffReviewContext.Provider value={diffReview}>
       <div className="flex flex-col h-full bg-canvas">
         <StatusBar />
-        <TabBar />
         <div className="flex flex-1 min-h-0">
-          {activeTab === "chat"      && <ChatView />}
-          {activeTab === "research"  && <ResearchView />}
-          {activeTab === "goals"     && <GoalsView />}
-          {activeTab === "design"    && <DesignView />}
-          {activeTab === "art"       && <ArtView />}
-          {activeTab === "memory"    && <MemoryView />}
-          {activeTab === "dev"       && <DevView />}
-          {activeTab === "eval"      && <EvalBenchView />}
-          {activeTab === "pulls"     && <PullRequestsView />}
-          {activeTab === "schedules" && <SchedulesView />}
-          {activeTab === "skills"    && <SkillsView />}
-          {activeTab === "sites"     && <SitesView />}
-          {activeTab === "admin"     && <UserPermissionsView />}
-          {activeTab === "settings"  && <SettingsView />}
+          <TabBar />
+          <div className="flex min-w-0 flex-1">
+            {activeTab === "chat"      && <ChatView />}
+            {activeTab === "research"  && <ResearchView />}
+            {activeTab === "goals"     && <GoalsView />}
+            {activeTab === "design"    && <DesignView />}
+            {activeTab === "art"       && <ArtView />}
+            {activeTab === "memory"    && <MemoryView />}
+            {activeTab === "dev"       && <DevView />}
+            {activeTab === "eval"      && <EvalBenchView />}
+            {activeTab === "pulls"     && <PullRequestsView />}
+            {activeTab === "schedules" && <SchedulesView />}
+            {activeTab === "skills"    && <SkillsView />}
+            {activeTab === "sites"     && <SitesView />}
+            {activeTab === "admin"     && <UserPermissionsView />}
+            {activeTab === "settings"  && <SettingsView />}
+          </div>
         </div>
       </div>
       {diffReview.pending && (

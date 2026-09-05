@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useStore } from "../../lib/store";
 import { AccountMenu } from "./AccountMenu";
 import { isDesktop } from "../../lib/desktop";
@@ -42,8 +41,7 @@ function SessionUsage() {
 }
 
 export function StatusBar() {
-  const { connections, selectedModel, toggleSidebar, sidebarOpen, shellMode, setShellMode } = useStore();
-  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
+  const { connections, selectedModel, toggleSidebar, sidebarOpen } = useStore();
 
   const allConnected = Object.values(connections).every((c) => c === "connected");
   // Reserve space for the native window-controls overlay (Electron, Win/Linux
@@ -66,29 +64,7 @@ export function StatusBar() {
         </button>
         <div className="flex items-center gap-2">
           <span className="text-accent text-base">◈</span>
-          <div className="relative">
-            <button
-              aria-expanded={workspaceMenuOpen}
-              aria-haspopup="menu"
-              onClick={() => setWorkspaceMenuOpen((open) => !open)}
-              className="flex items-center gap-1 rounded-md px-1.5 py-1 text-sm font-medium text-text hover:bg-surface"
-              title="Switch Memex workspace"
-            >
-              Memex {shellMode === "chat" ? "Chat" : "Code"}<span className="text-faint">⌄</span>
-            </button>
-            {workspaceMenuOpen && <div role="menu" className="absolute left-0 top-9 z-50 w-48 rounded-lg border border-border bg-surface p-1 shadow-xl">
-              {(["chat", "code"] as const).map((mode) => <button
-                key={mode}
-                role="menuitemradio"
-                aria-checked={shellMode === mode}
-                onClick={() => { setShellMode(mode); setWorkspaceMenuOpen(false); }}
-                className={`flex w-full flex-col rounded-md px-3 py-2 text-left text-xs ${shellMode === mode ? "bg-surface2 text-text" : "text-muted hover:bg-surface2 hover:text-text"}`}
-              >
-                <span className="font-medium">Memex {mode === "chat" ? "Chat" : "Code"}</span>
-                <span className="mt-0.5 text-[11px] text-faint">{mode === "chat" ? "Chat, Research, Routines, Art" : "Code, Skills, Routines, Eval"}</span>
-              </button>)}
-            </div>}
-          </div>
+          <span className="text-text font-medium text-sm">Memex</span>
         </div>
       </div>
 

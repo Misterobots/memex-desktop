@@ -3,6 +3,7 @@ import { useStore } from "../../lib/store";
 import { isDesktop } from "../../lib/desktop";
 import type { AppTab } from "../../types/memex";
 import { getMyPermissions, type FeatureKey } from "../../lib/user-permissions";
+import { SessionList } from "../sidebar/SessionList";
 
 // Tabs requiring the Electron native bridge (local terminal/editor/FS, local
 // run store) — hidden when running as a web app.
@@ -153,9 +154,10 @@ const TABS: TabDef[] = [
 ];
 
 export function TabBar() {
-  const { activeTab, setActiveTab, shellMode } = useStore();
+  const { activeTab, setActiveTab, shellMode, setShellMode, sidebarOpen } = useStore();
   const [features, setFeatures] = useState<Partial<Record<FeatureKey, boolean>> | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const tabButtons = useRef<Partial<Record<AppTab, HTMLButtonElement | null>>>({});
   useEffect(() => {
     let alive = true;
@@ -182,27 +184,56 @@ export function TabBar() {
     tabButtons.current[activeTab]?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [activeTab]);
 
+  if (!sidebarOpen) return null;
+
   return (
-    <div className="flex items-center gap-1 px-2 sm:px-3 h-12 bg-canvas border-b border-border/60 flex-shrink-0 overflow-x-auto no-scrollbar">
-      {tabs.map((tab) => {
-        const active = activeTab === tab.id || (tab.id === "design" && activeTab === "sites");
-        return (
-          <button
+    <aside className="relative flex w-[248px] flex-shrink-0 flex-col border-r border-border/60 bg-surface">
+      <div className="relative border-b border-border/60 p-3">
+        <button
+          aria-expanded={workspaceMenuOpen}
+          aria-haspopup="menu"
+          onClick={() => setWorkspaceMenuOpen((open) => !open)}
+          className="flex w-full items-center justify-between rounded-md px-1 py-1 text-left text-sm font-semibold text-text hover:bg-surface2"
+        >
+          <span>Memex {shellMode === "chat" ? "Chat" : "Code"}</span><span className="text-faint">⌄</span>
+        </button>
+        {workspaceMenuOpen && <div role="menu" className="absolute left-3 top-11 z-50 w-[220px] rounded-lg border border-border bg-canvas p-1 shadow-xl">
+          {(["chat", "code"] as const).map((mode) => <button
+            key={mode}
+            role="menuitemradio"
+            aria-checked={shellMode === mode}
+            onClick={() => { setShellMode(mode); setWorkspaceMenuOpen(false); }}
+            className={`flex w-full flex-col rounded-md px-3 py-2.5 text-left text-xs ${shellMode === mode ? "bg-surface2 text-text" : "text-muted hover:bg-surface2 hover:text-text"}`}
+          >
+            <span className="font-medium">Memex {mode === "chat" ? "Chat" : "Code"}</span>
+            <span className="mt-0.5 text-[11px] text-faint">{mode === "chat" ? "Chat, Research, Routines, Art" : "Code, Skills, Routines, Eval"}</span>
+          </button>)}
+        </div>}
+      </div>
+
+      <nav aria-label="Workspace navigation" className="space-y-0.5 px-2 py-3">
+        {tabs.map((tab) => {
+          const active = activeTab === tab.id || (tab.id === "design" && activeTab === "sites");
+          return <button
             key={tab.id}
             ref={(element) => { tabButtons.current[tab.id] = element; }}
             onClick={() => setActiveTab(tab.id)}
             aria-label={tab.label}
-            className={`flex items-center gap-2 px-3 sm:px-3.5 py-1.5 rounded-lg text-sm transition-colors flex-shrink-0 whitespace-nowrap ${
-              active
-                ? "bg-surface2 text-text"
-                : "text-muted hover:text-text hover:bg-surface/60"
+            className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors ${
+              active ? "bg-surface2 text-text" : "text-muted hover:bg-surface2 hover:text-text"
             }`}
           >
-            <span className={active ? "text-accent" : ""}>{tab.icon}</span>
-            <span className={active ? "" : "hidden sm:inline"}>{tab.label}</span>
-          </button>
-        );
-      })}
-    </div>
+            <span className={active ? "text-accent" : "text-faint"}>{tab.icon}</span><span>{tab.label}</span>
+          </button>;
+        })}
+      </nav>
+
+      {shellMode === "chat" && <div className="min-h-0 flex-1 overflow-y-auto border-t border-border/60">
+        <SessionList />
+      </div>}
+      {shellMode === "code" && <div className="mt-auto border-t border-border/60 px-4 py-3 text-xs leading-relaxed text-faint">
+        Open a project in Code to access its files, terminal, tasks, and agent threads.
+      </div>}
+    </aside>
   );
 }
