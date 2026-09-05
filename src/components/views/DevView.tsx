@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStore } from "../../lib/store";
 import { FileTree } from "../sidebar/FileTree";
 import { ConversationPane } from "../chat/ConversationPane";
@@ -29,6 +29,9 @@ export function DevView() {
   const [bottomPane, setBottomPane] = useState<BottomPane>("none");
   const [openFile, setOpenFile]     = useState<string | null>(null);
   const [worktreesOpen, setWorktreesOpen] = useState(false);
+  const [bottomHeight, setBottomHeight] = useState(40);
+  const [resizing, setResizing] = useState(false);
+  const workspaceRef = useRef<HTMLDivElement>(null);
 
   const termId = `term-${session?.id ?? `project-${cwd || "unselected"}`}`;
 
@@ -36,6 +39,23 @@ export function DevView() {
     setBottomPane((p) => (p === "terminal" ? "none" : "terminal"));
   const toggleBrowser = () =>
     setBottomPane((p) => (p === "browser" ? "none" : "browser"));
+  useEffect(() => {
+    if (!resizing) return;
+    const resize = (event: PointerEvent) => {
+      const bounds = workspaceRef.current?.getBoundingClientRect();
+      if (!bounds) return;
+      const next = ((bounds.bottom - event.clientY) / bounds.height) * 100;
+      setBottomHeight(Math.round(Math.min(70, Math.max(25, next))));
+    };
+    const stop = () => setResizing(false);
+    window.addEventListener("pointermove", resize);
+    window.addEventListener("pointerup", stop);
+    return () => {
+      window.removeEventListener("pointermove", resize);
+      window.removeEventListener("pointerup", stop);
+    };
+  }, [resizing]);
+
 
   return (
     <div className="flex flex-1 min-h-0">
@@ -134,10 +154,10 @@ export function DevView() {
         {worktreesOpen && cwd && <WorktreePanel repoPath={cwd} onSelect={(path) => { setCwd(path); setWorktreesOpen(false); }} />}
 
         {/* Pane area */}
-        <div className="flex flex-col flex-1 min-h-0">
+        <div ref={workspaceRef} className={`flex flex-col flex-1 min-h-0 ${resizing ? "select-none cursor-row-resize" : ""}`}>
           {/* Primary pane */}
           <div className={`flex flex-col flex-1 min-h-0 ${bottomPane !== "none" ? "border-b border-border/60" : ""}`}
-               style={{ height: bottomPane !== "none" ? "60%" : "100%" }}>
+               style={{ height: bottomPane !== "none" ? `${100 - bottomHeight}%` : "100%" }}>
             {primary === "projects" ? (
               <WorkspaceProjectsPanel cwd={cwd} onOpen={(path) => { setCwd(path); setPrimary("chat"); }} />
             ) : primary === "print" ? (
@@ -183,8 +203,25 @@ export function DevView() {
               destinations: terminal, browser, files, and task review all
               describe the same open project. */}
           {bottomPane !== "none" && (
-            <div style={{ height: "40%" }} className="flex flex-col min-h-0">
+            <div style={{ height: `${bottomHeight}%` }} className="flex flex-col min-h-0">
               <div className="flex items-center px-3 h-8 bg-surface border-b border-border/60 flex-shrink-0">
+                <button
+                  role="separator"
+                  aria-label="Resize project tool pane"
+                  aria-orientation="horizontal"
+                  aria-valuemin={25}
+                  aria-valuemax={70}
+                  aria-valuenow={bottomHeight}
+                  onPointerDown={(event) => { event.preventDefault(); setResizing(true); }}
+                  onKeyDown={(event) => {
+                    if (event.key === "ArrowUp") { event.preventDefault(); setBottomHeight((value) => Math.min(70, value + 5)); }
+                    if (event.key === "ArrowDown") { event.preventDefault(); setBottomHeight((value) => Math.max(25, value - 5)); }
+                    if (event.key === "Home") { event.preventDefault(); setBottomHeight(25); }
+                    if (event.key === "End") { event.preventDefault(); setBottomHeight(70); }
+                  }}
+                  className="h-4 w-3 -ml-2 mr-1 cursor-row-resize rounded hover:bg-accent/20 focus:outline-none focus:bg-accent/20"
+                  title="Drag to resize project tools"
+                />
                 <span className="text-xs text-faint font-medium">{bottomPane === "terminal" ? "Terminal" : `Browser · ${folderName ?? "Project"}`}</span>
                 <div className="flex-1" />
                 <button
