@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStore } from "../../lib/store";
 import { isDesktop } from "../../lib/desktop";
 import type { AppTab } from "../../types/memex";
@@ -153,6 +153,7 @@ export function TabBar() {
   const { activeTab, setActiveTab } = useStore();
   const [features, setFeatures] = useState<Partial<Record<FeatureKey, boolean>> | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const tabButtons = useRef<Partial<Record<AppTab, HTMLButtonElement | null>>>({});
   useEffect(() => {
     let alive = true;
     getMyPermissions().then((policy) => { if (alive) { setFeatures(policy.features); setIsAdmin(Boolean(policy.is_admin)); } }).catch(() => { if (alive) setFeatures(null); });
@@ -168,6 +169,10 @@ export function TabBar() {
     if (features && !tabs.some((tab) => tab.id === activeTab)) setActiveTab("chat");
   }, [activeTab, features, setActiveTab]);
 
+  useEffect(() => {
+    tabButtons.current[activeTab]?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activeTab]);
+
   return (
     <div className="flex items-center gap-1 px-2 sm:px-3 h-12 bg-canvas border-b border-border/60 flex-shrink-0 overflow-x-auto no-scrollbar">
       {tabs.map((tab) => {
@@ -175,6 +180,7 @@ export function TabBar() {
         return (
           <button
             key={tab.id}
+            ref={(element) => { tabButtons.current[tab.id] = element; }}
             onClick={() => setActiveTab(tab.id)}
             aria-label={tab.label}
             className={`flex items-center gap-2 px-3 sm:px-3.5 py-1.5 rounded-lg text-sm transition-colors flex-shrink-0 whitespace-nowrap ${
