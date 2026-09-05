@@ -18,6 +18,8 @@ describe("experience-owned sessions", () => {
       activeSessionIds: {},
       workspaceDisplayModes: {},
       activeTab: "chat",
+      shellMode: "chat",
+      designSurface: "product",
       cwd: "",
       streamingSessions: {},
       stopStreams: {},
@@ -72,6 +74,24 @@ describe("experience-owned sessions", () => {
     useStore.getState().setActiveTab("memory");
 
     expect(useStore.getState().activeSession()).toBeNull();
+  });
+
+  it("switches between focused shells while preserving shared Design and Routines destinations", () => {
+    useStore.getState().setActiveTab("design");
+    useStore.getState().setShellMode("code");
+    expect(useStore.getState()).toMatchObject({ shellMode: "code", activeTab: "design" });
+
+    useStore.getState().setActiveTab("research");
+    useStore.getState().setShellMode("code");
+    expect(useStore.getState()).toMatchObject({ shellMode: "code", activeTab: "dev" });
+
+    useStore.getState().setActiveTab("goals");
+    useStore.getState().setShellMode("chat");
+    expect(useStore.getState()).toMatchObject({ shellMode: "chat", activeTab: "goals" });
+
+    useStore.getState().setActiveTab("sites");
+    useStore.getState().setShellMode("code");
+    expect(useStore.getState()).toMatchObject({ shellMode: "code", activeTab: "design", designSurface: "sites" });
   });
 
   it("titles a new thread from its first user prompt", () => {

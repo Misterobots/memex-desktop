@@ -4,6 +4,7 @@ import { ConversationPane } from "../chat/ConversationPane";
 import { InputBar } from "../layout/InputBar";
 import { SessionList } from "../sidebar/SessionList";
 import { WorkspaceSidebar } from "../sidebar/WorkspaceSidebar";
+import { SitesView } from "./SitesView";
 
 /**
  * Product-design workspace: intentionally separate from Art/media generation.
@@ -11,13 +12,20 @@ import { WorkspaceSidebar } from "../sidebar/WorkspaceSidebar";
  * rather than mixing UI/site work with image prompts or fabrication controls.
  */
 export function DesignView() {
-  const { activeSession } = useStore();
+  const { activeSession, designSurface, setDesignSurface } = useStore();
+  if (designSurface === "sites") return <SitesView />;
   const [prefillText, setPrefillText] = useState("");
   const session = activeSession("product_design");
   const empty = !session || session.messages.length === 0;
 
   return (
-    <div className="flex flex-1 min-h-0">
+    <div className="flex flex-1 min-h-0 flex-col">
+      <div className="flex h-10 flex-shrink-0 items-center gap-1 border-b border-border/60 bg-surface px-4">
+        <button onClick={() => setDesignSurface("product")} className="rounded-md bg-surface2 px-2.5 py-1 text-xs text-text">Product design</button>
+        <button onClick={() => setDesignSurface("sites")} className="rounded-md px-2.5 py-1 text-xs text-muted hover:text-text">Sites</button>
+        <span className="ml-2 text-[11px] text-muted">Product and site creation live together in Design.</span>
+      </div>
+      <div className="flex min-h-0 flex-1">
       <WorkspaceSidebar>
         <SessionList experience="product_design" newLabel="New product design" />
       </WorkspaceSidebar>
@@ -51,6 +59,7 @@ export function DesignView() {
         ) : <ConversationPane experience="product_design" />}
         <InputBar experience="product_design" lockMode="design" placeholder="Describe the product, workflow, or interface you want to design…" prefillText={prefillText} />
       </main>
+      </div>
     </div>
   );
 }

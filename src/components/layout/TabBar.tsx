@@ -15,6 +15,9 @@ interface TabDef {
   feature?: FeatureKey;
 }
 
+const CHAT_TABS: AppTab[] = ["chat", "research", "goals", "art", "design"];
+const CODE_TABS: AppTab[] = ["dev", "skills", "goals", "eval", "pulls", "design"];
+
 const TABS: TabDef[] = [
   {
     id: "chat",
@@ -150,7 +153,7 @@ const TABS: TabDef[] = [
 ];
 
 export function TabBar() {
-  const { activeTab, setActiveTab } = useStore();
+  const { activeTab, setActiveTab, shellMode } = useStore();
   const [features, setFeatures] = useState<Partial<Record<FeatureKey, boolean>> | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const tabButtons = useRef<Partial<Record<AppTab, HTMLButtonElement | null>>>({});
@@ -160,14 +163,20 @@ export function TabBar() {
     return () => { alive = false; };
   }, []);
   const web = !isDesktop();
+  const visibleTabs = shellMode === "chat" ? CHAT_TABS : CODE_TABS;
   const tabs = TABS.filter((tab) =>
+    visibleTabs.includes(tab.id) &&
     !(web && DESKTOP_ONLY.includes(tab.id)) &&
     (tab.id !== "admin" || isAdmin) &&
     (!tab.feature || features?.[tab.feature] !== false));
 
   useEffect(() => {
-    if (features && !tabs.some((tab) => tab.id === activeTab)) setActiveTab("chat");
-  }, [activeTab, features, setActiveTab]);
+    // Sites deliberately has no top-level tab: it is a Design subspace.
+    // Treat it as valid whenever Design is available rather than redirecting
+    // the user to the shell default after choosing it.
+    const activeIsVisible = tabs.some((tab) => tab.id === activeTab || (activeTab === "sites" && tab.id === "design"));
+    if (features && !activeIsVisible) setActiveTab(shellMode === "code" ? "dev" : "chat");
+  }, [activeTab, features, shellMode, setActiveTab]);
 
   useEffect(() => {
     tabButtons.current[activeTab]?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -176,7 +185,7 @@ export function TabBar() {
   return (
     <div className="flex items-center gap-1 px-2 sm:px-3 h-12 bg-canvas border-b border-border/60 flex-shrink-0 overflow-x-auto no-scrollbar">
       {tabs.map((tab) => {
-        const active = activeTab === tab.id;
+        const active = activeTab === tab.id || (tab.id === "design" && activeTab === "sites");
         return (
           <button
             key={tab.id}

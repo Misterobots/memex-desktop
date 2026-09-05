@@ -1,4 +1,6 @@
 export type AppTab = "chat" | "dev" | "research" | "goals" | "design" | "art" | "memory" | "eval" | "pulls" | "schedules" | "skills" | "sites" | "admin" | "settings";
+/** The top-level product workspace, independent from the selected destination. */
+export type AppShellMode = "chat" | "code";
 
 /** Conversational products own separate histories and lifecycle state. */
 export type ExperienceId = "chat" | "code" | "research" | "goals" | "product_design" | "sites" | "design";

@@ -7,12 +7,18 @@ import { WorkspaceSidebar } from "../sidebar/WorkspaceSidebar";
 
 /** Site-focused design space with its own conversations and design-mode routing. */
 export function SitesView() {
-  const { activeSession } = useStore();
+  const { activeSession, setDesignSurface } = useStore();
   const [prefillText, setPrefillText] = useState("");
   const session = activeSession("sites");
   const empty = !session || session.messages.length === 0;
 
-  return <div className="flex flex-1 min-h-0">
+  return <div className="flex flex-1 min-h-0 flex-col">
+    <div className="flex h-10 flex-shrink-0 items-center gap-1 border-b border-border/60 bg-surface px-4">
+      <button onClick={() => setDesignSurface("product")} className="rounded-md px-2.5 py-1 text-xs text-muted hover:text-text">Product design</button>
+      <button onClick={() => setDesignSurface("sites")} className="rounded-md bg-surface2 px-2.5 py-1 text-xs text-text">Sites</button>
+      <span className="ml-2 text-[11px] text-muted">A Design workspace for web experiences.</span>
+    </div>
+    <div className="flex min-h-0 flex-1">
     <WorkspaceSidebar>
       <SessionList experience="sites" newLabel="New site" />
     </WorkspaceSidebar>
@@ -30,5 +36,6 @@ export function SitesView() {
       </div> : <ConversationPane experience="sites" />}
       <InputBar experience="sites" lockMode="design" placeholder="Describe the site you want to create…" prefillText={prefillText} />
     </main>
+    </div>
   </div>;
 }
