@@ -11,6 +11,47 @@ export interface WorkspaceOutput {
 }
 
 export const outputEventTypes = ["design_artifact", "artifact", "media_attachment"];
+
+/**
+ * Runtime messages are intentionally rich for logs, but they are not product
+ * copy.  Keep the conversation activity surface calm and consistent across
+ * Chat and Code, including sessions saved before this presentation layer.
+ */
+export function activityLabel(value: string): string {
+  const clean = value
+    .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, "")
+    .replace(/^[\s→•·|:-]+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const lower = clean.toLowerCase();
+  if (!clean) return "Working";
+  if (/request sent|preparing memex/.test(lower)) return "Preparing request";
+  if (/input cleared/.test(lower)) return "Request checked";
+  if (/security agent:.*(scann|validat|check)|security:\s*pass/.test(lower)) return lower.includes("pass") || lower.includes("clear") ? "Request approved" : "Checking request";
+  if (/neural cortex|analyzing intent|routing request/.test(lower)) return "Choosing approach";
+  if (/hive mind.*think|thinking/.test(lower)) return "Thinking";
+  if (/design studio:.*(activat|prepar)/.test(lower)) return "Preparing design";
+  if (/design studio:.*setting up/.test(lower)) return "Setting up design";
+  if (/design studio:.*ready to generate/.test(lower)) return "Design model ready";
+  if (/design studio:.*generating/.test(lower)) return "Generating design";
+  if (/design studio:.*wait|waiting for.*gpu/.test(lower)) return "Waiting for model";
+  if (/first token|model connected/.test(lower)) return "Generating";
+  if (/generated .*output tokens/.test(lower)) return clean.replace(/^.*?:\s*/, "");
+  if (/validating.*html|validating.*output/.test(lower)) return "Validating output";
+  if (/saving.*(html|output|artifact)/.test(lower)) return "Saving output";
+  if (/research mode:.*activat|librarian agent|grounding.*web/.test(lower)) return "Researching";
+  if (/coordinator.*(launch|start)|starting.*code/.test(lower)) return "Starting code task";
+  if (/architect.*(plan|design)|implementation plan/.test(lower)) return "Planning implementation";
+  if (/devops.*(environment|check)|checking out/.test(lower)) return "Preparing workspace";
+  if (/runtime is still waiting|since the last server update/.test(lower)) return "Waiting for update";
+  if (/conversation \(\d+% confidence\)|turn complete/.test(lower)) return "Ready";
+  return clean.replace(/^(?:[A-Za-z][A-Za-z ]{1,40}):\s*/, "");
+}
+
+/** Remove decorative runtime glyphs even from expandable technical details. */
+export function sanitizeActivityText(value: string): string {
+  return value.replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, "");
+}
 export function safeOutputUrl(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   if (/^https?:\/\//i.test(value)) return value;

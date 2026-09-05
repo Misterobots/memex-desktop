@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { activityEvents, outputsFromEvents, safeOutputUrl } from "../workspace-outputs";
+import { activityEvents, activityLabel, outputsFromEvents, safeOutputUrl } from "../workspace-outputs";
 import { normalizeSSEDelta } from "../sse-stream";
 import { MessageBubble } from "../../components/chat/MessageBubble";
 import type { ChatDisplayMode, ChatMessage, MessageEvent } from "../../types/memex";
@@ -56,6 +56,17 @@ describe("workspace output delivery", () => {
     ];
     expect(activityEvents(events, false).map((e) => e.content)).toEqual(["Design Studio: Generating HTML — 500 characters"]);
     expect(activityEvents(events, true)).toHaveLength(3);
+  });
+  it("turns raw runtime emoji logs into compact product activity labels", () => {
+    expect(activityLabel("🎨 Design Studio: Generating HTML — 500 characters")).toBe("Generating design");
+    expect(activityLabel("🧠 Neural Cortex: Analyzing intent...")).toBe("Choosing approach");
+    expect(activityLabel("Request sent — preparing Memex…")).toBe("Preparing request");
+    const activity: MessageEvent = { type: "status", content: "💬 Hive Mind: Thinking..." };
+    const markup = renderToStaticMarkup(<MessageBubble message={{ ...message, content: "", events: [activity] }} />);
+    expect(markup).toContain("Thinking");
+    expect(markup).not.toContain("💬");
+    expect(markup).not.toContain("Hive Mind");
+    expect(renderToStaticMarkup(<MessageBubble message={{ ...message, content: "", events: [{ type: "status", content: "Turn complete" }] }} />)).not.toContain("Ready");
   });
   it.each<ChatDisplayMode>(["summary", "normal", "thought"])("keeps real media and cancellation visible in %s", (displayMode) => {
     const media = normalizeSSEDelta({ type: "media_attachment", content: { filename: "test.png", mimeType: "image/png", url: "/api/backend/delivered_artifacts/test.png", downloadUrl: "/api/backend/delivered_artifacts/test.png?dl=1" } })!;
