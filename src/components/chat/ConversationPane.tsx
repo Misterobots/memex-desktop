@@ -1,10 +1,11 @@
 import { useEffect, useRef } from "react";
 import { useStore } from "../../lib/store";
+import { isDesktop } from "../../lib/desktop";
 import { MessageBubble } from "./MessageBubble";
 import type { AppTab, ChatDisplayMode, ExperienceId } from "../../types/memex";
 
-const SUGGESTIONS: Array<{ tab: AppTab; label: string; description: string }> = [
-  { tab: "dev",      label: "Build code",       description: "Open the Code workspace" },
+const SUGGESTIONS: Array<{ tab: AppTab; label: string; description: string; desktopOnly?: boolean }> = [
+  { tab: "dev",      label: "Build code",       description: "Open the Code workspace", desktopOnly: true },
   { tab: "research", label: "Research a topic", description: "Start a Research thread" },
   { tab: "design",   label: "Design an app", description: "Open the product Design workspace" },
   { tab: "art",      label: "Create media", description: "Open Art, 3D, and Print" },
@@ -13,6 +14,7 @@ const SUGGESTIONS: Array<{ tab: AppTab; label: string; description: string }> = 
 
 function WelcomeScreen() {
   const { setActiveTab } = useStore();
+  const desktop = isDesktop();
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-6 select-none">
       <div className="max-w-conversation w-full text-center">
@@ -22,16 +24,20 @@ function WelcomeScreen() {
           Powered by the active Memex routing profile
         </p>
         <div className="grid grid-cols-2 gap-2.5 max-w-md mx-auto">
-          {SUGGESTIONS.map((s) => (
+          {SUGGESTIONS.map((s) => {
+            const unavailable = Boolean(s.desktopOnly && !desktop);
+            return (
             <button
               key={s.tab}
-              onClick={() => setActiveTab(s.tab)}
-              className="flex flex-col items-start gap-1 px-4 py-3 rounded-xl border border-border/60 bg-surface hover:bg-surface2 hover:border-accent/40 transition-colors text-left"
+              disabled={unavailable}
+              onClick={() => !unavailable && setActiveTab(s.tab)}
+              className="flex flex-col items-start gap-1 px-4 py-3 rounded-xl border border-border/60 bg-surface hover:bg-surface2 hover:border-accent/40 transition-colors text-left disabled:cursor-not-allowed disabled:opacity-55"
             >
               <span className="text-text text-sm font-medium">{s.label}</span>
-              <span className="text-faint text-xs">{s.description}</span>
+              <span className="text-faint text-xs">{unavailable ? "Available in Memex Desktop" : s.description}</span>
             </button>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
