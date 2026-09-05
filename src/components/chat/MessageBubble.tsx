@@ -1,5 +1,4 @@
 import type { ChatDisplayMode, ChatMessage } from "../../types/memex";
-import { StatusEvent }  from "./StatusEvent";
 import { LiveActivity } from "./LiveActivity";
 import { AgentTrace }   from "./AgentTrace";
 import { SteeringCard } from "./SteeringCard";
@@ -45,10 +44,10 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
   const isWaiting = isActive && !message.content;
 
   const events = message.events ?? [];
-  const statusEvents = events.filter(
-    (e) => e.type === "status"
-  );
-  const agentEvents   = displayMode === "summary" ? [] : events.filter((e) => e.type === "agent_event");
+  const statusEvents = events.filter((e) => e.type === "status");
+  const showActivity = displayMode !== "summary";
+  const showThoughts = displayMode === "thought";
+  const agentEvents = showThoughts ? events.filter((e) => e.type === "agent_event") : [];
   const clarification = events.find((e) => e.type === "clarification_card");
 
   if (isUser) {
@@ -69,8 +68,10 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
       </div>
 
       <div className="flex-1 min-w-0 space-y-2.5">
-        {isActive ? <LiveActivity events={events} active={true} waiting={isWaiting} /> : statusEvents.length > 0 && (
-          <div className="space-y-1">{statusEvents.map((e, i) => <StatusEvent key={i} event={e} />)}</div>
+        {isActive ? (
+          <LiveActivity events={events} active={true} waiting={isWaiting} verbose={showThoughts} />
+        ) : showActivity && statusEvents.length > 0 && (
+          <LiveActivity events={events} active={false} waiting={false} verbose={showThoughts} />
         )}
 
         {agentEvents.length > 0 && (

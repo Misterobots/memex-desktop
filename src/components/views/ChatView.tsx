@@ -60,7 +60,7 @@ export function ChatView() {
           <div className="flex items-center justify-end px-4 py-2 border-b border-border/50">
             <div className="flex items-center gap-1 rounded-lg border border-border/60 bg-surface p-0.5" role="group" aria-label="Chat display mode">
               {(["normal", "summary", "thought"] as ChatDisplayMode[]).map((option) => (
-                <button key={option} disabled={!session} onClick={() => session && setSessionDisplayMode(session.id, option)} className={`px-2.5 py-1 rounded-md text-[11px] capitalize transition-colors ${displayMode === option ? "bg-surface2 text-text" : "text-muted hover:text-text"}`}>{option}</button>
+                <button key={option} disabled={!session} onClick={() => session && setSessionDisplayMode(session.id, option)} title={option === "summary" ? "Answer only" : option === "normal" ? "Compact run progress" : "Full run trace"} className={`px-2.5 py-1 rounded-md text-[11px] capitalize transition-colors ${displayMode === option ? "bg-surface2 text-text" : "text-muted hover:text-text"}`}>{option}</button>
               ))}
             </div>
           </div>

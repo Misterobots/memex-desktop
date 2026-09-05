@@ -6,7 +6,7 @@ function elapsedLabel(seconds: number) {
 }
 
 /** Honest, stream-backed progress surface. Never invents activities not sent by the runtime. */
-export function LiveActivity({ events, active, waiting }: { events: MessageEvent[]; active: boolean; waiting: boolean }) {
+export function LiveActivity({ events, active, waiting, verbose = false }: { events: MessageEvent[]; active: boolean; waiting: boolean; verbose?: boolean }) {
   const [seconds, setSeconds] = useState(0);
   useEffect(() => {
     if (!active) return;
@@ -34,6 +34,6 @@ export function LiveActivity({ events, active, waiting }: { events: MessageEvent
     <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2 min-w-0"><span className={`w-2 h-2 rounded-full bg-accent ${active ? "status-dot-active" : ""}`} /><span className="text-xs font-semibold text-text">Live execution</span><span className="text-[10px] text-muted">{milestones.length} server event{milestones.length === 1 ? "" : "s"}</span></div>{active && <span className="text-[10px] text-muted tabular-nums flex-shrink-0">{elapsedLabel(seconds)}</span>}</div>
     <p className="mt-2 text-xs leading-5 text-text break-words">{active ? latest : "Activity complete"}</p>
     {isQuiet && <p className="mt-1 text-[11px] leading-4 text-amber-300">No new server event for {elapsedLabel(quietFor)} — the request is still open and waiting on the active operation.</p>}
-    {history.length > 0 && <div className="mt-2.5 max-h-56 space-y-1.5 overflow-y-auto border-l border-border/50 pl-2.5">{history.map((event, index) => <div key={`${event.receivedAt ?? 0}-${index}`} className="grid grid-cols-[46px_1fr] gap-2 text-[11px] leading-4"><span className="text-muted">{eventLabel(event)}</span><span className={`${eventTone(event)} break-words`}>{event.content}</span></div>)}</div>}
+    {verbose && history.length > 0 && <div className="mt-2.5 max-h-56 space-y-1.5 overflow-y-auto border-l border-border/50 pl-2.5">{history.map((event, index) => <div key={`${event.receivedAt ?? 0}-${index}`} className="grid grid-cols-[46px_1fr] gap-2 text-[11px] leading-4"><span className="text-muted">{eventLabel(event)}</span><span className={`${eventTone(event)} break-words`}>{event.content}</span></div>)}</div>}
   </div>;
 }
