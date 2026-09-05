@@ -32,7 +32,7 @@ function SessionUsage() {
 
   return (
     <span
-      className="text-xs text-faint px-2 py-1 rounded-md bg-surface border border-border/60"
+      className="hidden sm:inline-block text-xs text-faint px-2 py-1 rounded-md bg-surface border border-border/60"
       title={`${inTok.toLocaleString()} in · ${outTok.toLocaleString()} out${hasCost ? ` · estimated $${costUsd.toFixed(4)}` : " · provider cost unavailable"}`}
     >
       {fmtTokens(total)} tok{hasCost ? ` · $${costUsd.toFixed(2)}` : ""}

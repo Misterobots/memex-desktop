@@ -65,6 +65,7 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
       {/* Assistant avatar */}
       <div className="flex-shrink-0 w-7 h-7 rounded-full bg-accent/15 border border-accent/30 flex items-center justify-center mt-0.5">
         <span className="sr-only">Assistant</span>
+        <span aria-hidden className="text-accent text-sm leading-none">◈</span>
       </div>
 
       <div className="flex-1 min-w-0 space-y-2.5">
