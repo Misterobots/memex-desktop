@@ -6,18 +6,20 @@ import { SessionList } from "../sidebar/SessionList";
 import { CadWorkspacePanel } from "../dev/CadWorkspacePanel";
 import { PrintWorkflowPanel } from "../dev/PrintWorkflowPanel";
 import { FRIDAY_BODY_ROOT } from "../../lib/cad-print-api";
+import { isDesktop } from "../../lib/desktop";
 
 export function ArtView() {
   const { activeSession, setActiveTab, setCwd } = useStore();
   const [workspace, setWorkspace] = useState<"create" | "cad" | "print">("create");
   const [prefillText, setPrefillText] = useState("");
+  const nativeWorkspaceAvailable = isDesktop();
   const session = activeSession("design");
   const empty = !session || session.messages.length === 0;
 
-  const tabClass = (id: typeof workspace) =>
+  const tabClass = (id: typeof workspace, unavailable = false) =>
     `rounded-md px-2.5 py-1 text-xs transition-colors ${workspace === id
       ? "bg-surface2 text-text"
-      : "text-muted hover:bg-surface2 hover:text-text"}`;
+      : "text-muted hover:bg-surface2 hover:text-text"} ${unavailable ? "cursor-not-allowed opacity-50" : ""}`;
 
   return (
     <div className="flex flex-1 min-h-0 flex-col">
@@ -25,19 +27,19 @@ export function ArtView() {
           destinations within Art, not modal views that replace the route. */}
       <div className="flex h-11 flex-shrink-0 items-center gap-1 border-b border-border/60 bg-surface px-4">
         <button onClick={() => setWorkspace("create")} className={tabClass("create")}>Create</button>
-        <button onClick={() => setWorkspace("cad")} className={tabClass("cad")}>3D & CAD</button>
-        <button onClick={() => setWorkspace("print")} className={tabClass("print")}>Print</button>
+        <button disabled={!nativeWorkspaceAvailable} onClick={() => setWorkspace("cad")} className={tabClass("cad", !nativeWorkspaceAvailable)} title={!nativeWorkspaceAvailable ? "Available in Memex Desktop" : undefined}>3D & CAD</button>
+        <button disabled={!nativeWorkspaceAvailable} onClick={() => setWorkspace("print")} className={tabClass("print", !nativeWorkspaceAvailable)} title={!nativeWorkspaceAvailable ? "Available in Memex Desktop" : undefined}>Print</button>
         <span className="ml-2 text-[11px] text-muted">
-          {workspace === "cad" ? "Friday Body workspace" : workspace === "print" ? "Manufacturing handoff" : "Media generation"}
+          {!nativeWorkspaceAvailable ? "CAD and Print are available in Memex Desktop" : workspace === "cad" ? "Friday Body workspace" : workspace === "print" ? "Manufacturing handoff" : "Media generation"}
         </span>
       </div>
 
-      {workspace === "cad" ? (
+      {workspace === "cad" && nativeWorkspaceAvailable ? (
         <CadWorkspacePanel
           onOpenSource={() => { setCwd(FRIDAY_BODY_ROOT); setActiveTab("dev"); }}
           onGoToPrint={() => setWorkspace("print")}
         />
-      ) : workspace === "print" ? (
+      ) : workspace === "print" && nativeWorkspaceAvailable ? (
         <PrintWorkflowPanel />
       ) : (
     <div className="flex flex-1 min-h-0">
