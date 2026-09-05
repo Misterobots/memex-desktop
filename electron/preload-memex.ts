@@ -82,6 +82,8 @@ contextBridge.exposeInMainWorld("memex", {
   // Dialogs
   dialog: {
     openFolder: () => ipcRenderer.invoke("dialog:openFolder"),
+    saveText: (name: string, content: string, mimeType?: string) =>
+      ipcRenderer.invoke("dialog:saveText", name, content, mimeType) as Promise<{ canceled: boolean; path?: string }>,
   },
 
   cadPrint: {

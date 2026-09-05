@@ -21,6 +21,7 @@ vi.mock("../trigger-api", () => ({ listTriggers: vi.fn(), createTrigger: vi.fn()
 let stop = vi.fn<() => void>();
 beforeEach(() => {
   vi.clearAllMocks();
+  delete window.memex;
   localStorage.clear();
   useStore.setState({ sessions: [], activeSessionIds: {}, workspaceDisplayModes: {}, streamingSessions: {}, stopStreams: {}, activeTab: "chat", mode: "chat", selectedModel: "qwen3:14b" });
   stop = vi.fn<() => void>();
@@ -110,6 +111,15 @@ describe("desktop parity interaction contracts (mocked runtime)", () => {
     await user.click(screen.getByRole("button", { name: "Preview" }));
     await user.click(screen.getByRole("button", { name: "Expand preview" }));
     expect(screen.getByRole("button", { name: "Compact preview" }).getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("uses the native save dialog for HTML output when running in Desktop", async () => {
+    const saveText = vi.fn().mockResolvedValue({ canceled: false, path: "C:/Users/Memex/Downloads/test.html" });
+    window.memex = { isDesktop: true, dialog: { saveText } } as never;
+    render(<MessageOutputs events={[{ type: "artifact", content: "", data: { type: "design_artifact", content: { filename: "test.html", html: "<h1>Native save</h1>" } } }]} />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Download HTML" }));
+    await waitFor(() => expect(saveText).toHaveBeenCalledWith("test.html", "<h1>Native save</h1>", "text/html"));
+    expect(screen.getByRole("status").textContent).toContain("Saved C:/Users/Memex/Downloads/test.html.");
   });
 
   it.each(["Daily", "Repeating", "One-time"])("serializes Collective schedules with swarm_mode for %s", async (schedule) => {

@@ -159,7 +159,10 @@ export interface MemexBridge {
     openExternal: (url: string) => Promise<void>;
   };
 
-  dialog: { openFolder: () => Promise<string | null> };
+  dialog: {
+    openFolder: () => Promise<string | null>;
+    saveText: (name: string, content: string, mimeType?: string) => Promise<{ canceled: boolean; path?: string }>;
+  };
 
   cadPrint: {
     getBridgeConfig: () => Promise<{ configured: boolean; envPath: string; url: string; importedAt: string | null }>;

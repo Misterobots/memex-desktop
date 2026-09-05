@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { outputsFromEvents, type WorkspaceOutput } from "../../lib/workspace-outputs";
+import { desktop } from "../../lib/desktop";
 import type { MessageEvent } from "../../types/memex";
 
 function OutputCard({ output }: { output: WorkspaceOutput }) {
@@ -11,7 +12,15 @@ function OutputCard({ output }: { output: WorkspaceOutput }) {
     try { await navigator.clipboard.writeText(output.html!); setNotice("HTML copied."); }
     catch { setNotice("Clipboard unavailable. Select and copy the HTML from Source."); setSource(true); }
   };
-  const download = () => {
+  const download = async () => {
+    const bridge = desktop();
+    if (bridge?.dialog.saveText) {
+      try {
+        const saved = await bridge.dialog.saveText(output.name.endsWith(".html") ? output.name : output.name + ".html", output.html!, "text/html");
+        setNotice(saved.canceled ? "Download canceled." : `Saved ${saved.path ?? output.name}.`);
+      } catch { setNotice("Native save failed. Use Copy HTML or Source."); }
+      return;
+    }
     const url = URL.createObjectURL(new Blob([output.html!], { type: "text/html" }));
     const link = document.createElement("a");
     link.href = url; link.download = output.name.endsWith(".html") ? output.name : output.name + ".html";

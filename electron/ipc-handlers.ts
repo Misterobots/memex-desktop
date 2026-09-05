@@ -21,7 +21,7 @@ import {
 } from "fs";
 import { exec }      from "child_process";
 import { promisify } from "util";
-import { join, dirname } from "path";
+import { join, dirname, basename } from "path";
 import * as pty      from "node-pty";
 import type { ConfigStore }       from "./config-store";
 import type { WorkspaceFirewall } from "./workspace-firewall";
@@ -323,6 +323,20 @@ export function registerAllIpc(ctx: IpcContext): void {
   ipcMain.handle("dialog:openFolder", async () => {
     const r = await dialog.showOpenDialog({ properties: ["openDirectory"] });
     return r.canceled ? null : r.filePaths[0];
+  });
+  ipcMain.handle("dialog:saveText", async (_e, name: string, content: string, mimeType = "text/plain") => {
+    const safeName = basename(name).replace(/[<>:"/\\|?*\x00-\x1F]/g, "_") || "memex-output.txt";
+    const options = {
+      defaultPath: safeName,
+      filters: mimeType === "text/html" ? [{ name: "HTML", extensions: ["html", "htm"] }] : [{ name: "Text", extensions: ["txt", "md"] }],
+    };
+    const mainWindow = getMain();
+    const r = mainWindow
+      ? await dialog.showSaveDialog(mainWindow, options)
+      : await dialog.showSaveDialog(options);
+    if (r.canceled || !r.filePath) return { canceled: true };
+    writeFileSync(r.filePath, content, "utf-8");
+    return { canceled: false, path: r.filePath };
   });
   ipcMain.handle("cadPrint:getBridgeConfig", () => {
     const saved = savedCadBridgeImport();
