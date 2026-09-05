@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { desktop }    from "../../lib/desktop";
 import { streamChat } from "../../lib/sse-stream";
 import { useStore }   from "../../lib/store";
-import { MODE_FLAGS, MODE_LABELS, type MemexMode } from "../../types/memex";
+import { MODE_FLAGS, MODE_LABELS, modeLabel, type MemexMode } from "../../types/memex";
 import type { EvalCase, EvalResult } from "../../types/memex";
 
 const MODES: MemexMode[] = ["chat", "swarm", "research", "design", "think", "plan"];
@@ -210,7 +210,7 @@ export function EvalBenchView() {
                 ${selectedId === c.id ? "bg-accent/10 text-text" : "text-muted hover:text-text hover:bg-surface2/40"}`}
             >
               <div className="text-xs font-medium truncate">{c.name || "Untitled"}</div>
-              <div className="text-[10px] opacity-60 truncate">{c.mode} · {c.model}</div>
+              <div className="text-[10px] opacity-60 truncate">{modeLabel(c.mode)} · {c.model}</div>
             </button>
           ))}
         </div>
@@ -275,7 +275,7 @@ export function EvalBenchView() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-base font-semibold text-text">{selected.name || "Untitled"}</h2>
-                <p className="text-xs text-muted mt-0.5">{selected.mode} · {selected.model}</p>
+                <p className="text-xs text-muted mt-0.5">{modeLabel(selected.mode)} · {selected.model}</p>
               </div>
               <div className="flex gap-2">
                 <button

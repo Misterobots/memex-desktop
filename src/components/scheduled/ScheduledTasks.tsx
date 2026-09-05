@@ -5,7 +5,7 @@ import {
 } from "../../lib/trigger-api";
 
 /**
- * Settings section for the Agent_Swarm trigger scheduler (agents/trigger_scheduler.py).
+ * Settings section for the Memex runtime trigger scheduler (agents/trigger_scheduler.py).
  * Only creates task_config-based triggers — the kind that fires a chat_swarm() call
  * and survives a backend restart. See trigger_scheduler.py for why that's the only
  * trigger kind the REST API can create at all (a raw Python handler isn't JSON-able).
@@ -114,7 +114,7 @@ function NewTriggerForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
 
       <label className="flex items-center gap-2 text-xs text-muted">
         <input type="checkbox" checked={swarmMode} onChange={(e) => setSwarmMode(e.target.checked)} />
-        Run in Swarm mode
+        Run in Collective mode
       </label>
 
       {error && <p className="text-xs text-red-400">{error}</p>}
@@ -158,7 +158,7 @@ export function ScheduledTasks() {
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted">
-        Runs a saved prompt on a schedule via Agent_Swarm's trigger scheduler. Restarting the
+        Runs a saved prompt on a schedule via the Memex runtime trigger scheduler. Restarting the
         backend does not lose these — they're restored from disk on startup.
       </p>
 

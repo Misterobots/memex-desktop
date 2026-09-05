@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { desktop }               from "../../lib/desktop";
 import type { ArtifactRecord }   from "../../lib/desktop";
 import type { RunRecord, RunEvent, RunEventType } from "../../types/memex";
+import { modeLabel } from "../../types/memex";
 import { AgentGraph } from "./AgentGraph";
 import { ArtifactViewer } from "../artifacts/ArtifactViewer";
 
@@ -147,7 +148,7 @@ export function RunInspectorPanel({ runId, onClose }: Props) {
             <div className="text-xs text-text/80 truncate">{run.message || "—"}</div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 mt-2">
               {[
-                ["Mode",    run.mode],
+                ["Mode",    modeLabel(run.mode)],
                 ["Model",   run.model],
                 ["Profile", run.profile],
                 ["Started", fmt(run.startedAt)],

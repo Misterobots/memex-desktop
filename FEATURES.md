@@ -1,6 +1,8 @@
 # Memex Harness — Feature Parity and Impact Map
 
-Reconciled 2026-08-26 against the current `memex-desktop` renderer/Electron shell and the Agent_Swarm runtime/UI.
+Reconciled 2026-08-26 against the current `memex-desktop` renderer/Electron shell and the Memex runtime/UI.
+
+Terminology note (2026-09-05): the desktop calls the multi-agent mode **Collective**. Legacy `swarm` storage/request values, `/swarm`, and `swarm_mode` remain compatible. See `UI_REVIEW.md` for the latest validation results and unresolved release checks; the dated snapshot below is historical.
 
 This document is the current feature baseline. It distinguishes:
 
@@ -19,7 +21,7 @@ The remaining parity work is concentrated in five areas:
 2. true worktree isolation rather than container isolation alone;
 3. complete MCP and Markdown skill compatibility;
 4. fail-closed, durable permission policy;
-5. closing capability differences between the native desktop renderer and the Agent_Swarm web UI.
+5. closing capability differences between the native desktop renderer and the Memex runtime web UI.
 
 ## Wins grouped by impact and functionality
 
@@ -28,11 +30,11 @@ The remaining parity work is concentrated in five areas:
 | Capability | Status | Evidence / notes |
 |---|---|---|
 | Streaming agent loop | **Shipped** | `church.py` / SSE pipeline and the desktop stream consumer are active. |
-| Multi-agent swarm coordination | **Shipped** | Lamport coordination, role-based workers, synthesis, and run persistence exist. |
-| Per-session Docker sandbox | **Shipped** | Agent_Swarm creates disposable session containers and routes sandbox calls through session identity. |
+| Multi-agent Collective coordination | **Shipped** | Lamport coordination, role-based workers, synthesis, and run persistence exist. |
+| Per-session Docker sandbox | **Shipped** | Memex runtime creates disposable session containers and routes sandbox calls through session identity. |
 | Workspace firewall | **Shipped** | Native file, shell, PTY, and workspace operations are guarded. |
 | Tool approval prompts | **Shipped / scoped** | Native approve-once/session/workspace dialogs and backend approval events exist. `plan`, `acceptEdits`, and admin-gated `bypass` have distinct runtime semantics, pending approval IDs are owner-bound, and durable owner/workspace-scoped policy fails closed. |
-| Session resume | **Shipped / scoped** | Conversations resume from Postgres; desktop and Agent_Swarm checkpoints persist owner-scoped neutral history. Explicit, ordered replay and continuation cover direct sandbox, read-only MCP, and Task calls; end-to-end crash recovery smoke coverage remains. |
+| Session resume | **Shipped / scoped** | Conversations resume from Postgres; desktop and Memex runtime checkpoints persist owner-scoped neutral history. Explicit, ordered replay and continuation cover direct sandbox, read-only MCP, and Task calls; end-to-end crash recovery smoke coverage remains. |
 | Context compaction | **Shipped / verify** | Manual and automatic compaction, compacting UI state, summaries, and context meters exist. Needs an end-to-end recovery test. |
 | Token usage display | **Shipped** | Prompt/completion/total token counts appear in the chat/status surfaces. USD estimates are not implemented for local-model usage. |
 | Run/event inspection | **Shipped** | Run inspector, tool lifecycle events, approvals, artifacts, agent graph, and Langfuse tracing exist. |
@@ -42,10 +44,10 @@ The remaining parity work is concentrated in five areas:
 | Capability | Status | Evidence / notes |
 |---|---|---|
 | File read/write/edit tools | **Shipped** | DevHarness supports read, write, exact edit, directory listing, glob, grep, and file-change events. |
-| Shell/terminal execution | **Shipped** | PTY and WebSocket terminal paths exist in the desktop and Agent_Swarm UI. |
+| Shell/terminal execution | **Shipped** | PTY and WebSocket terminal paths exist in the desktop and Memex runtime UI. |
 | Git operations | **Shipped** | Status, diff, branch, commit, and related operations are available. |
 | Diff review | **Shipped** | Desktop line diff/review modal and task/web diff views exist. |
-| Task planning / TodoWrite | **Shipped** | TodoWrite-style events and task cards render in the Agent_Swarm UI. |
+| Task planning / TodoWrite | **Shipped** | TodoWrite-style events and task cards render in the Memex runtime UI. |
 | Task board and task composer | **Shipped / scoped** | Backend and desktop share create/update/get/list/stop/approval/diff/push task routes, stable event history, and owner-scoped merge/publish state. Deployed end-to-end recovery smoke coverage remains. |
 | Project-scoped workspaces | **Shipped** | Dev projects, blank projects, live-repo selection, and project-scoped task routing exist. |
 | Git worktree isolation | **Shipped / scoped** | Desktop has an explicit owner-scoped worktree manager with generated branches, clean-tree protection, list/create/remove/merge operations, conflict aborts, and cleanup controls; backend live-repo locks are project-scoped and publish status is explicit. Deployed smoke coverage remains. |
@@ -127,7 +129,7 @@ The remaining scope is now concentrated in higher-level integration and parity:
 ## Validation snapshot
 
 - `memex-desktop`: renderer and Electron typechecks passed; 51 tests passed across 15 files; the Windows NSIS installer was produced as `release/Memex Desktop Setup 0.1.25.exe`; and the unpacked packaged app initialized responsively in `--startup` mode with no visible main window.
-- `Agent_Swarm`: the full suite passes with `796 passed, 7 skipped, 7 warnings`, including all six backend handoff-contract tests. Agent storage initialization is lazy, so importing the runtime no longer requires a live PostgreSQL login; actual agent execution still uses the configured database.
+- `Memex runtime`: the full suite passes with `796 passed, 7 skipped, 7 warnings`, including all six backend handoff-contract tests. Agent storage initialization is lazy, so importing the runtime no longer requires a live PostgreSQL login; actual agent execution still uses the configured database.
 - Deployed checks: after deploying the lazy-storage fix and restarting Turing's `agent_runtime`, the live PostgreSQL credential authenticated as `agno` to `agno_memory`, runtime import completed successfully, and MCP health remained healthy with 19 tools, 2 resources, and 2 prompts. The authenticated public DevHarness checkpoint list is reachable and currently empty; no recovery fixture exists for a destructive end-to-end replay test.
 - Dependency audit: production dependencies report 0 vulnerabilities after the `js-yaml` 4.3.1 lockfile update. The safe lockfile refresh plus the Vite 6.4.3 upgrade reduced the development audit to 10 findings (1 critical, 9 high); all remaining fixes require major Electron/electron-builder upgrades.
 - Security-upgrade trial: Electron 41.10.3 and electron-builder 26.15.3 reached 0 audit findings with Vite 6.4.3, PostCSS 8.5.26, and shell-quote 1.10.0 under the bundled Node 24.19.0 runtime, but packaging could not rebuild `node-pty` without Visual Studio Spectre-mitigated libraries. The Electron/electron-builder candidate was reverted; the release baseline now keeps Electron 31/electron-builder 24 while using the verified Vite 6.4.3 tranche.

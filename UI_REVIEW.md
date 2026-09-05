@@ -39,6 +39,23 @@ An empty screen or a successful request is not a completed workspace test. For e
 
 ## Automated coverage
 
-`npm run typecheck`, `npm test`, and `npm run build:renderer` pass. The suite contains 66 tests across 16 files. Added coverage includes structured and legacy HTML delivery, sandbox isolation, all verbosity levels, Markdown links/tables with inert raw HTML, real media URL normalization, missing output, errors, cancellation, disconnected partial responses, progress coalescing, and workspace/project preference isolation.
+`npm run typecheck`, `npm test`, and `npm run build:renderer` pass. The suite now contains 78 tests across 18 files (latest run: 2026-09-05). Coverage includes structured and legacy HTML delivery, sandbox isolation, all verbosity levels, Markdown links/tables with inert raw HTML, real media URL normalization, missing output, errors, cancellation, disconnected partial responses, progress coalescing, and workspace/project preference isolation.
 
 Generated HTML is isolated in an iframe with scripts allowed but **without** same-origin access. Model-authored HTML is not injected into the chat document. Source is escaped text. Outputs are never hidden by an activity-detail preference.
+
+## Terminology and parity follow-up — 2026-09-05
+
+- Visible mode labels now use **Collective**, including the Code landing heading, steering cards, scheduled-task form, run inspector, and evaluation cases. Saved `swarm` values, the `swarm` model sentinel, `/swarm`, and `swarm_mode` remain unchanged for runtime compatibility. Older descriptive runtime/lab copy was updated without renaming protocol identifiers.
+- New contract tests check labels and unchanged legacy request/JSON serialization. New mocked-runtime interaction tests cover scoped session switching, owning-stream Stop, explicit resend after failure, Shift+Enter, diff approve/reject callbacks, shortcut capture/cancel, HTML preview/source/expansion, and schedule creation/retry/resume. These do not certify native file writes, actual scheduled execution, or server-side cancellation/resumption.
+- Browser observations: the mode menu shows Collective; opening and cancelling the scheduled-task form shows “Run in Collective mode” without submitting a schedule; switching from a new empty Chat to the existing inference thread restores its answer and stopped-state notice. One empty review conversation remains. No new inference was submitted in this follow-up.
+- Windows unpacked packaging passed with `electron-builder --win --dir --publish never`. The QA build is retained at `release/qa-20260905-terminology/win-unpacked/Memex Desktop.exe` under the ignored release directory. This verifies packaging only: the new executable has not been launched or manually smoke-tested. Native panes, attachments, downloads, global shortcuts, pairing, and handoff still need an observable packaged-app walkthrough. Native computer automation is unavailable in this session.
+- CLI checks ran in a persistent test terminal. Opening that terminal in the app returned a queued result, so user visibility was not independently confirmed.
+- No rejected hero-generation candidates were deleted, committed, or pushed. Their location/approval inventory remains unresolved; unrelated helper files were preserved.
+
+### Inference measurement and GPU findings
+
+The live development runtime mounts `Agent_Swarm`, not the sibling `Memex_Core` checkout. Design currently pins `CODER_MODEL` instead of honoring the composer model selection. Ollama reported `qwen3-coder:30b` with about 22.2 GB allocated but only 14.1 GB in VRAM, consistent with partial CPU offload. Its container is restricted to GPU index 0; freeing GPU index 1 does not automatically make that memory available to Design.
+
+At the user's request, `qwen3:8b` was unloaded from `ollama_friday`. Its model list became empty and GPU index 1 usage fell to 8,123 MiB out of 16,311 MiB. Voice services remain running; another Friday request may reload the model. No model files were deleted and no GPU routing settings were changed.
+
+A separate, uncommitted patch in the already-dirty development backend removes character-rate progress and reports provider token throughput from `eval_count / (eval_duration / 1e9)` on completion. Missing measurements are explicitly unavailable, not estimated from characters. Three pure unit tests passed in the development container. A fresh inference run and active-worker reload remain unverified; these backend edits are not included in the desktop commit.

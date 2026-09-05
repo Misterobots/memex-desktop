@@ -53,6 +53,7 @@ export interface TaskWorker {
 
 export type ChatDisplayMode = "normal" | "summary" | "thought";
 
+/** Wire/storage identifiers remain legacy-compatible; use MODE_LABELS for UI copy. */
 export type MemexMode =
   | "chat"
   | "swarm"
@@ -74,13 +75,16 @@ export const MODE_FLAGS: Record<MemexMode, Record<string, boolean>> = {
 
 export const MODE_LABELS: Record<MemexMode, string> = {
   chat:     "Chat",
-  swarm:    "Swarm",
+  swarm:    "Collective",
   research: "Research",
   design:   "Design",
   think:    "Think",
   plan:     "Plan",
   workshop: "Workshop",
 };
+
+/** Display legacy values without renaming saved sessions or runtime contracts. */
+export const modeLabel = (mode: string): string => MODE_LABELS[mode as MemexMode] ?? mode;
 
 export type EventType =
   | "artifact"

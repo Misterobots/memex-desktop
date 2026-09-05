@@ -23,7 +23,7 @@ export function SitesView() {
           <div className="mt-7 grid gap-2.5 text-left sm:grid-cols-2">{[
             "Create a polished landing page for Memex Desktop.",
             "Design a client portal with clear account and project states.",
-            "Plan an internal operations dashboard for the home AI lab.",
+            "Plan an internal operations dashboard for my workspace.",
             "Turn this product idea into a responsive marketing site.",
           ].map((example) => <button key={example} onClick={() => setPrefillText(example)} className="rounded-xl border border-border/60 bg-surface px-4 py-3 text-xs text-muted text-left hover:bg-surface2 hover:text-text transition-colors">{example}</button>)}</div>
         </div>

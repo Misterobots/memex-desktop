@@ -5,7 +5,7 @@ import { createTask } from "../../lib/tasks-api";
 
 /**
  * "New Task" composer — the dedicated repo + branch + prompt → go entry
- * point for the Codex-style task board, replacing "start a Swarm-mode chat"
+ * point for the task board, replacing "start a Collective-mode chat"
  * as the way a task comes into existence. Deliberately standalone: does not
  * touch InputBar.tsx or any chat-session submit path.
  *
