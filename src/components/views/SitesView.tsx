@@ -3,6 +3,7 @@ import { useStore } from "../../lib/store";
 import { ConversationPane } from "../chat/ConversationPane";
 import { InputBar } from "../layout/InputBar";
 import { SessionList } from "../sidebar/SessionList";
+import { WorkspaceSidebar } from "../sidebar/WorkspaceSidebar";
 
 /** Site-focused design space with its own conversations and design-mode routing. */
 export function SitesView() {
@@ -12,9 +13,9 @@ export function SitesView() {
   const empty = !session || session.messages.length === 0;
 
   return <div className="flex flex-1 min-h-0">
-    <aside className="w-[260px] flex-shrink-0 border-r border-border/60 bg-surface overflow-y-auto">
+    <WorkspaceSidebar>
       <SessionList experience="sites" newLabel="New site" />
-    </aside>
+    </WorkspaceSidebar>
     <main className="flex min-w-0 flex-1 flex-col min-h-0">
       {empty ? <div className="flex flex-1 flex-col items-center justify-center px-6 text-center select-none">
         <div className="max-w-2xl"><div className="mb-5 text-5xl text-accent opacity-90">⌘</div><h1 className="text-2xl font-medium text-text">Sites</h1>

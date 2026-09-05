@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useStore } from "../../lib/store";
+import { sessionScopeKey, useStore } from "../../lib/store";
 import { isDesktop } from "../../lib/desktop";
 import { MessageBubble } from "./MessageBubble";
 import type { AppTab, ChatDisplayMode, ExperienceId } from "../../types/memex";
@@ -50,8 +50,8 @@ interface Props {
   displayMode?: ChatDisplayMode;
 }
 
-export function ConversationPane({ experience = "chat", workspaceKey, displayMode = "normal" }: Props) {
-  const { activeSession, streamingSessions } = useStore();
+export function ConversationPane({ experience = "chat", workspaceKey, displayMode }: Props) {
+  const { activeSession, streamingSessions, workspaceDisplayModes } = useStore();
   const session = activeSession(experience, workspaceKey);
   const streaming = session ? !!streamingSessions[session.id] : false;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -95,7 +95,7 @@ export function ConversationPane({ experience = "chat", workspaceKey, displayMod
             key={msg.id}
             message={msg}
             isActive={streaming && i === messages.length - 1 && msg.role === "assistant"}
-            displayMode={displayMode}
+            displayMode={displayMode ?? workspaceDisplayModes[sessionScopeKey(experience, workspaceKey)] ?? session.displayMode ?? "normal"}
           />
         ))}
         <div className="h-4" />

@@ -56,6 +56,7 @@ export default defineConfig({
     // has none, so proxy those prefixes straight to the local dev backend
     // (execution_plane's agent-runtime-dev, port 8009) for `npm run dev` testing.
     proxy: {
+      "/delivered_artifacts": { target: "http://localhost:8009" },
       // TESTING ONLY: injects the identity header Traefik's Authentik
       // forwardAuth middleware would normally add in prod, so owner-scoped
       // routes (_resolve_owner_id) resolve correctly against the bare dev

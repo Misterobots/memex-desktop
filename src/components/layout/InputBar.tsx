@@ -5,6 +5,7 @@ import { pushSession } from "../../lib/conv-sync";
 import { MODE_FLAGS, MODE_LABELS, type ExperienceId, type MemexMode, type ChatMessage, type MessageEvent } from "../../types/memex";
 import { ModelPickerPopover } from "./ModelPickerPopover";
 import { ContextMeter } from "./ContextMeter";
+import { VerbosityControl } from "../chat/VerbosityControl";
 
 const MODES: MemexMode[] = ["chat", "swarm", "research", "design", "think", "plan"];
 
@@ -40,6 +41,7 @@ interface InputBarProps {
   extraFlags?: Record<string, boolean>;
   /** When set, the composer is locked to this mode and the mode pill is hidden. */
   lockMode?: MemexMode;
+  lockModeLabel?: string;
   /** Placeholder override. */
   placeholder?: string;
   /** Routes messages into the owning product history, not the last app-wide chat. */
@@ -52,7 +54,7 @@ interface InputBarProps {
   prefillText?: string;
 }
 
-export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = "chat", workspaceKey, disabledReason, prefillText }: InputBarProps) {
+export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder, experience = "chat", workspaceKey, disabledReason, prefillText }: InputBarProps) {
   const [text, setText] = useState("");
   const [modeOpen, setModeOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -112,7 +114,7 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
       : experience === "product_design" ? "Request sent — preparing the design workspace…"
       : experience === "research" ? "Request sent — preparing research…"
       : "Request sent — preparing Memex…";
-    appendEvent(sessionId, assistantId, { type: "status", content: activityLabel, receivedAt: Date.now() });
+    appendEvent(sessionId, assistantId, { type: "status", content: activityLabel, receivedAt: Date.now(), data: { type: "stream_started" } });
 
     // Persist an initial turn checkpoint before the first model token. The
     // debounced/retrying sync queue coalesces subsequent stream updates, so a
@@ -150,6 +152,7 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
         syncSession();
       },
       onDone: () => {
+        appendEvent(sessionId, assistantId, { type: "status", content: "Response stream ended.", receivedAt: Date.now(), data: { type: "stream_complete" } });
         setStreaming(sessionId, false);
         syncSession();
       },
@@ -172,6 +175,8 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
     if (e.key === "Escape" && streaming && stopStream) {
       stopStream();
       if (currentSessionId) {
+        const message = useStore.getState().activeSession(experience, workspaceKey)?.messages.at(-1);
+        if (message) appendEvent(currentSessionId, message.id, { type: "status", content: "Stopped by you.", data: { type: "cancelled" } });
         setStreaming(currentSessionId, false);
         syncSessionById(currentSessionId);
       }
@@ -181,6 +186,7 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
   return (
     <div className="px-6 pb-5 pt-2 flex-shrink-0">
       <div className="max-w-conversation mx-auto">
+        <div className="mb-2 flex justify-end"><VerbosityControl experience={experience} workspaceKey={workspaceKey} /></div>
         <div className="bg-surface border border-border rounded-2xl px-3 pt-3 pb-2 focus-within:border-accent/50 transition-colors shadow-lg shadow-black/10">
           <textarea
             ref={textareaRef}
@@ -198,7 +204,7 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
               {lockMode ? (
                 <span className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted">
                   <span className={`w-1.5 h-1.5 rounded-full ${MODE_DOT[mode]}`} />
-                  {MODE_LABELS[mode]}
+                  {lockModeLabel ?? MODE_LABELS[mode]}
                 </span>
               ) : (
                 <div ref={modeRef} className="relative">
@@ -249,6 +255,8 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
               onClick={streaming ? () => {
                 stopStream?.();
                 if (currentSessionId) {
+                  const message = useStore.getState().activeSession(experience, workspaceKey)?.messages.at(-1);
+                  if (message) appendEvent(currentSessionId, message.id, { type: "status", content: "Stopped by you.", data: { type: "cancelled" } });
                   setStreaming(currentSessionId, false);
                   syncSessionById(currentSessionId);
                 }

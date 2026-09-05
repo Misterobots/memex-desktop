@@ -3,6 +3,7 @@ import { useStore } from "../../lib/store";
 import { ConversationPane } from "../chat/ConversationPane";
 import { InputBar } from "../layout/InputBar";
 import { SessionList } from "../sidebar/SessionList";
+import { WorkspaceSidebar } from "../sidebar/WorkspaceSidebar";
 import { CadWorkspacePanel } from "../dev/CadWorkspacePanel";
 import { PrintWorkflowPanel } from "../dev/PrintWorkflowPanel";
 import { FRIDAY_BODY_ROOT } from "../../lib/cad-print-api";
@@ -43,9 +44,9 @@ export function ArtView() {
         <PrintWorkflowPanel />
       ) : (
     <div className="flex flex-1 min-h-0">
-      <aside className="w-[260px] flex-shrink-0 border-r border-border/60 bg-surface overflow-y-auto">
+      <WorkspaceSidebar>
         <SessionList experience="design" newLabel="New design" />
-      </aside>
+      </WorkspaceSidebar>
       <main className="flex flex-col flex-1 min-w-0 min-h-0">
       {empty ? (
         <div className="flex-1 flex flex-col items-center justify-center px-6 select-none">
@@ -77,7 +78,7 @@ export function ArtView() {
       ) : (
         <ConversationPane experience="design" />
       )}
-      <InputBar experience="design" lockMode="design" placeholder="Describe an image, media concept, or 3D idea to generate…" prefillText={prefillText} />
+      <InputBar experience="design" lockMode="chat" lockModeLabel="Media" placeholder="Describe an image, media concept, or 3D idea to generate…" prefillText={prefillText} />
       </main>
     </div>
       )}

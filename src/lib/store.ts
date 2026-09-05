@@ -27,6 +27,8 @@ interface AppState {
   // Sessions
   sessions: Session[];
   activeSessionIds: Record<string, string | undefined>;
+  workspaceDisplayModes: Record<string, ChatDisplayMode>;
+  setWorkspaceDisplayMode: (experience: ExperienceId, workspaceKey: string | undefined, mode: ChatDisplayMode) => void;
 
   // UI state
   activeTab: AppTab;
@@ -74,6 +76,13 @@ export const useStore = create<AppState>()(
     (set, get) => ({
       sessions: [],
       activeSessionIds: {},
+      workspaceDisplayModes: {},
+      setWorkspaceDisplayMode: (experience, workspaceKey, mode) => set((s) => ({
+        workspaceDisplayModes: { ...s.workspaceDisplayModes, [sessionScopeKey(experience, workspaceKey)]: mode },
+        // Sync the active thread's preference without retimestamping unrelated history.
+        sessions: s.sessions.map((session) => session.id === get().activeSession(experience, workspaceKey)?.id
+          ? { ...session, displayMode: mode, updatedAt: Date.now() } : session),
+      })),
       activeTab: "chat",
       mode: "chat",
       cwd: "",
@@ -104,6 +113,7 @@ export const useStore = create<AppState>()(
           createdAt: now,
           updatedAt: now,
           messages: [],
+          displayMode: get().workspaceDisplayModes[sessionScopeKey(experience, workspaceKey)] ?? "normal",
         };
         set((s) => ({
           sessions: [session, ...s.sessions],
@@ -254,6 +264,7 @@ export const useStore = create<AppState>()(
       partialize: (s) => ({
         sessions: s.sessions.slice(0, 50),
         activeSessionIds: s.activeSessionIds,
+        workspaceDisplayModes: s.workspaceDisplayModes,
         activeTab: s.activeTab,
         cwd: s.cwd,
         sidebarOpen: s.sidebarOpen,

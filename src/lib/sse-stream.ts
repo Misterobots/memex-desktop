@@ -32,7 +32,7 @@ export function runEventTypeForSSE(event: SSEEvent): RunEventType {
   if (rawType === "memory_read") return "memory_read";
   if (rawType === "memory_write") return "memory_write";
   if (rawType === "file_change") return "file_write";
-  if (rawType === "error" || event.type === "log") return "error";
+  if (rawType === "error" || /^Error:/.test(event.content)) return "error";
   if (event.type === "message" || event.type === "response" || event.type === "thought") return "message_chunk";
   return "status";
 }
@@ -64,6 +64,7 @@ export interface StreamOptions {
 export function normalizeSSEDelta(delta: Record<string, unknown>): SSEEvent | null {
   const rawType = typeof delta.type === "string" ? delta.type : "message";
   const typeMap: Record<string, EventType> = {
+    design_artifact: "artifact", media_attachment: "artifact", artifact: "artifact",
     content: "message", error: "log", tool_start: "tool_call_start",
     tool_approval_needed: "status", tool_result: "tool_call_result",
     file_change: "agent_event", todo: "status", approval_requested: "status",

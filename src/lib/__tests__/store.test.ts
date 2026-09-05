@@ -2,10 +2,21 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useStore } from "../store";
 
 describe("experience-owned sessions", () => {
+  it("applies workspace verbosity before a thread exists and isolates Code projects", () => {
+    useStore.getState().setWorkspaceDisplayMode("sites", undefined, "thought");
+    useStore.getState().setWorkspaceDisplayMode("code", "C:/alpha", "summary");
+    useStore.getState().createSession("sites");
+    useStore.getState().createSession("code", "C:/alpha");
+    useStore.getState().createSession("code", "C:/beta");
+    expect(useStore.getState().activeSession("sites")?.displayMode).toBe("thought");
+    expect(useStore.getState().activeSession("code", "C:/alpha")?.displayMode).toBe("summary");
+    expect(useStore.getState().activeSession("code", "C:/beta")?.displayMode).toBe("normal");
+  });
   beforeEach(() => {
     useStore.setState({
       sessions: [],
       activeSessionIds: {},
+      workspaceDisplayModes: {},
       activeTab: "chat",
       cwd: "",
       streamingSessions: {},

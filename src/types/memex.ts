@@ -83,6 +83,7 @@ export const MODE_LABELS: Record<MemexMode, string> = {
 };
 
 export type EventType =
+  | "artifact"
   | "message"
   | "status"
   | "thought"

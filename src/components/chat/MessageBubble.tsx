@@ -1,7 +1,12 @@
 import type { ChatDisplayMode, ChatMessage } from "../../types/memex";
+import { useState } from "react";
+import { RunInspectorPanel } from "./RunInspectorPanel";
+import { ResponseActions } from "./ResponseActions";
 import { LiveActivity } from "./LiveActivity";
-import { AgentTrace }   from "./AgentTrace";
 import { SteeringCard } from "./SteeringCard";
+import { MessageOutputs } from "./MessageOutputs";
+import { MessageContent } from "./MessageContent";
+import { errorEvents, outputsFromEvents } from "../../lib/workspace-outputs";
 
 // Lazy import to avoid hard dep on ChatView context when used outside it
 import { useInspector } from "../views/ChatView";
@@ -15,14 +20,12 @@ interface Props {
 
 function RunButton({ runId }: { runId: string }) {
   const inspector = useInspector(); // returns null when outside ChatView
-  if (!inspector) return null;
+  const [localOpen, setLocalOpen] = useState(false);
+  const isActive = inspector ? inspector.activeRunId === runId : localOpen;
 
-  const { open, activeRunId } = inspector;
-  const isActive = activeRunId === runId;
-
-  return (
+  return (<>
     <button
-      onClick={() => open(runId)}
+      onClick={() => inspector ? inspector.open(runId) : setLocalOpen(true)}
       title="Inspect run"
       className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border transition-colors
         ${isActive
@@ -35,7 +38,10 @@ function RunButton({ runId }: { runId: string }) {
       </svg>
       Run
     </button>
-  );
+    {localOpen && <div role="dialog" aria-label="Run inspector" className="fixed inset-0 z-50 flex justify-end bg-canvas/95">
+      <RunInspectorPanel runId={runId} onClose={() => setLocalOpen(false)} />
+    </div>}
+  </>);
 }
 
 export function MessageBubble({ message, isActive = false, displayMode = "normal" }: Props) {
@@ -44,11 +50,17 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
   const isWaiting = isActive && !message.content;
 
   const events = message.events ?? [];
-  const statusEvents = events.filter((e) => e.type === "status");
+  const errors = errorEvents(events);
   const showActivity = displayMode !== "summary";
   const showThoughts = displayMode === "thought";
-  const agentEvents = showThoughts ? events.filter((e) => e.type === "agent_event") : [];
   const clarification = events.find((e) => e.type === "clarification_card");
+  const outputs = outputsFromEvents(events);
+  const stopped = events.some((event) => event.data?.type === "cancelled");
+  const disconnected = !isActive && !stopped && !clarification && errors.length === 0 && (
+    events.some((event) => event.data?.type === "stream_started")
+      ? !events.some((event) => event.data?.type === "stream_complete")
+      : events.length > 0 && !message.content && outputs.length === 0
+  );
 
   if (isUser) {
     return (
@@ -70,28 +82,30 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
 
       <div className="flex-1 min-w-0 space-y-2.5">
         {isActive ? (
-          <LiveActivity events={events} active={true} waiting={isWaiting} verbose={showThoughts} />
-        ) : showActivity && statusEvents.length > 0 && (
+          <LiveActivity events={events} active={true} waiting={isWaiting} verbose={showThoughts} brief={!showActivity} />
+        ) : showActivity && events.length > 0 && (
           <LiveActivity events={events} active={false} waiting={false} verbose={showThoughts} />
-        )}
-
-        {agentEvents.length > 0 && (
-          <div className="space-y-1.5">
-            {agentEvents.map((e, i) => <AgentTrace key={i} event={e} />)}
-          </div>
         )}
 
         {clarification?.clarification && (
           <SteeringCard card={clarification.clarification} messageId={message.id} />
         )}
 
+        {errors.map((event, index) => <p key={index} role="alert" className="text-sm text-red-400">{event.content}</p>)}
+        {disconnected && <p role="status" className="text-sm text-amber-300">No completed response was received in this view. The connection may have been interrupted; the runtime may still be working. Any received output is preserved below.</p>}
+        {!isActive && events.some((event) => event.data?.type === "cancelled") && <p role="status" className="text-sm text-muted">Stopped. Any partial output is preserved below.</p>}
         {(message.content || isWaiting) && (
-          <div className={`text-text text-[15px] leading-relaxed whitespace-pre-wrap ${isWaiting ? "cursor-blink" : ""}`}>
-            {message.content}
+          <div className={isWaiting ? "cursor-blink" : ""}>
+            <MessageContent content={message.content} />
             {isActive && message.content && <span className="cursor-blink" />}
           </div>
         )}
 
+        <MessageOutputs events={events} />
+        {!isActive && message.content && <ResponseActions content={message.content} />}
+        {!isActive && message.mode === "design" && /design ready/i.test(message.content) && outputs.length === 0 && (
+          <p role="alert" className="text-sm text-amber-300">The run reported a ready design but delivered no preview. Ask for the HTML output again.</p>
+        )}
         {/* Run inspector button — only shown when run is attached and not mid-stream */}
         {message.runId && !isActive && (
           <div className="pt-0.5">
