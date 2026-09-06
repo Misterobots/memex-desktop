@@ -43,6 +43,8 @@ export interface StreamOptions {
   modeFlags: Record<string, boolean>;
   /** Backend-supported output shaping: concise, default, or explanatory. */
   style?: "concise" | "explanatory";
+  /** Required quality reference for a Gauntlet Collective run. */
+  gauntletBar?: string;
   /** Ollama model id to route to (e.g. "qwen3-coder:30b"). Defaults to "swarm". */
   model?: string;
   sessionId?: string;
@@ -144,6 +146,7 @@ export function streamChat(opts: StreamOptions): () => void {
     dev_resume: opts.devResume ?? false,
     workspace_key: opts.workspaceKey ?? opts.sessionId ?? "default-workspace",
     ...(opts.style ? { style: opts.style } : {}),
+    ...(opts.gauntletBar ? { gauntlet_bar: opts.gauntletBar } : {}),
     ...opts.modeFlags,
   });
 

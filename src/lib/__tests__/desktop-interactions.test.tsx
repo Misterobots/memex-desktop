@@ -50,6 +50,20 @@ describe("desktop parity interaction contracts (mocked runtime)", () => {
     expect(useStore.getState().activeSession("code", "C:/alpha")!.messages.at(-1)!.events.at(-1)!.data?.type).toBe("cancelled");
   });
 
+  it("requires a Gauntlet quality bar and serializes it with Collective orchestration", async () => {
+    useStore.setState({ mode: "gauntlet" });
+    const user = userEvent.setup();
+    render(<InputBar experience="design" />);
+    await user.type(screen.getByRole("textbox", { name: "" }), "Create a product page{enter}");
+    expect(streamChat).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert").textContent).toContain("named, fetchable reference");
+    await user.type(screen.getByRole("textbox", { name: "Gauntlet quality bar" }), "Stripe's pricing page");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(vi.mocked(streamChat).mock.calls[0][0]).toMatchObject({
+      mode: "gauntlet", gauntletBar: "Stripe's pricing page", modeFlags: { swarm_mode: true, gauntlet_mode: true },
+    });
+  });
+
   it("keeps Shift+Enter as a newline and allows another send after stream failure", async () => {
     const user = userEvent.setup();
     render(<InputBar />);

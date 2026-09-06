@@ -7,7 +7,7 @@ import { ModelPickerPopover } from "./ModelPickerPopover";
 import { ContextMeter } from "./ContextMeter";
 import { RunControls } from "../chat/VerbosityControl";
 
-const MODES: MemexMode[] = ["chat", "swarm", "research", "design", "think", "plan"];
+const MODES: MemexMode[] = ["chat", "swarm", "gauntlet", "research", "design", "think", "plan"];
 
 const MODE_DOT: Record<MemexMode, string> = {
   chat:     "bg-muted",
@@ -16,6 +16,7 @@ const MODE_DOT: Record<MemexMode, string> = {
   design:   "bg-yellow",
   think:    "bg-accent2",
   plan:     "bg-yellow",
+  gauntlet: "bg-red-400",
   workshop: "bg-accent",
 };
 
@@ -28,6 +29,7 @@ const MODE_DESC: Record<MemexMode, string> = {
   design:   "Generate UI / HTML mockups",
   think:    "Extended step-by-step reasoning",
   plan:     "Plan a build before executing",
+  gauntlet: "Pioneer builders and critics iterate against a quality bar",
   workshop: "Refine an idea into a brief",
 };
 
@@ -57,6 +59,8 @@ interface InputBarProps {
 export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder, experience = "chat", workspaceKey, disabledReason, prefillText }: InputBarProps) {
   const [text, setText] = useState("");
   const [modeOpen, setModeOpen] = useState(false);
+  const [gauntletBar, setGauntletBar] = useState("");
+  const [gauntletError, setGauntletError] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modeRef = useRef<HTMLDivElement>(null);
   const {
@@ -95,6 +99,10 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
   const submit = useCallback(() => {
     const content = text.trim();
     if (!content || streaming || disabledReason) return;
+    if (mode === "gauntlet" && !gauntletBar.trim()) {
+      setGauntletError("Choose a named, fetchable reference for the quality bar before starting the Gauntlet.");
+      return;
+    }
     setText("");
 
     const session = activeSession(experience, workspaceKey);
@@ -133,6 +141,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       mode,
       model: selectedModel,
       style: runPreferences.outputDetail === "low" ? "concise" : runPreferences.outputDetail === "high" ? "explanatory" : undefined,
+      gauntletBar: mode === "gauntlet" ? gauntletBar.trim() : undefined,
       modeFlags: { ...MODE_FLAGS[mode], ...extraFlags, ...(runPreferences.reasoningEffort === "high" ? { ultrathink_mode: true } : {}) },
       sessionId,
       workspaceKey,
@@ -165,7 +174,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       },
     });
     setStreaming(sessionId, true, stop);
-  }, [text, streaming, disabledReason, mode, experience, workspaceKey, extraFlags, runPreferences]);
+  }, [text, streaming, disabledReason, mode, experience, workspaceKey, extraFlags, runPreferences, gauntletBar]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Enter sends; Shift+Enter inserts a newline. Skip while an IME composition
@@ -189,6 +198,10 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
     <div className="px-6 pb-5 pt-2 flex-shrink-0">
       <div className="max-w-conversation mx-auto">
         <div className="bg-surface border border-border rounded-2xl px-3 pt-3 pb-2 focus-within:border-accent/50 transition-colors shadow-lg shadow-black/10">
+          {mode === "gauntlet" && <label className="mb-2 block px-2 text-xs text-muted">Quality bar
+            <input aria-label="Gauntlet quality bar" value={gauntletBar} onChange={(event) => { setGauntletBar(event.target.value); setGauntletError(""); }} placeholder="A named, fetchable reference — URL, product, repo, or publication" className="mt-1 w-full rounded-md border border-border/60 bg-canvas px-2 py-1.5 text-xs text-text placeholder-faint focus:outline-none focus:border-accent" />
+            {gauntletError && <span role="alert" className="mt-1 block text-xs text-yellow">{gauntletError}</span>}
+          </label>}
           <textarea
             ref={textareaRef}
             value={text}

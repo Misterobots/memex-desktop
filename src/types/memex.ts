@@ -73,6 +73,7 @@ export type MemexMode =
   | "design"
   | "think"
   | "plan"
+  | "gauntlet"
   | "workshop";
 
 export const MODE_FLAGS: Record<MemexMode, Record<string, boolean>> = {
@@ -82,6 +83,7 @@ export const MODE_FLAGS: Record<MemexMode, Record<string, boolean>> = {
   design:   { design_mode: true },
   think:    { ultrathink_mode: true },
   plan:     { swarm_mode: true, ultraplan_mode: true },
+  gauntlet: { swarm_mode: true, gauntlet_mode: true },
   workshop: { workshop_mode: true },
 };
 
@@ -92,6 +94,7 @@ export const MODE_LABELS: Record<MemexMode, string> = {
   design:   "Design",
   think:    "Think",
   plan:     "Plan",
+  gauntlet: "Gauntlet",
   workshop: "Workshop",
 };
 
