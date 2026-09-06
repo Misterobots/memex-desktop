@@ -298,7 +298,7 @@ export interface MemexBridge {
     saveCase:     (c: Partial<EvalCase>)                => Promise<EvalCase>;
     deleteCase:   (id: string)                          => Promise<void>;
     getResults:   (caseId?: string)                     => Promise<EvalResult[]>;
-    startResult:  (caseId: string, runId?: string)      => Promise<EvalResult>;
+    startResult:  (caseId: string, runId?: string, model?: string) => Promise<EvalResult>;
     updateResult: (id: string, patch: Partial<EvalResult>) => Promise<EvalResult | null>;
   };
 

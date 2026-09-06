@@ -234,6 +234,8 @@ export interface EvalCase {
   input:         string;
   mode:          MemexMode;
   model:         string;
+  /** Ordered arena entrants. `model` remains the legacy/default entrant. */
+  models?:       string[];
   expectedNotes: string;
   rubric:        string;
   workspaceRoot?: string;
@@ -244,6 +246,8 @@ export interface EvalResult {
   id:         string;
   caseId:     string;
   runId?:     string;
+  /** The entrant that produced this result, absent on legacy records. */
+  model?:     string;
   startedAt:  string;
   endedAt?:   string;
   latencyMs?: number;

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { desktop }    from "../../lib/desktop";
 import { streamChat } from "../../lib/sse-stream";
 import { useStore }   from "../../lib/store";
+import { modelsForArena } from "../../lib/model-arena";
 import { MODE_FLAGS, MODE_LABELS, modeLabel, type MemexMode } from "../../types/memex";
 import type { EvalCase, EvalResult } from "../../types/memex";
 
@@ -15,6 +16,7 @@ const EMPTY: Omit<EvalCase, "id" | "createdAt"> = {
   input:         "",
   mode:          "chat",
   model:         "qwen3.6:27b",
+  models:        ["qwen3.6:27b"],
   expectedNotes: "",
   rubric:        "",
   workspaceRoot: "",
@@ -93,7 +95,7 @@ export function EvalBenchView() {
   const [editing,     setEditing]     = useState<Partial<EvalCase> | null>(null);
   const [results,     setResults]     = useState<EvalResult[]>([]);
   const [replaying,   setReplaying]   = useState(false);
-  const [replayOut,   setReplayOut]   = useState("");
+  const [replayOut,   setReplayOut]   = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     if (!bridge) return;
@@ -132,45 +134,54 @@ export function EvalBenchView() {
   };
 
   // ── Replay ──────────────────────────────────────────────────────────────
-  const handleReplay = useCallback(() => {
+  const handleReplay = useCallback(async () => {
     if (!selected || replaying || !bridge) return;
     setReplaying(true);
-    setReplayOut("");
+    setReplayOut({});
 
-    let accumulated = "";
-    const t0 = Date.now();
-    let resultId: string | undefined;
-
-    bridge.evals.startResult(selected.id).then((r) => { resultId = r.id; });
-
-    const stop = streamChat({
-      messages: [{ role: "user", content: selected.input }],
-      mode:    selected.mode,
-      model:   selected.model || selectedModel,
-      modeFlags: MODE_FLAGS[selected.mode] ?? {},
-      onEvent: (ev) => {
-        if (ev.type === "message" || ev.type === "response") {
-          accumulated += ev.content;
-          setReplayOut(accumulated);
-        }
-      },
-      onDone: async () => {
-        setReplaying(false);
-        if (resultId) {
-          await bridge.evals.updateResult(resultId, {
-            endedAt:   new Date().toISOString(),
-            latencyMs: Date.now() - t0,
-            output:    accumulated,
+    // Deliberately sequential: an arena compares outputs without automatically
+    // scheduling two large models onto the user's GPUs at the same time.
+    const entrants = modelsForArena(selected);
+    try {
+      for (const model of entrants.length ? entrants : [selectedModel]) {
+        let accumulated = "";
+        const t0 = Date.now();
+        const result = await bridge.evals.startResult(selected.id, undefined, model);
+        await new Promise<void>((resolve) => {
+          let settled = false;
+          const finish = () => { if (!settled) { settled = true; resolve(); } };
+          streamChat({
+            messages: [{ role: "user", content: selected.input }],
+            mode:    selected.mode,
+            model,
+            modeFlags: MODE_FLAGS[selected.mode] ?? {},
+            onEvent: (ev) => {
+              if (ev.type === "message" || ev.type === "response") {
+                accumulated += ev.content;
+                setReplayOut((current) => ({ ...current, [model]: accumulated }));
+              }
+            },
+            onDone: async () => {
+              await bridge.evals.updateResult(result.id, {
+                endedAt: new Date().toISOString(), latencyMs: Date.now() - t0, output: accumulated,
+              });
+              finish();
+            },
+            onError: async (err) => {
+              accumulated = `Error: ${err.message}`;
+              setReplayOut((current) => ({ ...current, [model]: accumulated }));
+              await bridge.evals.updateResult(result.id, {
+                endedAt: new Date().toISOString(), latencyMs: Date.now() - t0, output: accumulated,
+              });
+              finish();
+            },
           });
-          await loadResults(selected.id);
-        }
-      },
-      onError: (err) => {
-        setReplaying(false);
-        setReplayOut(`Error: ${err.message}`);
-      },
-    });
-    return stop;
+        });
+      }
+    } finally {
+      setReplaying(false);
+      await loadResults(selected.id);
+    }
   }, [selected, replaying, bridge, selectedModel, loadResults]);
 
   const handleScore = async (resultId: string, score: number) => {
@@ -192,15 +203,15 @@ export function EvalBenchView() {
       {/* ── Case list ── */}
       <aside className="w-56 flex-shrink-0 border-r border-border/60 flex flex-col">
         <div className="px-3 py-2.5 border-b border-border/40 flex items-center justify-between">
-          <span className="text-xs font-semibold text-muted uppercase tracking-wide">Eval Cases</span>
+          <span className="text-xs font-semibold text-muted uppercase tracking-wide">Arena tasks</span>
           <button
             onClick={() => { setSelectedId(null); setEditing({ ...EMPTY }); }}
             className="text-accent text-xs hover:text-accent/80"
-          >+ New</button>
+          >+ New task</button>
         </div>
         <div className="flex-1 overflow-y-auto py-1">
           {cases.length === 0 && (
-            <p className="px-3 py-4 text-xs text-muted text-center">No evals yet</p>
+            <p className="px-3 py-4 text-xs text-muted text-center">No arena tasks yet</p>
           )}
           {cases.map((c) => (
             <button
@@ -222,7 +233,7 @@ export function EvalBenchView() {
         {/* Editor mode */}
         {editing && (
           <div className="space-y-4 max-w-2xl">
-            <h2 className="text-sm font-semibold text-text">{editing.id ? "Edit Eval" : "New Eval"}</h2>
+            <h2 className="text-sm font-semibold text-text">{editing.id ? "Edit arena task" : "New arena task"}</h2>
             <Field label="Name">
               <TextInput value={editing.name ?? ""} onChange={(v) => setEditing({ ...editing, name: v })} placeholder="My eval" />
             </Field>
@@ -240,10 +251,27 @@ export function EvalBenchView() {
                   {MODES.map((m) => <option key={m} value={m}>{MODE_LABELS[m]}</option>)}
                 </select>
               </Field>
-              <Field label="Model">
-                <TextInput value={editing.model ?? ""} onChange={(v) => setEditing({ ...editing, model: v })} placeholder="qwen3.6:27b" mono />
+              <Field label="Default model">
+                <TextInput
+                  value={editing.model ?? ""}
+                  onChange={(model) => setEditing({ ...editing, model, models: [model, ...(editing.models ?? []).slice(1)] })}
+                  placeholder="qwen3.6:27b"
+                  mono
+                />
               </Field>
             </div>
+            <Field label="Arena models (one per line)">
+              <TextArea
+                value={modelsForArena({ model: editing.model ?? "", models: editing.models }).join("\n")}
+                onChange={(value) => {
+                  const models = value.split("\n").map((model) => model.trim()).filter(Boolean);
+                  setEditing({ ...editing, models, model: models[0] ?? editing.model ?? "" });
+                }}
+                placeholder={"qwen3:14b\ngemma3:12b"}
+                rows={3}
+              />
+              <p className="text-[11px] text-muted">Entrants run one at a time to protect local GPU headroom.</p>
+            </Field>
             <Field label="Expected notes">
               <TextArea value={editing.expectedNotes ?? ""} onChange={(v) => setEditing({ ...editing, expectedNotes: v })}
                 placeholder="Should mention X, avoid Y…" rows={2} />
@@ -291,7 +319,7 @@ export function EvalBenchView() {
                   disabled={replaying}
                   className="text-xs px-3 py-1.5 rounded-lg bg-accent text-white hover:bg-accent/80 disabled:opacity-50"
                 >
-                  {replaying ? "Running…" : "▶ Replay"}
+                  {replaying ? "Running arena…" : `▶ Run ${modelsForArena(selected).length > 1 ? "arena" : "task"}`}
                 </button>
               </div>
             </div>
@@ -318,14 +346,19 @@ export function EvalBenchView() {
             )}
 
             {/* Live output during replay */}
-            {replayOut && (
+            {Object.keys(replayOut).length > 0 && (
               <div className="space-y-1">
                 <p className="text-[11px] text-muted uppercase tracking-wide">
-                  {replaying ? "Output (streaming…)" : "Latest output"}
+                  {replaying ? "Arena output (streaming…)" : "Latest arena output"}
                 </p>
-                <pre className="text-sm text-text/90 whitespace-pre-wrap bg-surface2/40 rounded-lg px-3 py-2 border border-border/40 max-h-64 overflow-y-auto">
-                  {replayOut}
-                </pre>
+                <div className="grid gap-2">
+                  {Object.entries(replayOut).map(([model, output]) => (
+                    <div key={model} className="border border-border/40 rounded-lg px-3 py-2">
+                      <p className="mb-1 text-[11px] font-medium text-muted font-mono">{model}</p>
+                      <pre className="text-sm text-text/90 whitespace-pre-wrap max-h-64 overflow-y-auto">{output}</pre>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -337,6 +370,7 @@ export function EvalBenchView() {
                   <div key={r.id} className="border border-border/40 rounded-xl p-3 space-y-2">
                     <div className="flex items-center gap-3">
                       <span className="text-[10px] text-muted">{new Date(r.startedAt).toLocaleString()}</span>
+                      {r.model && <span className="text-[10px] text-accent font-mono">{r.model}</span>}
                       {r.latencyMs && (
                         <span className="text-[10px] text-muted">{(r.latencyMs / 1000).toFixed(1)}s</span>
                       )}
@@ -355,8 +389,8 @@ export function EvalBenchView() {
         {/* Empty state */}
         {!selected && !editing && (
           <div className="flex-1 flex flex-col items-center justify-center text-center select-none">
-            <div className="text-4xl mb-4 text-accent/40">⚗</div>
-            <p className="text-sm text-muted">Select an eval case or create a new one</p>
+            <div className="text-4xl mb-4 text-accent/40">◈</div>
+            <p className="text-sm text-muted">Select an arena task or create a new one</p>
           </div>
         )}
       </main>
