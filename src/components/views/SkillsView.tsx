@@ -15,7 +15,7 @@ export function SkillsView() {
           <h2 className="text-sm font-semibold text-text">Local skill management is available in Memex Desktop</h2>
           <p className="mt-2 text-sm leading-6 text-muted">
             Skills can read project and user folders, so this browser view does not scan or change local files.
-            Open Memex Desktop to review, enable, and export skills from <code className="font-mono text-xs">.claude/</code> and your user skill directory.
+            Open Memex Desktop to review, enable, and export skills from <code className="font-mono text-xs">.claude/</code>, <code className="font-mono text-xs">.codex/skills</code>, and your user skill directory.
           </p>
           <div className="mt-4 grid gap-2 text-xs text-muted sm:grid-cols-2">
             <div className="rounded-lg border border-border/50 bg-surface2/30 p-3">Project skills override user skills.</div>
