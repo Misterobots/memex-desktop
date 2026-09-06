@@ -64,6 +64,22 @@ describe("desktop parity interaction contracts (mocked runtime)", () => {
     });
   });
 
+  it("keeps the selected model when Product Design or Sites locks design mode", async () => {
+    useStore.setState({ selectedModel: "gemma3:12b" });
+    const user = userEvent.setup();
+    render(<InputBar lockMode="design" experience="sites" />);
+    await user.type(screen.getByRole("textbox"), "Create a responsive launch page{enter}");
+
+    const request = vi.mocked(streamChat).mock.calls[0][0];
+    const siteSession = useStore.getState().activeSession("sites");
+    expect(request).toMatchObject({
+      mode: "design",
+      model: "gemma3:12b",
+      modeFlags: { design_mode: true },
+    });
+    expect(request.sessionId).toBe(siteSession?.id);
+  });
+
   it("keeps Shift+Enter as a newline and allows another send after stream failure", async () => {
     const user = userEvent.setup();
     render(<InputBar />);
