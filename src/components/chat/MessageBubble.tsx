@@ -51,7 +51,7 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
 
   const events = message.events ?? [];
   const errors = errorEvents(events);
-  const showActivity = displayMode !== "summary";
+  const showActivity = displayMode !== "summary" && displayMode !== "none";
   const showThoughts = displayMode === "thought";
   const clarification = events.find((e) => e.type === "clarification_card");
   const outputs = outputsFromEvents(events);
@@ -81,7 +81,7 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
       </div>
 
       <div className="flex-1 min-w-0 space-y-2.5">
-        {isActive ? (
+        {isActive && showActivity ? (
           <LiveActivity events={events} active={true} waiting={isWaiting} verbose={showThoughts} brief={!showActivity} />
         ) : showActivity && events.length > 0 && (
           <LiveActivity events={events} active={false} waiting={false} verbose={showThoughts} />

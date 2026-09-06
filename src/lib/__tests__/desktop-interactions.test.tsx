@@ -23,7 +23,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   delete window.memex;
   localStorage.clear();
-  useStore.setState({ sessions: [], activeSessionIds: {}, workspaceDisplayModes: {}, streamingSessions: {}, stopStreams: {}, activeTab: "chat", mode: "chat", selectedModel: "qwen3:14b" });
+  useStore.setState({ sessions: [], activeSessionIds: {}, workspaceDisplayModes: {}, workspaceRunPreferences: {}, streamingSessions: {}, stopStreams: {}, activeTab: "chat", mode: "chat", selectedModel: "qwen3:14b" });
   stop = vi.fn<() => void>();
   vi.mocked(streamChat).mockReturnValue(stop);
   vi.mocked(listTriggers).mockResolvedValue({ status: 200, triggers: [] });
@@ -35,12 +35,14 @@ describe("desktop parity interaction contracts (mocked runtime)", () => {
     const user = userEvent.setup();
     render(<InputBar lockMode="swarm" experience="code" workspaceKey="C:/alpha" />);
     expect(screen.getByText("Collective")).toBeTruthy();
-    await user.selectOptions(screen.getByRole("combobox", { name: "Workspace verbosity" }), "summary");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Output detail" }), "high");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Reasoning summary" }), "detailed");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Reasoning effort" }), "high");
     await user.type(screen.getByRole("textbox"), "Build a local example{enter}");
     const request = vi.mocked(streamChat).mock.calls[0][0];
-    expect(request).toMatchObject({ mode: "swarm", modeFlags: { swarm_mode: true }, workspaceKey: "C:/alpha" });
+    expect(request).toMatchObject({ mode: "swarm", style: "explanatory", modeFlags: { swarm_mode: true, ultrathink_mode: true }, workspaceKey: "C:/alpha" });
     const session = useStore.getState().activeSession("code", "C:/alpha")!;
-    expect(session.displayMode).toBe("summary");
+    expect(session.displayMode).toBe("thought");
     expect(session.messages[0].mode).toBe("swarm");
     await user.click(screen.getByRole("button", { name: "Stop" }));
     expect(stop).toHaveBeenCalledOnce();

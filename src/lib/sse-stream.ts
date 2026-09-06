@@ -41,6 +41,8 @@ export interface StreamOptions {
   messages: Array<{ role: string; content: string }>;
   mode: MemexMode;
   modeFlags: Record<string, boolean>;
+  /** Backend-supported output shaping: concise, default, or explanatory. */
+  style?: "concise" | "explanatory";
   /** Ollama model id to route to (e.g. "qwen3-coder:30b"). Defaults to "swarm". */
   model?: string;
   sessionId?: string;
@@ -141,6 +143,7 @@ export function streamChat(opts: StreamOptions): () => void {
     already_steered: opts.alreadySteered ?? false,
     dev_resume: opts.devResume ?? false,
     workspace_key: opts.workspaceKey ?? opts.sessionId ?? "default-workspace",
+    ...(opts.style ? { style: opts.style } : {}),
     ...opts.modeFlags,
   });
 

@@ -53,7 +53,17 @@ export interface TaskWorker {
   completed_at?: number;
 }
 
-export type ChatDisplayMode = "normal" | "summary" | "thought";
+export type ChatDisplayMode = "none" | "normal" | "summary" | "thought";
+export type OutputDetail = "low" | "medium" | "high";
+export type ReasoningSummary = "auto" | "concise" | "detailed" | "none";
+export type ReasoningEffort = "low" | "medium" | "high";
+
+/** Per-workspace run controls, deliberately separate from the chosen model. */
+export interface WorkspaceRunPreferences {
+  outputDetail: OutputDetail;
+  reasoningSummary: ReasoningSummary;
+  reasoningEffort: ReasoningEffort;
+}
 
 /** Wire/storage identifiers remain legacy-compatible; use MODE_LABELS for UI copy. */
 export type MemexMode =

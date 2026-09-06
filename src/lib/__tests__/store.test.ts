@@ -12,11 +12,18 @@ describe("experience-owned sessions", () => {
     expect(useStore.getState().activeSession("code", "C:/alpha")?.displayMode).toBe("summary");
     expect(useStore.getState().activeSession("code", "C:/beta")?.displayMode).toBe("normal");
   });
+  it("keeps run controls independent for each workspace", () => {
+    useStore.getState().setWorkspaceRunPreferences("research", undefined, { outputDetail: "high", reasoningSummary: "detailed" });
+    useStore.getState().setWorkspaceRunPreferences("code", "C:/alpha", { reasoningEffort: "high" });
+    expect(useStore.getState().workspaceRunPreferences.research).toMatchObject({ outputDetail: "high", reasoningSummary: "detailed", reasoningEffort: "medium" });
+    expect(useStore.getState().workspaceRunPreferences["code:C:/alpha"]).toMatchObject({ outputDetail: "medium", reasoningSummary: "auto", reasoningEffort: "high" });
+  });
   beforeEach(() => {
     useStore.setState({
       sessions: [],
       activeSessionIds: {},
       workspaceDisplayModes: {},
+      workspaceRunPreferences: {},
       activeTab: "chat",
       shellMode: "chat",
       designSurface: "product",

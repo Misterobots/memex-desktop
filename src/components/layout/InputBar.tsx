@@ -1,11 +1,11 @@
 import { useRef, useState, useCallback, useEffect } from "react";
-import { useStore } from "../../lib/store";
+import { defaultRunPreferences, sessionScopeKey, useStore } from "../../lib/store";
 import { streamChat } from "../../lib/sse-stream";
 import { pushSession } from "../../lib/conv-sync";
 import { MODE_FLAGS, MODE_LABELS, type ExperienceId, type MemexMode, type ChatMessage, type MessageEvent } from "../../types/memex";
 import { ModelPickerPopover } from "./ModelPickerPopover";
 import { ContextMeter } from "./ContextMeter";
-import { VerbosityControl } from "../chat/VerbosityControl";
+import { RunControls } from "../chat/VerbosityControl";
 
 const MODES: MemexMode[] = ["chat", "swarm", "research", "design", "think", "plan"];
 
@@ -62,7 +62,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
   const {
     mode: globalMode, setMode, createSession,
     addMessage, appendEvent, updateMessageContent, updateMessageRunId, setMessageUsage,
-    setStreaming, streamingSessions, stopStreams, activeSession, selectedModel,
+    setStreaming, streamingSessions, stopStreams, activeSession, selectedModel, workspaceRunPreferences,
   } = useStore();
 
   const mode = lockMode ?? globalMode;
@@ -70,6 +70,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
   const currentSessionId = currentSession?.id;
   const streaming = currentSessionId ? !!streamingSessions[currentSessionId] : false;
   const stopStream = currentSessionId ? stopStreams[currentSessionId] : undefined;
+  const runPreferences = workspaceRunPreferences[sessionScopeKey(experience, workspaceKey)] ?? defaultRunPreferences;
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -131,7 +132,8 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       messages: history,
       mode,
       model: selectedModel,
-      modeFlags: { ...MODE_FLAGS[mode], ...extraFlags },
+      style: runPreferences.outputDetail === "low" ? "concise" : runPreferences.outputDetail === "high" ? "explanatory" : undefined,
+      modeFlags: { ...MODE_FLAGS[mode], ...extraFlags, ...(runPreferences.reasoningEffort === "high" ? { ultrathink_mode: true } : {}) },
       sessionId,
       workspaceKey,
       runMeta: { profile: "default" },
@@ -163,7 +165,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       },
     });
     setStreaming(sessionId, true, stop);
-  }, [text, streaming, disabledReason, mode, experience, workspaceKey, extraFlags]);
+  }, [text, streaming, disabledReason, mode, experience, workspaceKey, extraFlags, runPreferences]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Enter sends; Shift+Enter inserts a newline. Skip while an IME composition
@@ -186,7 +188,6 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
   return (
     <div className="px-6 pb-5 pt-2 flex-shrink-0">
       <div className="max-w-conversation mx-auto">
-        <div className="mb-2 flex justify-end"><VerbosityControl experience={experience} workspaceKey={workspaceKey} /></div>
         <div className="bg-surface border border-border rounded-2xl px-3 pt-3 pb-2 focus-within:border-accent/50 transition-colors shadow-lg shadow-black/10">
           <textarea
             ref={textareaRef}
@@ -248,6 +249,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
                 </div>
               )}
               <ModelPickerPopover />
+              <RunControls experience={experience} workspaceKey={workspaceKey} />
               <ContextMeter />
             </div>
 

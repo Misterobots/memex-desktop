@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type {
   ChatMessage, Session, ConnectionStatus, MemexMode, MessageEvent, AppTab, TokenUsage,
-  ExperienceId, ChatDisplayMode, AppShellMode,
+  ExperienceId, ChatDisplayMode, AppShellMode, WorkspaceRunPreferences,
 } from "../types/memex";
 
 const SHELL_TABS: Record<AppShellMode, AppTab[]> = {
@@ -28,12 +28,18 @@ export const sessionMatches = (session: Session, experience: ExperienceId, works
 export const sessionScopeKey = (experience: ExperienceId, workspaceKey?: string) =>
   experience === "code" ? `code:${workspaceKey || "unselected"}` : experience;
 
+export const defaultRunPreferences: WorkspaceRunPreferences = {
+  outputDetail: "medium", reasoningSummary: "auto", reasoningEffort: "medium",
+};
+
 interface AppState {
   // Sessions
   sessions: Session[];
   activeSessionIds: Record<string, string | undefined>;
   workspaceDisplayModes: Record<string, ChatDisplayMode>;
   setWorkspaceDisplayMode: (experience: ExperienceId, workspaceKey: string | undefined, mode: ChatDisplayMode) => void;
+  workspaceRunPreferences: Record<string, WorkspaceRunPreferences>;
+  setWorkspaceRunPreferences: (experience: ExperienceId, workspaceKey: string | undefined, preferences: Partial<WorkspaceRunPreferences>) => void;
 
   // UI state
   activeTab: AppTab;
@@ -92,6 +98,14 @@ export const useStore = create<AppState>()(
         sessions: s.sessions.map((session) => session.id === get().activeSession(experience, workspaceKey)?.id
           ? { ...session, displayMode: mode, updatedAt: Date.now() } : session),
       })),
+      workspaceRunPreferences: {},
+      setWorkspaceRunPreferences: (experience, workspaceKey, preferences) => set((s) => {
+        const key = sessionScopeKey(experience, workspaceKey);
+        return { workspaceRunPreferences: {
+          ...s.workspaceRunPreferences,
+          [key]: { ...defaultRunPreferences, ...s.workspaceRunPreferences[key], ...preferences },
+        } };
+      }),
       activeTab: "chat",
       shellMode: "chat",
       designSurface: "product",
@@ -283,7 +297,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: "memex-desktop",
-      version: 6,
+      version: 7,
       // mode is intentionally NOT persisted — it's a per-session intent, and a
       // sticky "swarm" silently turned greetings into build orchestration.
       // Each launch starts in the default "chat" mode.
@@ -291,6 +305,7 @@ export const useStore = create<AppState>()(
         sessions: s.sessions.slice(0, 50),
         activeSessionIds: s.activeSessionIds,
         workspaceDisplayModes: s.workspaceDisplayModes,
+        workspaceRunPreferences: s.workspaceRunPreferences,
         activeTab: s.activeTab,
         shellMode: s.shellMode,
         designSurface: s.designSurface,
@@ -333,6 +348,7 @@ export const useStore = create<AppState>()(
           persisted.designSurface = persisted.activeTab === "sites" ? "sites" : "product";
           if (persisted.activeTab === "sites") persisted.activeTab = "design";
         }
+        if (persisted && version < 7) persisted.workspaceRunPreferences = {};
         return persisted;
       },
     }
