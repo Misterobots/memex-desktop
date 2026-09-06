@@ -124,6 +124,19 @@ describe("desktop parity interaction contracts (mocked runtime)", () => {
     expect(screen.getByRole("status").textContent).toContain("Saved C:/Users/Memex/Downloads/test.html.");
   });
 
+  it("renders live audio, video, and downloadable file outputs without inventing a preview", () => {
+    const event = (type: string, content: Record<string, unknown>) => ({ type: "artifact" as const, content: "", data: { type, content } });
+    const { container } = render(<MessageOutputs events={[
+      event("media_attachment", { filename: "voice.wav", mimeType: "audio/wav", url: "/delivered_artifacts/voice.wav", downloadUrl: "/delivered_artifacts/voice.wav?dl=1" }),
+      event("media_attachment", { filename: "clip.mp4", mimeType: "video/mp4", url: "/delivered_artifacts/clip.mp4", downloadUrl: "/delivered_artifacts/clip.mp4?dl=1" }),
+      event("artifact", { filename: "report.pdf", mimeType: "application/pdf", url: "/delivered_artifacts/report.pdf", downloadUrl: "/delivered_artifacts/report.pdf?dl=1" }),
+    ]} />);
+    expect(container.querySelector("audio")?.getAttribute("src")).toContain("/delivered_artifacts/voice.wav");
+    expect(container.querySelector("video")?.getAttribute("src")).toContain("/delivered_artifacts/clip.mp4");
+    expect(screen.getByText("Use Open / download to view this file.")).toBeTruthy();
+    expect(screen.getAllByRole("link", { name: "Open / download" })).toHaveLength(3);
+  });
+
   it.each(["Daily", "Repeating", "One-time"])("serializes Collective schedules with swarm_mode for %s", async (schedule) => {
     vi.mocked(createTrigger).mockResolvedValue({ status: 200 });
     const user = userEvent.setup();
