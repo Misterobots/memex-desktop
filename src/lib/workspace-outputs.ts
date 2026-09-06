@@ -52,6 +52,35 @@ export function activityLabel(value: string): string {
 export function sanitizeActivityText(value: string): string {
   return value.replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, "");
 }
+
+/**
+ * Detailed mode is a work trace, not a dump of private model reasoning.  Keep
+ * durable runtime decisions readable, and summarize unstructured thought
+ * chunks without exposing a model's scratchpad.
+ */
+export function activityDetail(value: string, type: MessageEvent["type"]): string {
+  const clean = activityLabel(value);
+  const lower = sanitizeActivityText(value).trim().toLowerCase();
+  if (/router started this turn/.test(lower)) return "Router started";
+  if (/jwt-ace.*(session|scope)/.test(lower)) return "Session prepared";
+  if (/security analysis/.test(lower)) return "Safety check completed";
+  if (/librarian started this turn/.test(lower)) return "Research agent started";
+  if (/memex started this turn/.test(lower)) return "Response agent started";
+  if (/forcing research intent|research \(\d+% confidence\)/.test(lower)) return "Research route selected";
+  if (/model queue status/.test(lower)) return "Model queue updated";
+  if (/response stream ended/.test(lower)) return "Response complete";
+  if (/\[research\].*completed query/.test(lower)) return "Research complete";
+  if (/\[turn .* completed\]/.test(lower)) return "Turn complete";
+  if (/^responding\.?$/.test(lower)) return "Streaming response";
+  if (/^requesting\.?$/.test(lower)) return "Starting request";
+  if (/^ready\.?$/.test(lower)) return "Ready";
+  if (type === "thought") {
+    if (/phase \d|routing to |hive fast|marsrl|verifier|compliance|multi-faceted/.test(lower)) return clean;
+    return "Considering response";
+  }
+  if (type === "log") return "Runtime update";
+  return clean;
+}
 export function safeOutputUrl(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   if (/^https?:\/\//i.test(value)) return value;

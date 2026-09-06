@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { MessageEvent } from "../../types/memex";
-import { activityEvents, activityLabel, errorEvents, sanitizeActivityText } from "../../lib/workspace-outputs";
+import { activityDetail, activityEvents, activityLabel, errorEvents, sanitizeActivityText } from "../../lib/workspace-outputs";
 
 function elapsedLabel(seconds: number) {
   return seconds < 60 ? seconds + "s" : Math.floor(seconds / 60) + "m " + seconds % 60 + "s";
@@ -30,6 +30,7 @@ export function LiveActivity({ events, active, waiting, verbose = false, brief =
   const failed = errorEvents(events).length > 0;
   const stopped = events.some((event) => event.data?.type === "cancelled");
   const heading = active ? "Working" : failed ? "Run failed" : stopped ? "Stopped" : "Activity";
+  const timelineEvents = (verbose ? milestones : presentationEvents).filter((event) => activityLabel(event.content) !== "Ready");
   if (!active && milestones.length === 0) return null;
   return <section aria-label="Run activity" className="text-sm">
     <div className="flex items-center gap-2 text-xs text-muted" role="status">
@@ -39,17 +40,18 @@ export function LiveActivity({ events, active, waiting, verbose = false, brief =
     </div>
     {brief ? <p className="mt-2 text-xs text-muted break-words">{latest}</p> : (
       <div className="mt-3 space-y-1.5 border-l border-border/50 pl-3">
-        {presentationEvents.map((event, index) => {
-          const structured = event.type.startsWith("tool_call") || event.type === "agent_event" || event.type === "log";
+        {verbose && <p className="pb-1 text-[10px] font-medium uppercase tracking-wider text-muted">Reasoning and activity</p>}
+        {timelineEvents.map((event, index) => {
+          const structured = event.type.startsWith("tool_call") || event.type === "agent_event";
           return structured ? <details key={index} className="rounded-lg border border-border/50 bg-surface text-xs">
             <summary className="cursor-pointer px-3 py-2 text-muted break-words">
-              {String(event.data?.tool_name ?? event.agent_name ?? (event.type === "log" ? "Runtime detail" : "Tool activity"))}
+              {String(event.data?.tool_name ?? event.agent_name ?? "Tool activity")}
               {event.type === "tool_call_result" ? " · Result" : ""}
             </summary>
             <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words border-t border-border/50 px-3 py-2">{sanitizeActivityText(event.data && structured ? JSON.stringify(event.data, null, 2) : event.content)}</pre>
           </details> : <div key={index} className="flex items-center gap-2 text-xs leading-5 text-muted">
             <span className="h-1 w-1 shrink-0 rounded-full bg-muted/70" />
-            <span className={event.type === "thought" ? "text-text/80" : ""}>{activityLabel(event.content)}</span>
+            <span className={event.type === "thought" ? "text-text/80" : ""}>{verbose ? activityDetail(event.content, event.type) : activityLabel(event.content)}</span>
           </div>;
         })}
       </div>

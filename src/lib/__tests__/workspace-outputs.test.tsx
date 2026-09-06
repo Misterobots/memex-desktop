@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { activityEvents, activityLabel, outputsFromEvents, safeOutputUrl } from "../workspace-outputs";
+import { activityDetail, activityEvents, activityLabel, outputsFromEvents, safeOutputUrl } from "../workspace-outputs";
 import { normalizeSSEDelta } from "../sse-stream";
 import { MessageBubble } from "../../components/chat/MessageBubble";
 import type { ChatDisplayMode, ChatMessage, MessageEvent } from "../../types/memex";
@@ -61,12 +61,32 @@ describe("workspace output delivery", () => {
     expect(activityLabel("🎨 Design Studio: Generating HTML — 500 characters")).toBe("Generating design");
     expect(activityLabel("🧠 Neural Cortex: Analyzing intent...")).toBe("Choosing approach");
     expect(activityLabel("Request sent — preparing Memex…")).toBe("Preparing request");
+    expect(activityDetail("Router started this turn.", "log")).toBe("Router started");
+    expect(activityDetail("RESEARCH (95% confidence) forcing RESEARCH intent", "log")).toBe("Research route selected");
+    expect(activityDetail("private scratchpad text", "thought")).toBe("Considering response");
+    expect(activityDetail("unclassified runtime diagnostic", "log")).toBe("Runtime update");
+    expect(activityDetail(" responding.\n", "status")).toBe("Streaming response");
     const activity: MessageEvent = { type: "status", content: "💬 Hive Mind: Thinking..." };
     const markup = renderToStaticMarkup(<MessageBubble message={{ ...message, content: "", events: [activity] }} />);
     expect(markup).toContain("Thinking");
     expect(markup).not.toContain("💬");
     expect(markup).not.toContain("Hive Mind");
     expect(renderToStaticMarkup(<MessageBubble message={{ ...message, content: "", events: [{ type: "status", content: "Turn complete" }] }} />)).not.toContain("Ready");
+  });
+  it("shows the detailed work trace rather than collapsing it into runtime disclosures", () => {
+    const trace: MessageEvent[] = [
+      { type: "log", content: "Router started this turn." },
+      { type: "thought", content: "→ Research mode activated: forcing RESEARCH intent" },
+      { type: "log", content: "Librarian started this turn." },
+      { type: "log", content: "Response stream ended." },
+    ];
+    const markup = renderToStaticMarkup(<MessageBubble displayMode="thought" message={{ ...message, content: "", events: trace }} />);
+    expect(markup).toContain("Reasoning and activity");
+    expect(markup).toContain("Router started");
+    expect(markup).toContain("Research route selected");
+    expect(markup).toContain("Research agent started");
+    expect(markup).toContain("Response complete");
+    expect(markup).not.toContain("Runtime detail");
   });
   it.each<ChatDisplayMode>(["summary", "normal", "thought"])("keeps real media and cancellation visible in %s", (displayMode) => {
     const media = normalizeSSEDelta({ type: "media_attachment", content: { filename: "test.png", mimeType: "image/png", url: "/api/backend/delivered_artifacts/test.png", downloadUrl: "/api/backend/delivered_artifacts/test.png?dl=1" } })!;
