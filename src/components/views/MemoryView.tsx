@@ -143,7 +143,9 @@ export function MemoryView() {
         {msg && status !== "error" && (
           <div className="px-3 py-1.5 text-xs text-muted border-b border-border/40 bg-surface2/40 flex justify-between">
             <span>{msg}</span>
-            <button onClick={() => setMsg(null)} className="text-muted hover:text-text">✕</button>
+            <button onClick={() => setMsg(null)} aria-label="Dismiss message" className="text-muted hover:text-text">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M2 2l8 8M10 2L2 10" /></svg>
+            </button>
           </div>
         )}
 
@@ -167,7 +169,7 @@ export function MemoryView() {
                   <div className="text-xs text-text/80 line-clamp-2">{m.content}</div>
                   <div className="text-[10px] text-muted mt-0.5 flex gap-2">
                     {m.score !== undefined && <span>score: {m.score.toFixed(3)}</span>}
-                    {m.pinned && <span className="text-accent">📌 pinned</span>}
+                    {m.pinned && <span className="text-accent">Pinned</span>}
                     {m.created_at && <span>{new Date(m.created_at).toLocaleDateString()}</span>}
                   </div>
                 </div>
@@ -194,9 +196,14 @@ export function MemoryView() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => pinMemory(selected)}
+                aria-label={selected.pinned ? "Unpin memory" : "Pin memory"}
                 title={selected.pinned ? "Unpin" : "Pin"}
                 className="p-1 rounded hover:bg-surface2/60 text-sm"
-              >{selected.pinned ? "📌" : "📍"}</button>
+              >
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+                  <path d="M5 2.5h6M6 2.5v3l-2 2v1h8v-1l-2-2v-3M8 8.5v5" />
+                </svg>
+              </button>
               <button
                 onClick={() => deleteMemory(selected.id)}
                 title="Delete memory"
