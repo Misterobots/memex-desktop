@@ -14,6 +14,7 @@ export default function App() {
     setCommandPalette, commandPaletteOpen,
   } = useStore();
   const [wizardDone, setWizardDone] = useState<boolean | null>(null); // null = loading
+  const [runtimeReady, setRuntimeReady] = useState(false);
 
   // Check wizard completion state on startup
   useEffect(() => {
@@ -33,7 +34,7 @@ export default function App() {
       fetchRemoteSessions().then((remote) => {
         if (remote.length) useStore.getState().mergeRemoteSessions(remote);
       });
-    });
+    }).finally(() => setRuntimeReady(true));
 
     // Health status — prefer native push events in Electron, fall back to JS polling
     let id: ReturnType<typeof setInterval> | undefined;
@@ -126,7 +127,7 @@ export default function App() {
   };
 
   // Show nothing while wizard completion state is loading
-  if (wizardDone === null) return null;
+  if (wizardDone === null || (wizardDone && !runtimeReady)) return null;
 
   return (
     <>
