@@ -6,6 +6,7 @@ import { LiveActivity } from "./LiveActivity";
 import { SteeringCard } from "./SteeringCard";
 import { MessageOutputs } from "./MessageOutputs";
 import { MessageContent } from "./MessageContent";
+import { GauntletHandoffCard } from "./GauntletHandoffCard";
 import { UnrealEngineSetup } from "../setup/UnrealEngineSetup";
 import { needsUnrealSetup } from "../../lib/capability-recovery";
 import { errorEvents, outputsFromEvents } from "../../lib/workspace-outputs";
@@ -58,6 +59,8 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
   const clarification = events.find((e) => e.type === "clarification_card");
   const outputs = outputsFromEvents(events);
   const stopped = events.some((event) => event.data?.type === "cancelled");
+  const gauntletCheckpoint = events.find((event) => event.data?.type === "gauntlet_checkpoint");
+  const gauntletHandoffId = typeof gauntletCheckpoint?.data?.handoffId === "string" ? gauntletCheckpoint.data.handoffId : undefined;
   const disconnected = !isActive && !stopped && !clarification && errors.length === 0 && (
     events.some((event) => event.data?.type === "stream_started")
       ? !events.some((event) => event.data?.type === "stream_complete")
@@ -108,6 +111,8 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
             `Unreal Engine ${install.version} is configured locally. Continue the original Unreal task using ${install.commandPath}; do not treat the desktop as a sandbox or ask me to provide the engine directory again.`
           }));
         }} />}
+
+        {gauntletHandoffId && <GauntletHandoffCard handoffId={gauntletHandoffId} />}
 
         <MessageOutputs events={events} />
         {!isActive && message.content && <ResponseActions content={message.content} />}

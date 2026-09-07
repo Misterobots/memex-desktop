@@ -114,6 +114,17 @@ export interface UnrealEngineInstall {
   commandPath: string;
 }
 
+export type GauntletRole = "coordinator" | "builder" | "critic";
+export type GauntletPhase = "scope" | "build" | "critic" | "compare" | "repair" | "verify" | "final_review";
+export type GauntletHandoffStatus = "ready" | "accepted" | "completed" | "blocked" | "cancelled";
+export interface GauntletHandoff {
+  id: string; version: 1; createdAt: string; updatedAt: string; sessionId: string; workspaceKey?: string; runId?: string; parentId?: string;
+  role: GauntletRole; phase: GauntletPhase; status: GauntletHandoffStatus;
+  goal: string; qualityBar: string;
+  effort: { model: string; outputDetail: "low" | "medium" | "high"; reasoningSummary: "auto" | "concise" | "detailed" | "none"; reasoningEffort: "low" | "medium" | "high" };
+  owner?: string; acceptedAt?: string; completed: string[]; pending: string[]; deficits: string[]; nextAction: string;
+}
+
 // Fallback constants used when not running inside Electron (e.g. browser dev).
 // In Electron, the active RuntimeProfile's URLs are used instead via config.getUrls().
 export const AGENT_RUNTIME_DEFAULT = "http://192.168.2.101:8008";
@@ -305,6 +316,14 @@ export interface MemexBridge {
   ollama: {
     listModels:    () => Promise<OllamaModel[]>;
     contextLength: (model: string) => Promise<number | null>;
+  };
+
+  gauntlet: {
+    create: (input: Omit<GauntletHandoff, "id" | "version" | "createdAt" | "updatedAt" | "status" | "completed" | "pending" | "deficits" | "phase" | "nextAction"> & Partial<Pick<GauntletHandoff, "status" | "completed" | "pending" | "deficits" | "phase" | "nextAction">>) => Promise<GauntletHandoff>;
+    get: (id: string) => Promise<GauntletHandoff | null>;
+    forSession: (sessionId: string) => Promise<GauntletHandoff[]>;
+    patch: (id: string, patch: Partial<GauntletHandoff>) => Promise<GauntletHandoff | null>;
+    accept: (id: string, owner: string) => Promise<GauntletHandoff | null>;
   };
 
   localLlm: {

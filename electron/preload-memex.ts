@@ -252,6 +252,8 @@ contextBridge.exposeInMainWorld("memex", {
     contextLength: (model: string) => ipcRenderer.invoke("ollama:contextLength", model) as Promise<number | null>,
   },
 
+  gauntlet: bridgeNamespace("gauntlet", { create: "create", get: "get", forSession: "forSession", patch: "patch", accept: "accept" }),
+
   localLlm: {
     inspect: () => ipcRenderer.invoke("localLlm:inspect"),
     pullModel: (ollamaUrl: string, model: string) => ipcRenderer.invoke("localLlm:pullModel", ollamaUrl, model),

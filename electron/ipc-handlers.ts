@@ -36,6 +36,7 @@ import type { ArtifactStore }          from "./artifact-store";
 import type { HooksStore }             from "./hooks-store";
 import type { PermissionStore }        from "./permission-store";
 import type { WorktreeManager }        from "./worktree-manager";
+import type { GauntletHandoffStore }   from "./gauntlet-handoff-store";
 import { fireHooks }                   from "./hooks-runner";
 import { runOpenScad, type RenderParams } from "./openscad-runner";
 import { autoWireStore }                  from "./ipc-autowire";
@@ -103,12 +104,13 @@ export interface IpcContext {
   evals:     EvalStore;
   artifacts: ArtifactStore;
   hooks:     HooksStore;
+  gauntletHandoffs: GauntletHandoffStore;
   getMain:   () => BrowserWindow | null;
   startHealthLoop: () => void;
 }
 
 export function registerAllIpc(ctx: IpcContext): void {
-  const { config, firewall, permissions, worktrees, lsp, browser, browserPane, runs, evals, artifacts, hooks, getMain, startHealthLoop } = ctx;
+  const { config, firewall, permissions, worktrees, lsp, browser, browserPane, runs, evals, artifacts, hooks, gauntletHandoffs, getMain, startHealthLoop } = ctx;
 
   // ── Identity ──────────────────────────────────────────────────────────────
   ipcMain.handle("identity:get", () => getCurrentUid());
@@ -558,6 +560,10 @@ export function registerAllIpc(ctx: IpcContext): void {
       return null;
     }
   });
+
+  // Gauntlet packets are intentionally local and append-only. This keeps the
+  // goal/bar/effort policy available even if the hosted coordinator changes.
+  autoWireStore("gauntlet", gauntletHandoffs, { create: "create", get: "get", forSession: "forSession", patch: "patch", accept: "accept" });
 
   // ── Local LLM setup ──────────────────────────────────────────────────────
   ipcMain.handle("localLlm:inspect", () => inspectLocalLlm());

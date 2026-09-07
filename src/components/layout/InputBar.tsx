@@ -1,6 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { defaultRunPreferences, sessionScopeKey, useStore } from "../../lib/store";
 import { streamChat } from "../../lib/sse-stream";
+import { desktop } from "../../lib/desktop";
 import { pushSession } from "../../lib/conv-sync";
 import { MODE_FLAGS, MODE_LABELS, type ExperienceId, type MemexMode, type ChatMessage, type MessageEvent } from "../../types/memex";
 import { ModelPickerPopover } from "./ModelPickerPopover";
@@ -118,7 +119,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
     return () => document.removeEventListener("mousedown", h);
   }, [modeOpen]);
 
-  const submit = useCallback(() => {
+  const submit = useCallback(async () => {
     const content = text.trim();
     if (!content || streaming || disabledReason) return;
     if (mode === "gauntlet" && !gauntletBar.trim()) {
@@ -158,18 +159,56 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
     history.push({ role: "user", content });
 
     let accumulated = "";
+    // Create the durable contract before streaming. The hosted runtime gets a
+    // copy, but resuming is always based on this desktop-owned record.
+    let handoffId: string | undefined;
+    const bridge = desktop();
+    if (mode === "gauntlet" && bridge?.gauntlet) {
+      const packet = await bridge.gauntlet.create({
+        sessionId,
+        workspaceKey,
+        role: "coordinator",
+        goal: content,
+        qualityBar: gauntletBar.trim(),
+        effort: {
+          model: selectedModel ?? "swarm",
+          outputDetail: runPreferences.outputDetail,
+          reasoningSummary: runPreferences.reasoningSummary,
+          reasoningEffort: runPreferences.reasoningEffort,
+        },
+      });
+      handoffId = packet.id;
+      appendEvent(sessionId, assistantId, {
+        type: "status",
+        content: `Gauntlet checkpoint ${packet.id.slice(0, 8)} saved — goal, quality bar, and effort policy are preserved locally.`,
+        receivedAt: Date.now(), data: { type: "gauntlet_checkpoint", handoffId: packet.id },
+      });
+      syncSession();
+    }
     const stop = streamChat({
       messages: history,
       mode,
       model: selectedModel,
       style: runPreferences.outputDetail === "low" ? "concise" : runPreferences.outputDetail === "high" ? "explanatory" : undefined,
       gauntletBar: mode === "gauntlet" ? gauntletBar.trim() : undefined,
+      gauntletHandoff: mode === "gauntlet" && handoffId ? {
+        id: handoffId, role: "coordinator", phase: "scope",
+        effort: {
+          model: selectedModel ?? "swarm",
+          outputDetail: runPreferences.outputDetail,
+          reasoningSummary: runPreferences.reasoningSummary,
+          reasoningEffort: runPreferences.reasoningEffort,
+        },
+      } : undefined,
       modeFlags: { ...MODE_FLAGS[mode], ...extraFlags, ...(runPreferences.reasoningEffort === "high" ? { ultrathink_mode: true } : {}) },
       sessionId,
       workspaceKey,
       runMeta: { profile: "default" },
       onRunStarted: (runId) => {
         updateMessageRunId(sessionId, assistantId, runId);
+        if (handoffId && bridge?.gauntlet) {
+          void bridge.gauntlet.patch(handoffId, { runId, phase: "build", nextAction: "Review the builder output against the quality bar, then explicitly assign a critic." });
+        }
         syncSession();
       },
       onUsage: (usage) => {
@@ -187,6 +226,13 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       onDone: () => {
         appendEvent(sessionId, assistantId, { type: "status", content: "Response stream ended.", receivedAt: Date.now(), data: { type: "stream_complete" } });
         setStreaming(sessionId, false);
+        if (handoffId && bridge?.gauntlet) {
+          void bridge.gauntlet.patch(handoffId, {
+            status: "ready", phase: "critic",
+            pending: ["Assign an independent critic", "Compare the output to the named quality bar", "Repair all documented deficits", "Verify before final review"],
+            nextAction: "The builder turn ended. Assign a critic; do not mark the Gauntlet complete yet.",
+          });
+        }
         syncSession();
       },
       onError: (err) => {
