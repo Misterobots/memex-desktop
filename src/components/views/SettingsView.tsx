@@ -512,6 +512,19 @@ export function SettingsView() {
         )}
       </Section>
 
+      <Section title="Local LLMs">
+        <p className="text-xs text-muted">
+          Discover Ollama, Open WebUI, ComfyUI, and a local Memex harness on this computer. The guided setup recommends models from your hardware and only changes routing when you approve it.
+        </p>
+        <button
+          onClick={async () => {
+            await bridge.config.requireWizard();
+            window.location.reload();
+          }}
+          className="px-3 py-1.5 rounded-lg bg-surface2 border border-border/60 text-sm hover:bg-surface2/80"
+        >Set up Local LLMs…</button>
+      </Section>
+
       {/* ── Permission Mode ── */}
       <Section title="Permission Mode">
         <Row label="Mode">

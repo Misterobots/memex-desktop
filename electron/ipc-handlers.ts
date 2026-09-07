@@ -40,6 +40,7 @@ import { fireHooks }                   from "./hooks-runner";
 import { runOpenScad, type RenderParams } from "./openscad-runner";
 import { autoWireStore }                  from "./ipc-autowire";
 import { MEMEX_PUBLIC_ORIGIN, publicSessionHeaders } from "./remote-auth";
+import { inspectLocalLlm, normalizeLocalEndpoint } from "./local-llm";
 
 const execAsync = promisify(exec);
 
@@ -473,6 +474,7 @@ export function registerAllIpc(ctx: IpcContext): void {
     const marker = join(dirname(process.resourcesPath), ".memex-setup-required");
     if (existsSync(marker)) unlinkSync(marker);
   });
+  ipcMain.handle("config:requireWizard", () => config.requireWizard());
   ipcMain.handle("config:setActive", (_e, id: string) => {
     const ok = config.setActive(id);
     if (ok) {
@@ -554,6 +556,45 @@ export function registerAllIpc(ctx: IpcContext): void {
     } catch {
       return null;
     }
+  });
+
+  // ── Local LLM setup ──────────────────────────────────────────────────────
+  ipcMain.handle("localLlm:inspect", () => inspectLocalLlm());
+  ipcMain.handle("localLlm:openOllamaDownload", async () => {
+    await shell.openExternal("https://ollama.com/download");
+  });
+  ipcMain.handle("localLlm:pullModel", async (_e, ollamaUrl: string, model: string) => {
+    try {
+      const base = normalizeLocalEndpoint(ollamaUrl);
+      if (!/^[a-zA-Z0-9._:/-]+$/.test(model)) throw new Error("Invalid model name");
+      const response = await fetch(`${base}/api/pull`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: model, stream: false }), signal: AbortSignal.timeout(30 * 60_000),
+      });
+      if (!response.ok) throw new Error((await response.text()).slice(0, 500));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : "Could not pull model" };
+    }
+  });
+  ipcMain.handle("localLlm:activate", (_e, payload: {
+    harnessUrl: string; mempalaceUrl: string; ollamaUrl: string; openWebUiUrl?: string; comfyUiUrl?: string; model: string;
+  }) => {
+    const profile = config.saveProfile({
+      id: "local-llm", name: "Local LLMs", providerType: "internal",
+      agentRuntime: normalizeLocalEndpoint(payload.harnessUrl),
+      mempalace: normalizeLocalEndpoint(payload.mempalaceUrl),
+      ollama: normalizeLocalEndpoint(payload.ollamaUrl),
+      localServices: {
+        openWebUi: payload.openWebUiUrl ? normalizeLocalEndpoint(payload.openWebUiUrl) : undefined,
+        comfyUi: payload.comfyUiUrl ? normalizeLocalEndpoint(payload.comfyUiUrl) : undefined,
+      },
+      defaultModel: payload.model,
+    });
+    config.setActive(profile.id);
+    getMain()?.webContents.send("config:changed", profile);
+    startHealthLoop();
+    return profile;
   });
 
   // ── Eval store (pure passthrough) ─────────────────────────────────────────

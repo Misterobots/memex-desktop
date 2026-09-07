@@ -20,6 +20,8 @@ export interface RuntimeProfile {
   ollama?:      string;
   /** Last model deliberately selected for this routing profile. */
   defaultModel?: string;
+  /** Optional local companion services configured by Local LLM setup. */
+  localServices?: { openWebUi?: string; comfyUi?: string };
   apiKey?:      string;   // plaintext in memory/IPC; encrypted only in the persisted file
   readonly?:    boolean; // seed profiles are read-only by convention (UI hint only)
 }

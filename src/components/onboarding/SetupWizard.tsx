@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { desktop } from "../../lib/desktop";
-import type { RuntimeProfile } from "../../lib/desktop";
+import type { LocalLlmInspection, RuntimeProfile } from "../../lib/desktop";
 
 // ---------------------------------------------------------------------------
 // Shared step layout
@@ -92,6 +92,15 @@ export function SetupWizard({ onComplete }: Props) {
   const [mode,     setMode]     = useState<"trusted" | "workspace" | "ask">("workspace");
   const [uid,      setUid]      = useState("");
   const [signingIn, setSigningIn] = useState(false);
+  const [connectionChoice, setConnectionChoice] = useState<"hosted" | "local" | "advanced">("hosted");
+  const [localInspection, setLocalInspection] = useState<LocalLlmInspection | null>(null);
+  const [localBusy, setLocalBusy] = useState(false);
+  const [localError, setLocalError] = useState("");
+  const [localModel, setLocalModel] = useState("qwen3:8b");
+  const [localUrls, setLocalUrls] = useState({
+    harnessUrl: "http://127.0.0.1:8008", mempalaceUrl: "http://127.0.0.1:8200", ollamaUrl: "http://127.0.0.1:11434",
+    openWebUiUrl: "http://127.0.0.1:3000", comfyUiUrl: "http://127.0.0.1:8188",
+  });
   const publicProfile = profiles.find((p) => p.id === "memex-anywhere");
 
   useEffect(() => {
@@ -123,6 +132,34 @@ export function SetupWizard({ onComplete }: Props) {
     }
   };
 
+  const inspectLocal = async () => {
+    if (!bridge) return;
+    setLocalBusy(true);
+    setLocalError("");
+    try {
+      const result = await bridge.localLlm.inspect();
+      setLocalInspection(result);
+      setLocalModel((current) => result.ollama.models.includes(current) ? current : result.recommendations[0]?.model ?? current);
+    } catch {
+      setLocalError("Could not inspect local services. You can still enter their addresses below.");
+    } finally { setLocalBusy(false); }
+  };
+
+  const activateLocal = async () => {
+    if (!bridge) return false;
+    setLocalBusy(true);
+    setLocalError("");
+    try {
+      const profile = await bridge.localLlm.activate({ ...localUrls, model: localModel });
+      setActiveId(profile.id);
+      setProfiles(await bridge.config.getAll());
+      return true;
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : "Could not save Local LLM settings.");
+      return false;
+    } finally { setLocalBusy(false); }
+  };
+
   const handleFinish = useCallback(async () => {
     if (!bridge) { onComplete(); return; }
     if (root.trim()) await bridge.workspace.addRoot(root.trim());
@@ -142,19 +179,22 @@ export function SetupWizard({ onComplete }: Props) {
 
         {/* Step 0: Runtime profile */}
         {step === 0 && (
-          <Step index={0} total={TOTAL} title="Connect to Memex" onNext={next}>
-            <p className="text-sm text-muted">Sign in once to use Memex securely from anywhere. Home-LAN routing is available below for advanced use.</p>
-            <div className="space-y-2">
-              {profiles.map((p) => (
-                <button key={p.id} onClick={() => { setActiveId(p.id); bridge?.config.setActive(p.id); }}
-                  className={`w-full text-left px-4 py-3 rounded-xl border transition-colors
-                    ${activeId === p.id ? "border-accent/50 bg-accent/10" : "border-border/40 hover:bg-surface2/60"}`}>
-                  <div className="text-sm font-medium text-text">{p.name}</div>
-                  <div className="text-xs text-muted mt-0.5 font-mono truncate">{p.agentRuntime}</div>
-                </button>
-              ))}
+          <Step index={0} total={TOTAL} title="Choose how Memex runs" onNext={() => {
+            if (connectionChoice === "local") void activateLocal().then((ok) => { if (ok) next(); });
+            else next();
+          }} nextLabel={connectionChoice === "local" ? "Use Local LLMs" : "Continue"}>
+            <p className="text-sm text-muted">Hosted Memex works from anywhere. Local LLMs connects this desktop to AI services you run on this computer.</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => { setConnectionChoice("hosted"); setActiveId(publicProfile?.id ?? activeId); bridge?.config.setActive(publicProfile?.id ?? activeId); }}
+                className={`text-left px-3 py-3 rounded-xl border ${connectionChoice === "hosted" ? "border-accent/50 bg-accent/10" : "border-border/40"}`}>
+                <div className="text-sm font-medium text-text">Hosted Memex</div><div className="text-xs text-muted mt-1">Secure, remote-ready</div>
+              </button>
+              <button onClick={() => { setConnectionChoice("local"); void inspectLocal(); }}
+                className={`text-left px-3 py-3 rounded-xl border ${connectionChoice === "local" ? "border-accent/50 bg-accent/10" : "border-border/40"}`}>
+                <div className="text-sm font-medium text-text">Local LLMs</div><div className="text-xs text-muted mt-1">Your models, your machine</div>
+              </button>
             </div>
-            {activeId === publicProfile?.id && (
+            {connectionChoice === "hosted" && activeId === publicProfile?.id && (
               <button
                 onClick={async () => {
                   setSigningIn(true);
@@ -165,6 +205,27 @@ export function SetupWizard({ onComplete }: Props) {
                 className="w-full py-2.5 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent/80 disabled:opacity-50"
               >{signingIn ? "Waiting for sign-in…" : "Sign in to Memex"}</button>
             )}
+            {connectionChoice === "local" && (
+              <div className="space-y-3 rounded-xl border border-border/50 bg-surface2/30 p-3">
+                <div className="flex items-center justify-between gap-3"><div><div className="text-sm font-medium text-text">Local setup</div><div className="text-xs text-muted">Discover services, then confirm your harness.</div></div>
+                  <button onClick={() => void inspectLocal()} disabled={localBusy} className="text-xs text-accent hover:text-accent/80">{localBusy ? "Checking…" : "Scan machine"}</button></div>
+                {localInspection && <>
+                  <div className="text-xs text-muted">{localInspection.systemRamGb} GB RAM · {localInspection.gpus.length ? localInspection.gpus.map((gpu) => `${gpu.name} (${gpu.vramGb} GB)`).join(", ") : "GPU details unavailable"}</div>
+                  <div className="space-y-1 rounded-lg bg-canvas/40 p-2"><StatusLine label="Ollama" ok={localInspection.ollama.reachable} required />
+                    <StatusLine label="Local Memex harness" ok={localInspection.harness.reachable} required />
+                    <StatusLine label="Open WebUI" ok={localInspection.openWebUi.reachable} />
+                    <StatusLine label="ComfyUI" ok={localInspection.comfyUi.reachable} /></div>
+                  {!localInspection.ollama.reachable && <button onClick={() => void bridge?.localLlm.openOllamaDownload()} className="text-xs text-accent hover:text-accent/80">Install Ollama ↗</button>}
+                  {localInspection.recommendations.length > 0 && <div className="space-y-1"><label className="text-xs text-muted">Recommended model</label><select value={localModel} onChange={(e) => setLocalModel(e.target.value)} className="w-full px-2 py-1.5 rounded-lg bg-canvas border border-border/60 text-sm text-text">{localInspection.recommendations.map((item) => <option key={item.model} value={item.model}>{item.model} — {item.label}</option>)}</select><p className="text-[11px] text-muted">{localInspection.recommendations.find((item) => item.model === localModel)?.reason}</p>
+                    {localInspection.ollama.reachable && !localInspection.ollama.models.includes(localModel) && <button onClick={async () => { setLocalBusy(true); const result = await bridge?.localLlm.pullModel(localUrls.ollamaUrl, localModel); setLocalBusy(false); if (!result?.ok) setLocalError(result?.error ?? "Could not pull model"); else void inspectLocal(); }} disabled={localBusy} className="text-xs text-accent hover:text-accent/80">Pull {localModel}</button>}</div>}
+                </>}
+                <div className="grid grid-cols-1 gap-1.5">{([ ["harnessUrl", "Memex harness"], ["mempalaceUrl", "Memory service"], ["ollamaUrl", "Ollama"], ["openWebUiUrl", "Open WebUI (optional)"], ["comfyUiUrl", "ComfyUI (optional)"] ] as const).map(([key, label]) => <label key={key} className="text-[11px] text-muted">{label}<input value={localUrls[key]} onChange={(e) => setLocalUrls((urls) => ({ ...urls, [key]: e.target.value }))} className="mt-0.5 w-full px-2 py-1.5 rounded-lg bg-canvas border border-border/60 text-xs text-text font-mono" /></label>)}</div>
+                <p className="text-[11px] text-muted">Ollama supplies models. The local Memex harness provides chat, tools, memory, and workspace workflows. If it is not running, continue to configure the addresses and test it on the next step.</p>
+                {localError && <p className="text-xs text-red-400">{localError}</p>}
+              </div>
+            )}
+            {connectionChoice === "advanced" && <div className="space-y-2">{profiles.map((p) => <button key={p.id} onClick={() => { setActiveId(p.id); bridge?.config.setActive(p.id); }} className={`w-full text-left px-4 py-3 rounded-xl border ${activeId === p.id ? "border-accent/50 bg-accent/10" : "border-border/40"}`}><div className="text-sm font-medium text-text">{p.name}</div><div className="text-xs text-muted font-mono truncate">{p.agentRuntime}</div></button>)}</div>}
+            {connectionChoice !== "advanced" && <button onClick={() => setConnectionChoice("advanced")} className="text-xs text-muted hover:text-text">Advanced routing profiles</button>}
           </Step>
         )}
 
