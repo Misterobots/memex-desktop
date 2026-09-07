@@ -103,7 +103,11 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
           </div>
         )}
 
-        {!isActive && needsUnrealSetup(message.content) && <UnrealEngineSetup compact />}
+        {!isActive && needsUnrealSetup(message.content) && <UnrealEngineSetup compact onContinue={(install) => {
+          window.dispatchEvent(new CustomEvent("chat:prefill", { detail:
+            `Unreal Engine ${install.version} is configured locally. Continue the original Unreal task using ${install.commandPath}; do not treat the desktop as a sandbox or ask me to provide the engine directory again.`
+          }));
+        }} />}
 
         <MessageOutputs events={events} />
         {!isActive && message.content && <ResponseActions content={message.content} />}

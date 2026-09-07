@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { desktop, type UnrealEngineInstall } from "../../lib/desktop";
 
-export function UnrealEngineSetup({ compact = false }: { compact?: boolean }) {
+export function UnrealEngineSetup({ compact = false, onContinue }: { compact?: boolean; onContinue?: (install: UnrealEngineInstall) => void }) {
   const bridge = desktop();
   const [configured, setConfigured] = useState<UnrealEngineInstall | null>(null);
   const [detected, setDetected] = useState<UnrealEngineInstall[]>([]);
@@ -36,6 +36,7 @@ export function UnrealEngineSetup({ compact = false }: { compact?: boolean }) {
       <button onClick={() => void scan()} className="px-2.5 py-1.5 rounded-md border border-border/60 text-xs hover:bg-surface2">Scan again</button>
       <button onClick={async () => { const folder = await bridge?.dialog.openFolder(); if (folder) await configure(folder); }} className="px-2.5 py-1.5 rounded-md border border-border/60 text-xs hover:bg-surface2">Choose engine folder…</button>
       {!configured && <button onClick={() => void bridge?.devTools.openUnrealInstall()} className="px-2.5 py-1.5 rounded-md border border-accent/40 text-xs text-accent hover:bg-accent/10">Install Unreal Engine ↗</button>}
+      {configured && onContinue && <button onClick={() => onContinue(configured)} className="px-2.5 py-1.5 rounded-md border border-accent/40 bg-accent/10 text-xs text-accent hover:bg-accent/20">Continue with Unreal Engine</button>}
     </div>
     {configured && !compact && <p className="text-[11px] text-muted">When you return to the task, Memex can use <code>UnrealEditor-Cmd.exe</code> for project generation and automation. It will still ask before creating files or running commands outside your approved workspace.</p>}
   </section>;

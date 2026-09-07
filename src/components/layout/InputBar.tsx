@@ -97,6 +97,20 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
     textareaRef.current?.focus();
   }, [prefillText]);
 
+  // Native quick-entry and capability-recovery cards hand off a proposed
+  // follow-up through this event. Prefill rather than auto-send so the user
+  // reviews the action before a local tool or workspace is used.
+  useEffect(() => {
+    const receivePrefill = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      if (typeof detail !== "string" || !detail.trim()) return;
+      setText(detail);
+      textareaRef.current?.focus();
+    };
+    window.addEventListener("chat:prefill", receivePrefill);
+    return () => window.removeEventListener("chat:prefill", receivePrefill);
+  }, []);
+
   useEffect(() => {
     if (!modeOpen) return;
     const h = (e: MouseEvent) => { if (!modeRef.current?.contains(e.target as Node)) setModeOpen(false); };
