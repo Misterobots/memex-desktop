@@ -441,9 +441,6 @@ export function SettingsView() {
 
       {/* ── Routing ── */}
       <Section title="Routing">
-        <p className="text-xs text-muted">
-          Memex Desktop runs on Home LAN by default. Memex Anywhere is an optional hosted route and is selected only when you choose it.
-        </p>
         <div className="space-y-2">
           {profiles.map((p) => (
             <div key={p.id}
