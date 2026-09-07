@@ -46,7 +46,7 @@ export interface StreamOptions {
   /** Required quality reference for a Gauntlet Collective run. */
   gauntletBar?: string;
   /** Desktop-owned continuation contract; the runtime may use it but does not own it. */
-  gauntletHandoff?: { id: string; role: string; phase: string; effort: Record<string, string> };
+  gauntletHandoff?: { id: string; role: string; phase: string; goal: string; qualityBar: string; effort: Record<string, string> };
   /** Ollama model id to route to (e.g. "qwen3-coder:30b"). Defaults to "swarm". */
   model?: string;
   sessionId?: string;

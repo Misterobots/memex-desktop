@@ -29,7 +29,10 @@ export function LiveActivity({ events, active, waiting, verbose = false, brief =
   const quietFor = receipt ? Math.max(0, Math.floor((Date.now() - receipt) / 1000)) : seconds;
   const failed = errorEvents(events).length > 0;
   const stopped = events.some((event) => event.data?.type === "cancelled");
-  const heading = active ? "Working" : failed ? "Run failed" : stopped ? "Stopped" : "Activity";
+  const completed = events.some((event) => event.data?.type === "stream_complete");
+  // A completed SSE stream can retain its useful chronology, but must never
+  // look like background work is still progressing.
+  const heading = active ? "Working" : failed ? "Run failed" : stopped ? "Stopped" : completed ? "Completed activity" : "Activity";
   const timelineEvents = (verbose ? milestones : presentationEvents).filter((event) => activityLabel(event.content) !== "Ready");
   if (!active && milestones.length === 0) return null;
   return <section aria-label="Run activity" className="text-sm">

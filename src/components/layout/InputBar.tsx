@@ -1,7 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { defaultRunPreferences, sessionScopeKey, useStore } from "../../lib/store";
 import { streamChat } from "../../lib/sse-stream";
-import { desktop } from "../../lib/desktop";
+import { desktop, type GauntletHandoff } from "../../lib/desktop";
 import { pushSession } from "../../lib/conv-sync";
 import { MODE_FLAGS, MODE_LABELS, type ExperienceId, type MemexMode, type ChatMessage, type MessageEvent } from "../../types/memex";
 import { ModelPickerPopover } from "./ModelPickerPopover";
@@ -122,7 +122,9 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
   const submit = useCallback(async () => {
     const content = text.trim();
     if (!content || streaming || disabledReason) return;
-    if (mode === "gauntlet" && !gauntletBar.trim()) {
+    // Browser/dev mode has no durable desktop checkpoint to resolve a resume
+    // request from, so it still requires the bar up front.
+    if (mode === "gauntlet" && !gauntletBar.trim() && !desktop()?.gauntlet) {
       setGauntletError("Choose a named, fetchable reference for the quality bar before starting the Gauntlet.");
       return;
     }
@@ -162,25 +164,30 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
     // Create the durable contract before streaming. The hosted runtime gets a
     // copy, but resuming is always based on this desktop-owned record.
     let handoffId: string | undefined;
+    let handoffPacket: GauntletHandoff | null = null;
     const bridge = desktop();
     if (mode === "gauntlet" && bridge?.gauntlet) {
-      const packet = await bridge.gauntlet.create({
-        sessionId,
-        workspaceKey,
-        role: "coordinator",
-        goal: content,
-        qualityBar: gauntletBar.trim(),
-        effort: {
-          model: selectedModel ?? "swarm",
-          outputDetail: runPreferences.outputDetail,
-          reasoningSummary: runPreferences.reasoningSummary,
-          reasoningEffort: runPreferences.reasoningEffort,
-        },
+      const mentionedId = content.match(/Resume Gauntlet checkpoint\s+([\w-]+)/i)?.[1];
+      const sessionPackets = await bridge.gauntlet.forSession(sessionId);
+      const previous = mentionedId
+        ? await bridge.gauntlet.get(mentionedId)
+        : /\bresume\b/i.test(content) ? sessionPackets.find((candidate) => candidate.status === "ready" || candidate.status === "accepted") ?? null : null;
+      if (!previous && !gauntletBar.trim()) {
+        setText(content);
+        setGauntletError("Choose a named, fetchable reference for the quality bar before starting the Gauntlet.");
+        return;
+      }
+      const packet = previous ?? await bridge.gauntlet.create({
+        sessionId, workspaceKey, role: "coordinator", goal: content, qualityBar: gauntletBar.trim(),
+        effort: { model: selectedModel ?? "swarm", outputDetail: runPreferences.outputDetail, reasoningSummary: runPreferences.reasoningSummary, reasoningEffort: runPreferences.reasoningEffort },
       });
       handoffId = packet.id;
+      handoffPacket = packet;
       appendEvent(sessionId, assistantId, {
         type: "status",
-        content: `Gauntlet checkpoint ${packet.id.slice(0, 8)} saved — goal, quality bar, and effort policy are preserved locally.`,
+          content: previous
+            ? `Resumed Gauntlet checkpoint ${packet.id.slice(0, 8)} — using the preserved original goal, quality bar, and effort policy.`
+            : `Gauntlet checkpoint ${packet.id.slice(0, 8)} saved — goal, quality bar, and effort policy are preserved locally.`,
         receivedAt: Date.now(), data: { type: "gauntlet_checkpoint", handoffId: packet.id },
       });
       syncSession();
@@ -190,14 +197,16 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       mode,
       model: selectedModel,
       style: runPreferences.outputDetail === "low" ? "concise" : runPreferences.outputDetail === "high" ? "explanatory" : undefined,
-      gauntletBar: mode === "gauntlet" ? gauntletBar.trim() : undefined,
+      gauntletBar: handoffPacket?.qualityBar ?? (mode === "gauntlet" ? gauntletBar.trim() : undefined),
       gauntletHandoff: mode === "gauntlet" && handoffId ? {
         id: handoffId, role: "coordinator", phase: "scope",
+        goal: handoffPacket?.goal ?? content,
+        qualityBar: handoffPacket?.qualityBar ?? gauntletBar.trim(),
         effort: {
-          model: selectedModel ?? "swarm",
-          outputDetail: runPreferences.outputDetail,
-          reasoningSummary: runPreferences.reasoningSummary,
-          reasoningEffort: runPreferences.reasoningEffort,
+          model: handoffPacket?.effort.model ?? selectedModel ?? "swarm",
+          outputDetail: handoffPacket?.effort.outputDetail ?? runPreferences.outputDetail,
+          reasoningSummary: handoffPacket?.effort.reasoningSummary ?? runPreferences.reasoningSummary,
+          reasoningEffort: handoffPacket?.effort.reasoningEffort ?? runPreferences.reasoningEffort,
         },
       } : undefined,
       modeFlags: { ...MODE_FLAGS[mode], ...extraFlags, ...(runPreferences.reasoningEffort === "high" ? { ultrathink_mode: true } : {}) },
@@ -227,10 +236,16 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
         appendEvent(sessionId, assistantId, { type: "status", content: "Response stream ended.", receivedAt: Date.now(), data: { type: "stream_complete" } });
         setStreaming(sessionId, false);
         if (handoffId && bridge?.gauntlet) {
-          void bridge.gauntlet.patch(handoffId, {
+          const producedAnswer = accumulated.trim().length > 0;
+          void bridge.gauntlet.patch(handoffId, producedAnswer ? {
             status: "ready", phase: "critic",
             pending: ["Assign an independent critic", "Compare the output to the named quality bar", "Repair all documented deficits", "Verify before final review"],
             nextAction: "The builder turn ended. Assign a critic; do not mark the Gauntlet complete yet.",
+          } : {
+            status: "blocked", phase: "build",
+            deficits: ["The runtime ended without a model response or builder artifact."],
+            pending: ["Resolve the runtime/model queue failure", "Resume the preserved checkpoint", "Verify a builder artifact is actually produced"],
+            nextAction: "No builder output arrived. Resolve the runtime failure, then resume this exact checkpoint.",
           });
         }
         syncSession();
