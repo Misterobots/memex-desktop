@@ -18,6 +18,7 @@ export function GauntletHandoffCard({ handoffId }: { handoffId: string }) {
   const [packet, setPacket] = useState<GauntletHandoff | null>(null);
   const [busy, setBusy] = useState(false);
   const [coordinatorNote, setCoordinatorNote] = useState("");
+  const [requiresSignIn, setRequiresSignIn] = useState(false);
   useEffect(() => { void desktop()?.gauntlet?.get(handoffId).then(setPacket); }, [handoffId]);
   if (!packet) return null;
 
@@ -35,6 +36,7 @@ export function GauntletHandoffCard({ handoffId }: { handoffId: string }) {
       return;
     }
     setBusy(true);
+    setRequiresSignIn(false);
     setCoordinatorNote("Checking the durable coordinator record…");
     try {
       const base = `${getAgentRuntime()}/v1/tasks/${encodeURIComponent(packet.id)}`;
@@ -42,8 +44,15 @@ export function GauntletHandoffCard({ handoffId }: { handoffId: string }) {
         bridge.api.request({ url: base, method: "GET" }),
         bridge.api.request({ url: `${base}/events`, method: "GET" }),
       ]);
+      const taskBody = taskResponse.body || "";
+      const taskContentType = taskResponse.headers["content-type"] || "";
+      if (/text\/html/i.test(taskContentType) || /<html[\s>]/i.test(taskBody)) {
+        setRequiresSignIn(true);
+        setCoordinatorNote("Memex Anywhere returned its sign-in page, not a coordinator record. Sign in again, then retry this checkpoint.");
+        return;
+      }
       if (taskResponse.status === 404) {
-        setCoordinatorNote("No coordinator record exists yet. Resume this checkpoint to start or reconnect it.");
+        setCoordinatorNote("This runtime has no durable record for the checkpoint. It may predate coordinator persistence or be on another runtime; resume with the preserved brief after the target runtime is upgraded.");
         return;
       }
       if (taskResponse.status < 200 || taskResponse.status >= 300) throw new Error(`status ${taskResponse.status}`);
@@ -69,6 +78,16 @@ export function GauntletHandoffCard({ handoffId }: { handoffId: string }) {
       setBusy(false);
     }
   };
+  const signIn = async () => {
+    setBusy(true);
+    try {
+      const complete = await desktop()?.remoteAuth.signIn();
+      setRequiresSignIn(!complete);
+      setCoordinatorNote(complete ? "Sign-in completed. Check coordinator again to read the durable run." : "Sign-in was not completed; the local checkpoint remains preserved.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return <section className="rounded-lg border border-accent/35 bg-accent/5 px-3 py-2.5 text-xs" aria-label="Gauntlet checkpoint">
     <div className="flex items-center justify-between gap-3">
@@ -82,6 +101,7 @@ export function GauntletHandoffCard({ handoffId }: { handoffId: string }) {
     <div className="mt-2 flex gap-2">
       {packet.status === "ready" && <button disabled={busy} onClick={() => void accept()} className="rounded border border-accent/50 px-2 py-1 text-accent hover:bg-accent/10 disabled:opacity-50">Accept ownership</button>}
       <button disabled={busy} onClick={() => void checkCoordinator()} className="rounded border border-border/60 px-2 py-1 text-text hover:bg-surface2 disabled:opacity-50">Check coordinator</button>
+      {requiresSignIn && <button disabled={busy} onClick={() => void signIn()} className="rounded border border-accent/50 px-2 py-1 text-accent hover:bg-accent/10 disabled:opacity-50">Sign in to Memex</button>}
       <button onClick={resume} className="rounded border border-border/60 px-2 py-1 text-text hover:bg-surface2">Resume with preserved brief</button>
     </div>
   </section>;
