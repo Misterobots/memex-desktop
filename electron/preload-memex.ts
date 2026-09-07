@@ -259,6 +259,12 @@ contextBridge.exposeInMainWorld("memex", {
     openOllamaDownload: () => ipcRenderer.invoke("localLlm:openOllamaDownload"),
   },
 
+  devTools: {
+    inspectUnreal: () => ipcRenderer.invoke("devTools:inspectUnreal"),
+    configureUnreal: (root: string) => ipcRenderer.invoke("devTools:configureUnreal", root),
+    openUnrealInstall: () => ipcRenderer.invoke("devTools:openUnrealInstall"),
+  },
+
   // Global keyboard shortcuts
   shortcuts: {
     get: () => ipcRenderer.invoke("shortcuts:get"),

@@ -107,6 +107,13 @@ export interface LocalLlmInspection {
   recommendations: Array<{ model: string; label: string; reason: string }>;
 }
 
+export interface UnrealEngineInstall {
+  root: string;
+  version: string;
+  editorPath: string;
+  commandPath: string;
+}
+
 // Fallback constants used when not running inside Electron (e.g. browser dev).
 // In Electron, the active RuntimeProfile's URLs are used instead via config.getUrls().
 export const AGENT_RUNTIME_DEFAULT = "http://192.168.2.101:8008";
@@ -305,6 +312,12 @@ export interface MemexBridge {
     pullModel: (ollamaUrl: string, model: string) => Promise<{ ok: boolean; error?: string }>;
     activate: (config: { harnessUrl: string; mempalaceUrl: string; ollamaUrl: string; openWebUiUrl?: string; comfyUiUrl?: string; model: string }) => Promise<RuntimeProfile>;
     openOllamaDownload: () => Promise<void>;
+  };
+
+  devTools: {
+    inspectUnreal: () => Promise<{ configured: UnrealEngineInstall | null; detected: UnrealEngineInstall[] }>;
+    configureUnreal: (root: string) => Promise<UnrealEngineInstall | null>;
+    openUnrealInstall: () => Promise<void>;
   };
 
   shortcuts: {

@@ -6,6 +6,8 @@ import { LiveActivity } from "./LiveActivity";
 import { SteeringCard } from "./SteeringCard";
 import { MessageOutputs } from "./MessageOutputs";
 import { MessageContent } from "./MessageContent";
+import { UnrealEngineSetup } from "../setup/UnrealEngineSetup";
+import { needsUnrealSetup } from "../../lib/capability-recovery";
 import { errorEvents, outputsFromEvents } from "../../lib/workspace-outputs";
 
 // Lazy import to avoid hard dep on ChatView context when used outside it
@@ -100,6 +102,8 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
             {isActive && message.content && <span className="cursor-blink" />}
           </div>
         )}
+
+        {!isActive && needsUnrealSetup(message.content) && <UnrealEngineSetup compact />}
 
         <MessageOutputs events={events} />
         {!isActive && message.content && <ResponseActions content={message.content} />}

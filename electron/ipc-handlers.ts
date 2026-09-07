@@ -41,6 +41,7 @@ import { runOpenScad, type RenderParams } from "./openscad-runner";
 import { autoWireStore }                  from "./ipc-autowire";
 import { MEMEX_PUBLIC_ORIGIN, publicSessionHeaders } from "./remote-auth";
 import { inspectLocalLlm, normalizeLocalEndpoint } from "./local-llm";
+import { discoverUnrealInstalls, validateUnrealRoot } from "./unreal-engine";
 
 const execAsync = promisify(exec);
 
@@ -595,6 +596,16 @@ export function registerAllIpc(ctx: IpcContext): void {
     getMain()?.webContents.send("config:changed", profile);
     startHealthLoop();
     return profile;
+  });
+
+  // ── Development tool setup ───────────────────────────────────────────────
+  ipcMain.handle("devTools:inspectUnreal", () => ({ configured: config.getUnrealEngine(), detected: discoverUnrealInstalls() }));
+  ipcMain.handle("devTools:configureUnreal", (_e, root: string) => {
+    const install = validateUnrealRoot(root);
+    return install ? config.setUnrealEngine(install) : null;
+  });
+  ipcMain.handle("devTools:openUnrealInstall", async () => {
+    await shell.openExternal("https://www.unrealengine.com/download");
   });
 
   // ── Eval store (pure passthrough) ─────────────────────────────────────────

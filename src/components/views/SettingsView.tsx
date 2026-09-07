@@ -9,6 +9,7 @@ import { ShortcutCapture } from "../settings/ShortcutCapture";
 import { GitHubPushConnect } from "../settings/GitHubPushConnect";
 import { Hooks } from "../settings/Hooks";
 import { MemoryView } from "./MemoryView";
+import { UnrealEngineSetup } from "../setup/UnrealEngineSetup";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -523,6 +524,10 @@ export function SettingsView() {
           }}
           className="px-3 py-1.5 rounded-lg bg-surface2 border border-border/60 text-sm hover:bg-surface2/80"
         >Set up Local LLMs…</button>
+      </Section>
+
+      <Section title="Development Tool Setup">
+        <UnrealEngineSetup />
       </Section>
 
       {/* ── Permission Mode ── */}

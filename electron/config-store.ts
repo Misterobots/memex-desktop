@@ -58,10 +58,18 @@ export interface ShortcutConfig {
   newChat:     string;  // new conversation
 }
 
+export interface UnrealEngineConfig {
+  root: string;
+  version: string;
+  editorPath: string;
+  commandPath: string;
+}
+
 export interface AppConfig {
   activeProfileId:     string;
   profiles:            RuntimeProfile[];
   allowedExtensionIds: string[]; // Chrome extension IDs for the browser bridge
+  unrealEngine?: UnrealEngineConfig;
   wizardComplete?:     boolean;
   shortcuts?:          Partial<ShortcutConfig>;
   trayHintShown?:      boolean;
@@ -228,6 +236,13 @@ export class ConfigStore {
     this.config.shortcuts = { ...this.getShortcuts(), ...sc };
     this.save();
     return this.getShortcuts();
+  }
+
+  getUnrealEngine(): UnrealEngineConfig | null { return this.config.unrealEngine ?? null; }
+  setUnrealEngine(engine: UnrealEngineConfig): UnrealEngineConfig {
+    this.config.unrealEngine = engine;
+    this.save();
+    return engine;
   }
 
   /** Convenience: URLs for the active profile (used in main.ts) */
