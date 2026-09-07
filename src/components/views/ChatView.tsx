@@ -1,6 +1,6 @@
 import { createContext, useContext, useState } from "react";
 import { ConversationPane } from "../chat/ConversationPane";
-import { InputBar } from "../layout/InputBar";
+import { CHAT_MODES, InputBar } from "../layout/InputBar";
 import { RunInspectorPanel } from "../chat/RunInspectorPanel";
 
 // ---------------------------------------------------------------------------
@@ -32,7 +32,7 @@ export function ChatView() {
       <div className="relative flex flex-1 min-h-0">
         <main className="flex flex-col flex-1 min-w-0">
           <ConversationPane />
-          <InputBar placeholder="Message Memex…" />
+          <InputBar placeholder="Message Memex…" modeOptions={CHAT_MODES} defaultMode="chat" />
         </main>
 
         {/* Inspector: full-screen overlay on mobile, side column on md+ */}

@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { InputBar } from "../../components/layout/InputBar";
+import { CODE_MODES, InputBar } from "../../components/layout/InputBar";
 import { SessionList } from "../../components/sidebar/SessionList";
 import { DiffReviewModal } from "../../components/shared/DiffReviewModal";
 import { ShortcutCapture } from "../../components/settings/ShortcutCapture";
@@ -50,10 +50,11 @@ describe("desktop parity interaction contracts (mocked runtime)", () => {
     expect(useStore.getState().activeSession("code", "C:/alpha")!.messages.at(-1)!.events.at(-1)!.data?.type).toBe("cancelled");
   });
 
-  it("requires a Gauntlet quality bar and serializes it with Collective orchestration", async () => {
-    useStore.setState({ mode: "gauntlet" });
+  it("makes Gauntlet available in Code, requires its quality bar, and serializes Collective orchestration", async () => {
     const user = userEvent.setup();
-    render(<InputBar experience="design" />);
+    render(<InputBar experience="code" workspaceKey="C:/alpha" modeOptions={CODE_MODES} defaultMode="swarm" />);
+    await user.click(screen.getByTitle("Select mode"));
+    await user.click(screen.getByText("Gauntlet"));
     await user.type(screen.getByRole("textbox", { name: "" }), "Create a product page{enter}");
     expect(streamChat).not.toHaveBeenCalled();
     expect(screen.getByRole("alert").textContent).toContain("named, fetchable reference");

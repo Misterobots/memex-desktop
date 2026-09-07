@@ -7,7 +7,10 @@ import { ModelPickerPopover } from "./ModelPickerPopover";
 import { ContextMeter } from "./ContextMeter";
 import { RunControls } from "../chat/VerbosityControl";
 
-const MODES: MemexMode[] = ["chat", "swarm", "gauntlet", "research", "design", "think", "plan"];
+/** General conversation intentionally excludes production-only Gauntlet work. */
+export const CHAT_MODES: MemexMode[] = ["chat", "swarm", "research", "design", "think", "plan"];
+/** Code owns the Pioneer Gauntlet because its output is a reviewed project change. */
+export const CODE_MODES: MemexMode[] = ["swarm", "gauntlet"];
 
 const MODE_DOT: Record<MemexMode, string> = {
   chat:     "bg-muted",
@@ -54,9 +57,13 @@ interface InputBarProps {
   disabledReason?: string;
   /** Drops example/starter text into the composer (e.g. an empty-state suggestion click). */
   prefillText?: string;
+  /** Limits the composer to modes appropriate for its owning workspace. */
+  modeOptions?: MemexMode[];
+  /** Used when the global picker selection does not belong to this workspace. */
+  defaultMode?: MemexMode;
 }
 
-export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder, experience = "chat", workspaceKey, disabledReason, prefillText }: InputBarProps) {
+export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder, experience = "chat", workspaceKey, disabledReason, prefillText, modeOptions, defaultMode }: InputBarProps) {
   const [text, setText] = useState("");
   const [modeOpen, setModeOpen] = useState(false);
   const [gauntletBar, setGauntletBar] = useState("");
@@ -69,7 +76,8 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
     setStreaming, streamingSessions, stopStreams, activeSession, selectedModel, workspaceRunPreferences,
   } = useStore();
 
-  const mode = lockMode ?? globalMode;
+  const availableModes = modeOptions ?? CHAT_MODES;
+  const mode = lockMode ?? (availableModes.includes(globalMode) ? globalMode : (defaultMode ?? availableModes[0]));
   const currentSession = activeSession(experience, workspaceKey);
   const currentSessionId = currentSession?.id;
   const streaming = currentSessionId ? !!streamingSessions[currentSessionId] : false;
@@ -236,7 +244,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
                   </button>
                   {modeOpen && (
                     <div className="absolute bottom-full mb-2 left-0 w-60 bg-canvas border border-border/60 rounded-xl shadow-2xl z-50 overflow-hidden py-1">
-                      {MODES.map((m) => (
+                      {availableModes.map((m) => (
                         <button
                           key={m}
                           onClick={() => { setMode(m); setModeOpen(false); }}

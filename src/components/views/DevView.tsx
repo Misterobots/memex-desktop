@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useStore } from "../../lib/store";
 import { FileTree } from "../sidebar/FileTree";
 import { ConversationPane } from "../chat/ConversationPane";
-import { InputBar } from "../layout/InputBar";
+import { CODE_MODES, InputBar } from "../layout/InputBar";
 import { TerminalPane } from "../dev/TerminalPane";
 import { FileEditor } from "../dev/FileEditor";
 import { NotebookEditor } from "../dev/NotebookEditor";
@@ -190,7 +190,8 @@ export function DevView() {
                 <InputBar
                   experience="code"
                   workspaceKey={cwd}
-                  lockMode="swarm"
+                  modeOptions={CODE_MODES}
+                  defaultMode="swarm"
                   extraFlags={{ dev_mode: true }}
                   disabledReason={cwd ? undefined : "Open a project folder to start coding"}
                   placeholder={cwd ? `Ask the agent to change ${folderName}…` : "Open a folder to start…"}
