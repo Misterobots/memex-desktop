@@ -60,6 +60,8 @@ export interface AppConfig {
   activeProfileId:     string;
   profiles:            RuntimeProfile[];
   allowedExtensionIds: string[]; // Chrome extension IDs for the browser bridge
+  /** Records the 0.1.40 local-first routing migration. */
+  localFirstRoutingMigrationComplete?: boolean;
   wizardComplete?:     boolean;
   shortcuts?:          Partial<ShortcutConfig>;
   trayHintShown?:      boolean;
@@ -110,7 +112,13 @@ const SEED_PROFILES: RuntimeProfile[] = [
   },
 ];
 
-const DEFAULT_ACTIVE = "memex-anywhere";
+/**
+ * The desktop owns its execution plane.  The hosted route remains available
+ * as an explicit profile, but it must never be the implicit default: website
+ * deployments can change independently of this packaged application.
+ */
+export const LOCAL_FIRST_PROFILE_ID = "home-lan";
+const DEFAULT_ACTIVE = LOCAL_FIRST_PROFILE_ID;
 
 export class ConfigStore {
   private configPath: string;
@@ -126,18 +134,32 @@ export class ConfigStore {
       try {
         const raw = JSON.parse(readFileSync(this.configPath, "utf-8")) as AppConfig;
         raw.profiles = decryptProfilesFromDisk(raw.profiles as unknown as LegacyPersistedProfile[]);
-        // A config created before Memex Anywhere existed only knows about LAN
-        // addresses.  Add the new profile and make it the active route once,
-        // so an upgrade does not strand a user on private 192.168.x.x hosts.
-        const hadAnywhere = raw.profiles.some((p) => p.id === "memex-anywhere");
         // Ensure seed profiles are always present (add if missing from stored config)
+        let changed = false;
         for (const seed of SEED_PROFILES) {
           if (!raw.profiles.find((p) => p.id === seed.id)) {
             raw.profiles.unshift(seed);
+            changed = true;
           }
         }
-        if (!hadAnywhere) {
-          raw.activeProfileId = DEFAULT_ACTIVE;
+
+        // Older Desktop releases selected Memex Anywhere during upgrade. Move
+        // only that implicit hosted selection to the local execution plane.
+        // A deliberately selected custom profile is preserved.
+        if (!raw.localFirstRoutingMigrationComplete) {
+          if (raw.activeProfileId === "memex-anywhere" && raw.profiles.some((p) => p.id === LOCAL_FIRST_PROFILE_ID)) {
+            raw.activeProfileId = LOCAL_FIRST_PROFILE_ID;
+          }
+          raw.localFirstRoutingMigrationComplete = true;
+          changed = true;
+        }
+        if (!raw.profiles.some((p) => p.id === raw.activeProfileId)) {
+          raw.activeProfileId = raw.profiles.some((p) => p.id === DEFAULT_ACTIVE)
+            ? DEFAULT_ACTIVE
+            : raw.profiles[0]?.id ?? DEFAULT_ACTIVE;
+          changed = true;
+        }
+        if (changed) {
           this.persist(raw);
         }
         return raw;

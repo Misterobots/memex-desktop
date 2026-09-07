@@ -1,6 +1,7 @@
+import { useEffect, useState } from "react";
 import { useStore } from "../../lib/store";
 import { AccountMenu } from "./AccountMenu";
-import { isDesktop } from "../../lib/desktop";
+import { desktop, isDesktop, type RuntimeProfile } from "../../lib/desktop";
 import { fmtTokens } from "../../lib/tokens";
 
 const DOT: Record<string, string> = {
@@ -40,6 +41,28 @@ function SessionUsage() {
   );
 }
 
+/** Makes the active execution plane explicit instead of hiding it behind health. */
+function ActiveRuntime() {
+  const [profile, setProfile] = useState<RuntimeProfile | null>(null);
+
+  useEffect(() => {
+    const bridge = desktop();
+    if (!bridge) return;
+    void bridge.config.getActive().then(setProfile).catch(() => setProfile(null));
+    return bridge.config.onChange(setProfile);
+  }, []);
+
+  if (!profile) return null;
+  return (
+    <span
+      className="hidden md:inline-block text-xs text-faint px-2 py-1 rounded-md bg-surface border border-border/60 max-w-[132px] truncate"
+      title={`${profile.name} · ${profile.agentRuntime}`}
+    >
+      {profile.name}
+    </span>
+  );
+}
+
 export function StatusBar() {
   const { connections, selectedModel, toggleSidebar, sidebarOpen } = useStore();
 
@@ -70,6 +93,7 @@ export function StatusBar() {
 
       <div className={`no-drag flex items-center gap-2 sm:gap-3 ${reserveForWindowControls ? "pr-[140px]" : ""}`}>
         <AccountMenu />
+        <ActiveRuntime />
         <div
           className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-surface transition-colors cursor-default"
           title={`runtime: ${connections.agentRuntime} · memory: ${connections.mempalace} · ollama: ${connections.ollama}`}
