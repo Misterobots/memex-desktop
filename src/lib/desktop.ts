@@ -116,7 +116,7 @@ export interface UnrealEngineInstall {
 
 export type GauntletRole = "coordinator" | "builder" | "critic";
 export type GauntletPhase = "scope" | "build" | "critic" | "compare" | "repair" | "verify" | "final_review";
-export type GauntletHandoffStatus = "ready" | "accepted" | "completed" | "blocked" | "cancelled";
+export type GauntletHandoffStatus = "ready" | "accepted" | "needs_input" | "completed" | "blocked" | "cancelled";
 export interface GauntletHandoff {
   id: string; version: 1; createdAt: string; updatedAt: string; sessionId: string; workspaceKey?: string; runId?: string; parentId?: string;
   role: GauntletRole; phase: GauntletPhase; status: GauntletHandoffStatus;

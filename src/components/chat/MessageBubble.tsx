@@ -1,4 +1,4 @@
-import type { ChatDisplayMode, ChatMessage } from "../../types/memex";
+import type { ChatDisplayMode, ChatMessage, ExperienceId } from "../../types/memex";
 import { useState } from "react";
 import { RunInspectorPanel } from "./RunInspectorPanel";
 import { ResponseActions } from "./ResponseActions";
@@ -19,6 +19,9 @@ interface Props {
   /** True only for the single message currently being streamed. */
   isActive?: boolean;
   displayMode?: ChatDisplayMode;
+  sessionId?: string;
+  experience?: ExperienceId;
+  workspaceKey?: string;
 }
 
 function RunButton({ runId }: { runId: string }) {
@@ -47,7 +50,7 @@ function RunButton({ runId }: { runId: string }) {
   </>);
 }
 
-export function MessageBubble({ message, isActive = false, displayMode = "normal" }: Props) {
+export function MessageBubble({ message, isActive = false, displayMode = "normal", sessionId, experience, workspaceKey }: Props) {
   const isUser = message.role === "user";
   // Waiting for the first token on the message that's actively streaming.
   const isWaiting = isActive && !message.content;
@@ -92,8 +95,8 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
           <LiveActivity events={events} active={false} waiting={false} verbose={showThoughts} />
         )}
 
-        {clarification?.clarification && (
-          <SteeringCard card={clarification.clarification} messageId={message.id} />
+        {clarification?.clarification && sessionId && (
+          <SteeringCard card={clarification.clarification} messageId={message.id} sessionId={sessionId} experience={experience} workspaceKey={workspaceKey} gauntletHandoffId={gauntletHandoffId} />
         )}
 
         {errors.map((event, index) => <p key={index} role="alert" className="text-sm text-red-400">{event.content}</p>)}

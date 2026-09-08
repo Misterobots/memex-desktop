@@ -237,7 +237,14 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
         setStreaming(sessionId, false);
         if (handoffId && bridge?.gauntlet) {
           const producedAnswer = accumulated.trim().length > 0;
-          void bridge.gauntlet.patch(handoffId, producedAnswer ? {
+          const needsCoordinatorInput = useStore.getState().activeSession(experience, workspaceKey)?.messages
+            .find((message) => message.id === assistantId)?.events
+            .some((event) => event.type === "clarification_card");
+          void bridge.gauntlet.patch(handoffId, needsCoordinatorInput ? {
+            status: "needs_input", phase: "scope",
+            pending: ["Answer the coordinator's project-routing question", "Continue with the same quality bar and effort policy"],
+            nextAction: "The coordinator needs a project decision. Answer its card; the original Gauntlet contract will be retained.",
+          } : producedAnswer ? {
             status: "ready", phase: "critic",
             pending: ["Assign an independent critic", "Compare the output to the named quality bar", "Repair all documented deficits", "Verify before final review"],
             nextAction: "The builder turn ended. Assign a critic; do not mark the Gauntlet complete yet.",

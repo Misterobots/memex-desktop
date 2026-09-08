@@ -96,6 +96,9 @@ export function ConversationPane({ experience = "chat", workspaceKey, displayMod
             message={msg}
             isActive={streaming && i === messages.length - 1 && msg.role === "assistant"}
             displayMode={displayMode ?? workspaceDisplayModes[sessionScopeKey(experience, workspaceKey)] ?? session.displayMode ?? "normal"}
+            sessionId={session.id}
+            experience={experience}
+            workspaceKey={workspaceKey}
           />
         ))}
         <div className="h-4" />

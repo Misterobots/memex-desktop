@@ -12,7 +12,7 @@ import { join } from "node:path";
 
 export type GauntletRole = "coordinator" | "builder" | "critic";
 export type GauntletPhase = "scope" | "build" | "critic" | "compare" | "repair" | "verify" | "final_review";
-export type GauntletHandoffStatus = "ready" | "accepted" | "completed" | "blocked" | "cancelled";
+export type GauntletHandoffStatus = "ready" | "accepted" | "needs_input" | "completed" | "blocked" | "cancelled";
 
 export interface GauntletEffortPolicy {
   model: string;
@@ -57,7 +57,8 @@ type MutablePatch = Partial<Pick<GauntletHandoff,
 
 const ALLOWED: Record<GauntletHandoffStatus, GauntletHandoffStatus[]> = {
   ready: ["accepted", "blocked", "cancelled"],
-  accepted: ["ready", "completed", "blocked", "cancelled"],
+  accepted: ["ready", "needs_input", "completed", "blocked", "cancelled"],
+  needs_input: ["accepted", "blocked", "cancelled"],
   completed: [], blocked: ["ready", "cancelled"], cancelled: [],
 };
 
