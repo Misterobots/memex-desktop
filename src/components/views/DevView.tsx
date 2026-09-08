@@ -15,12 +15,13 @@ import { PrintWorkflowPanel } from "../dev/PrintWorkflowPanel";
 import { WorktreePanel } from "../dev/WorktreePanel";
 import { WorkspaceProjectsPanel } from "../dev/WorkspaceProjectsPanel";
 import { CodeUtilityMenu } from "../dev/CodeUtilityMenu";
+import { LiveAgentRoster } from "../sidebar/LiveAgentRoster";
 
 type PrimaryPane = "projects" | "chat" | "editor" | "tasks" | "print";
 type BottomPane  = "terminal" | "browser" | "none";
 
 export function DevView() {
-  const { cwd, setCwd, sidebarOpen, activeSession, setActiveTab } = useStore();
+  const { cwd, setCwd, sidebarOpen, activeSession, setActiveTab, streamingSessions } = useStore();
   const session    = activeSession("code", cwd);
   const empty      = !session || session.messages.length === 0;
   const folderName = cwd ? cwd.split(/[/\\]/).filter(Boolean).pop() : null;
@@ -81,6 +82,10 @@ export function DevView() {
               <SessionList experience="code" workspaceKey={cwd} newLabel="New agent thread" />
             </div>
           )}
+          {session && <LiveAgentRoster
+            events={session.messages.flatMap((message) => message.events)}
+            active={Boolean(streamingSessions[session.id])}
+          />}
           <div className="flex-1 overflow-y-auto py-1 min-h-0">
             {cwd ? (
               <FileTree root={cwd} onFileClick={(path) => { setOpenFile(path); setPrimary("editor"); }} />

@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import type { MessageEvent } from "../../types/memex";
-import { activityDetail, activityEvents, activityLabel, errorEvents, sanitizeActivityText } from "../../lib/workspace-outputs";
+import { activityEvents, activityLabel, activityPresentation, errorEvents } from "../../lib/workspace-outputs";
 
 function elapsedLabel(seconds: number) {
   return seconds < 60 ? seconds + "s" : Math.floor(seconds / 60) + "m " + seconds % 60 + "s";
 }
 
-/** A chronological activity narrative based only on events the runtime emitted. */
+/** A chronological, user-readable work trace based only on runtime events. */
 export function LiveActivity({ events, active, waiting, verbose = false, brief = false }: {
   events: MessageEvent[]; active: boolean; waiting: boolean; verbose?: boolean; brief?: boolean;
 }) {
@@ -42,20 +42,30 @@ export function LiveActivity({ events, active, waiting, verbose = false, brief =
       {active && <span className="tabular-nums">{elapsedLabel(seconds)}</span>}
     </div>
     {brief ? <p className="mt-2 text-xs text-muted break-words">{latest}</p> : (
-      <div className="mt-3 space-y-1.5 border-l border-border/50 pl-3">
+      <div className="mt-3 space-y-2">
         {verbose && <p className="pb-1 text-[10px] font-medium uppercase tracking-wider text-muted">Reasoning and activity</p>}
         {timelineEvents.map((event, index) => {
-          const structured = event.type.startsWith("tool_call") || event.type === "agent_event";
-          return structured ? <details key={index} className="rounded-lg border border-border/50 bg-surface text-xs">
-            <summary className="cursor-pointer px-3 py-2 text-muted break-words">
-              {String(event.data?.tool_name ?? event.agent_name ?? "Tool activity")}
-              {event.type === "tool_call_result" ? " · Result" : ""}
-            </summary>
-            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words border-t border-border/50 px-3 py-2">{sanitizeActivityText(event.data && structured ? JSON.stringify(event.data, null, 2) : event.content)}</pre>
-          </details> : <div key={index} className="flex items-center gap-2 text-xs leading-5 text-muted">
-            <span className="h-1 w-1 shrink-0 rounded-full bg-muted/70" />
-            <span className={event.type === "thought" ? "text-text/80" : ""}>{verbose ? activityDetail(event.content, event.type) : activityLabel(event.content)}</span>
-          </div>;
+          const item = activityPresentation(event);
+          const toneClass = item.tone === "intent"
+            ? "border-blue-400/60 bg-blue-400/10 text-blue-100"
+            : item.tone === "tool"
+              ? "border-pink-400/60 bg-pink-400/10 text-pink-100"
+              : item.tone === "issue"
+                ? "border-red/60 bg-red/10 text-red"
+                : "border-green-400/60 bg-green-400/10 text-green-100";
+          const label = item.tone === "intent" ? "Intent" : item.tone === "tool" ? "Command" : item.tone === "issue" ? "Issue" : "Progress";
+          return <article key={index} aria-label={`${label}: ${item.title}`} className={`rounded-md border px-3 py-2 text-xs leading-5 ${toneClass}`}>
+            <div className="flex items-center gap-2">
+              <span className="font-medium">{label}</span>
+              {item.actor && <span className="text-[10px] opacity-70">{item.actor}</span>}
+            </div>
+            <p className="break-words text-text/90">{item.title}</p>
+            {(verbose || item.tone === "tool" || item.tone === "issue") && item.detail && item.detail !== item.title && <p className="mt-0.5 break-words text-text/70">{item.detail}</p>}
+            {verbose && item.command && <details className="mt-1 text-text/70">
+              <summary className="cursor-pointer select-none text-[11px]">Show command detail</summary>
+              <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded border border-current/20 bg-canvas/40 p-2 font-mono text-[11px]">{item.command}</pre>
+            </details>}
+          </article>;
         })}
       </div>
     )}

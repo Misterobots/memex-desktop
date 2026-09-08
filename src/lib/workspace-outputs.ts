@@ -12,6 +12,19 @@ export interface WorkspaceOutput {
 
 export const outputEventTypes = ["design_artifact", "artifact", "media_attachment"];
 
+/** The user-facing channel for a runtime event. These are deliberately not
+ * backend event types: a worker update can be progress, an intent, or an
+ * issue depending on what it says. */
+export type ActivityTone = "intent" | "tool" | "progress" | "issue";
+
+export interface ActivityPresentation {
+  tone: ActivityTone;
+  title: string;
+  detail?: string;
+  command?: string;
+  actor?: string;
+}
+
 /**
  * Runtime messages are intentionally rich for logs, but they are not product
  * copy.  Keep the conversation activity surface calm and consistent across
@@ -80,6 +93,54 @@ export function activityDetail(value: string, type: MessageEvent["type"]): strin
   }
   if (type === "log") return "Runtime update";
   return clean;
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+
+function text(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const clean = sanitizeActivityText(value).replace(/\s+/g, " ").trim();
+  return clean || undefined;
+}
+
+function toolDetail(data: Record<string, unknown>): string | undefined {
+  const input = data.tool_input ?? data.input ?? data.arguments ?? data.command ?? data.result ?? data.output;
+  if (typeof input === "string") return text(input);
+  if (input && typeof input === "object") {
+    const values = record(input);
+    return text(values.command) ?? text(values.path) ?? text(values.query) ?? text(values.content) ?? text(values.output);
+  }
+  return undefined;
+}
+
+/**
+ * Turn a protocol event into an intentionally legible work trace. We never
+ * display private model scratchpad: `thought` events are runtime-provided
+ * summaries and retain their original, user-safe wording.
+ */
+export function activityPresentation(event: MessageEvent): ActivityPresentation {
+  const data = record(event.data);
+  const rawType = String(data.type ?? event.type);
+  const eventType = String(data.event_type ?? data.kind ?? "");
+  const actor = text(event.pioneer_name ?? event.agent_name ?? data.pioneer_name ?? data.agent_name ?? data.role);
+  const body = text(event.content) ?? "Working";
+  const isTool = event.type === "tool_call_start" || event.type === "tool_call_result" || rawType === "tool_start" || rawType === "tool_result" || eventType === "tool_use" || eventType === "tool_result";
+  if (isTool) {
+    const name = text(data.tool_name ?? data.name ?? data.tool ?? actor) ?? "Command";
+    const detail = toolDetail(data) ?? (body !== name ? body : undefined);
+    return { tone: "tool", title: event.type === "tool_call_result" || rawType === "tool_result" ? `${name} completed` : `Running ${name}`, detail, command: detail, actor };
+  }
+  if (event.type === "thought" || eventType === "thought" || rawType === "thinking") {
+    const detail = activityDetail(body, "thought");
+    return { tone: "intent", title: actor ? `${actor} is assessing the task` : "Thinking", detail, actor };
+  }
+  const failed = rawType === "error" || eventType === "error" || /^error:/i.test(body) || /\b(failed|blocked|unavailable|denied)\b/i.test(body);
+  if (failed) return { tone: "issue", title: "Attention needed", detail: body.replace(/^error:\s*/i, ""), actor };
+  const title = activityDetail(body, event.type);
+  const detail = title === body ? undefined : body;
+  return { tone: "progress", title, detail, actor };
 }
 export function safeOutputUrl(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;

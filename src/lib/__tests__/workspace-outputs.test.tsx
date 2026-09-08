@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { activityDetail, activityEvents, activityLabel, outputsFromEvents, safeOutputUrl } from "../workspace-outputs";
+import { activityDetail, activityEvents, activityLabel, activityPresentation, outputsFromEvents, safeOutputUrl } from "../workspace-outputs";
 import { normalizeSSEDelta } from "../sse-stream";
 import { MessageBubble } from "../../components/chat/MessageBubble";
 import type { ChatDisplayMode, ChatMessage, MessageEvent } from "../../types/memex";
@@ -87,6 +87,26 @@ describe("workspace output delivery", () => {
     expect(markup).toContain("Research agent started");
     expect(markup).toContain("Response complete");
     expect(markup).not.toContain("Runtime detail");
+  });
+  it("presents intent, commands, and progress as distinct user-readable channels", () => {
+    expect(activityPresentation({ type: "thought", content: "Checking the project requirements", agent_name: "Coordinator" })).toMatchObject({
+      tone: "intent", title: "Coordinator is assessing the task", detail: "Considering response",
+    });
+    expect(activityPresentation({ type: "tool_call_start", content: "run_command started.", data: { type: "tool_start", tool_name: "run_command", tool_input: { command: "npm test" } } })).toMatchObject({
+      tone: "tool", title: "Running run_command", command: "npm test",
+    });
+    expect(activityPresentation({ type: "status", content: "Coordinator updated the worker plan.", data: { type: "swarm_task_list" } })).toMatchObject({
+      tone: "progress", title: "Coordinator updated the worker plan.",
+    });
+    const markup = renderToStaticMarkup(<MessageBubble displayMode="thought" message={{ ...message, content: "", events: [
+      { type: "thought", content: "Checking the project requirements", agent_name: "Coordinator" },
+      { type: "tool_call_start", content: "run_command started.", data: { type: "tool_start", tool_name: "run_command", tool_input: { command: "npm test" } } },
+      { type: "status", content: "Coordinator updated the worker plan.", data: { type: "swarm_task_list" } },
+    ] }} />);
+    expect(markup).toContain("Intent");
+    expect(markup).toContain("Command");
+    expect(markup).toContain("Progress");
+    expect(markup).toContain("border-pink-400/60");
   });
   it.each<ChatDisplayMode>(["summary", "normal", "thought"])("keeps real media and cancellation visible in %s", (displayMode) => {
     const media = normalizeSSEDelta({ type: "media_attachment", content: { filename: "test.png", mimeType: "image/png", url: "/api/backend/delivered_artifacts/test.png", downloadUrl: "/api/backend/delivered_artifacts/test.png?dl=1" } })!;

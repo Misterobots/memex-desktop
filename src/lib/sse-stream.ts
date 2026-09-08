@@ -82,12 +82,22 @@ export function normalizeSSEDelta(delta: Record<string, unknown>): SSEEvent | nu
     ? rawType as EventType : isActivitySignal ? "status" : "log");
   const rawContent = delta.content;
   const turnMetadata = delta.turnMetadata as Record<string, unknown> | undefined;
+  const name = typeof delta.tool_name === "string" ? delta.tool_name : typeof delta.name === "string" ? delta.name : "Command";
+  const worker = typeof delta.pioneer_name === "string" ? delta.pioneer_name : typeof delta.agent_name === "string" ? delta.agent_name : typeof delta.role === "string" ? delta.role : "Worker";
+  const task = typeof delta.task === "string" ? delta.task : typeof delta.phase_name === "string" ? delta.phase_name : undefined;
+  const verdict = typeof delta.verdict === "string" ? delta.verdict : typeof delta.status === "string" ? delta.status : undefined;
   const content = typeof rawContent === "string" ? rawContent
     : rawType === "turn_metadata" ? `${String(turnMetadata?.agentName ?? "Memex")} started this turn.`
     : rawType === "stream_mode" ? `Stream mode: ${String(delta.streamMode ?? "working")}.`
     : rawType === "model_queue_status" ? "Model queue status received."
-    : rawType === "todo" ? "Updated task plan."
-    : rawType === "file_change" ? "Proposed file changes."
+    : rawType === "tool_start" ? `${name} started.`
+    : rawType === "tool_result" ? `${name} completed.`
+    : rawType === "todo" ? typeof delta.summary === "string" ? delta.summary : "Updated task plan."
+    : rawType === "file_change" ? typeof delta.path === "string" ? `Changed ${delta.path}.` : "Changed project files."
+    : rawType === "swarm_worker_created" ? `${worker} started${task ? `: ${task}` : "."}`
+    : rawType === "swarm_task_list" ? "Coordinator updated the worker plan."
+    : rawType === "swarm_phase" ? `Phase ${String(delta.phase ?? "")}${task ? `: ${task}` : " updated"}.`
+    : rawType === "gauntlet_critic_verdict" ? `Quality review${verdict ? `: ${verdict}` : " completed"}.`
     : isActivitySignal ? `Runtime event: ${rawType}.` : JSON.stringify(rawContent ?? {});
   return {
     type: eventType,
