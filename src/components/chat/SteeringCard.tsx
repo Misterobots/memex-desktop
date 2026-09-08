@@ -63,6 +63,10 @@ export function SteeringCard({ card, sessionId, experience = "chat", workspaceKe
     const stop = streamChat({
       messages: history,
       mode,
+      // The selected model is part of the immutable Gauntlet effort policy.
+      // Without it, streamChat defaults to the compatibility alias "swarm",
+      // which the runtime correctly rejects as not user-selectable.
+      model: packet?.effort.model,
       gauntletBar: packet?.qualityBar,
       gauntletHandoff: packet ? {
         id: packet.id,
