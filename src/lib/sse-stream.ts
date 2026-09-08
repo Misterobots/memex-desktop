@@ -278,7 +278,30 @@ export function streamChat(opts: StreamOptions): () => void {
         opts.onError(new Error(String(event.value ?? "Stream failed")));
       }
     });
-    return () => { cancel(); if (runId) bridge.runs?.end(runId, "cancelled"); };
+    return () => {
+      cancel();
+      if (runId) bridge.runs?.end(runId, "cancelled");
+      // Stopping a visible Gauntlet must stop its durable coordinator too.
+      // Aborting only the renderer's SSE reader left GPU workers running and
+      // turned a deliberate stop into a confusing later reconnect.
+      if (opts.gauntletHandoff?.id) {
+        const checkpoint = opts.gauntletHandoff.id;
+        void bridge.api.request({
+          url: `${getAgentRuntime()}/v1/tasks/${encodeURIComponent(checkpoint)}/stop`,
+          method: "POST",
+        }).then((response) => {
+          if (response.status >= 200 && response.status < 300) {
+            void bridge.gauntlet?.patch(checkpoint, {
+              status: "cancelled",
+              nextAction: "Stopped by you. The preserved goal and quality bar remain available for an explicit future restart.",
+            });
+          }
+        }).catch(() => {
+          // Keep the packet active on a failed stop request so its automatic
+          // status refresh can still reveal a coordinator that is running.
+        });
+      }
+    };
   }
 
   fetch(`${getAgentRuntime()}/v1/chat/completions`, {

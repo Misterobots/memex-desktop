@@ -251,14 +251,13 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
             pending: ["Answer the coordinator's project-routing question", "Continue with the same quality bar and effort policy"],
             nextAction: "The coordinator needs a project decision. Answer its card; the original Gauntlet contract will be retained.",
           } : producedAnswer ? {
-            status: "ready", phase: "critic",
-            pending: ["Assign an independent critic", "Compare the output to the named quality bar", "Repair all documented deficits", "Verify before final review"],
-            nextAction: "The builder turn ended. Assign a critic; do not mark the Gauntlet complete yet.",
+            // A finished SSE transport is not proof that the remote critic or
+            // verification loop completed. Keep the durable run active and
+            // let the automatic coordinator reconciliation report the actual
+            // phase/completion state.
+            nextAction: "Response stream ended; refreshing the durable coordinator state automatically.",
           } : {
-            status: "blocked", phase: "build",
-            deficits: ["The runtime ended without a model response or builder artifact."],
-            pending: ["Resolve the runtime/model queue failure", "Resume the preserved checkpoint", "Verify a builder artifact is actually produced"],
-            nextAction: "No builder output arrived. Resolve the runtime failure, then resume this exact checkpoint.",
+            nextAction: "No response arrived on this transport; checking the durable coordinator state automatically before treating the run as blocked.",
           });
         }
         syncSession();
@@ -266,6 +265,11 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       onError: (err) => {
         appendEvent(sessionId, assistantId, { type: "log", content: `Error: ${err.message}` });
         setStreaming(sessionId, false);
+        if (handoffId && bridge?.gauntlet) {
+          void bridge.gauntlet.patch(handoffId, {
+            nextAction: "The connection ended unexpectedly; refreshing durable coordinator status automatically before any resume is offered.",
+          });
+        }
         syncSession();
       },
     });
