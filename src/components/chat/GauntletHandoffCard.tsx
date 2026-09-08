@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { desktop, type GauntletHandoff } from "../../lib/desktop";
 import { getAgentRuntime } from "../../lib/runtime-urls";
 
@@ -20,24 +20,17 @@ export function GauntletHandoffCard({ handoffId }: { handoffId: string }) {
   const [coordinatorNote, setCoordinatorNote] = useState("");
   const [requiresSignIn, setRequiresSignIn] = useState(false);
   useEffect(() => { void desktop()?.gauntlet?.get(handoffId).then(setPacket); }, [handoffId]);
-  if (!packet) return null;
 
-  const accept = async () => {
-    setBusy(true);
-    const updated = await desktop()?.gauntlet?.accept(packet.id, "desktop coordinator");
-    if (updated) setPacket(updated);
-    setBusy(false);
-  };
-  const resume = () => window.dispatchEvent(new CustomEvent("chat:prefill", { detail: resumeText(packet) }));
-  const checkCoordinator = async () => {
+  const checkCoordinator = useCallback(async (silent = false) => {
+    if (!packet) return;
     const bridge = desktop();
     if (!bridge?.api) {
       setCoordinatorNote("Coordinator status is available in the installed desktop app.");
       return;
     }
-    setBusy(true);
+    if (!silent) setBusy(true);
     setRequiresSignIn(false);
-    setCoordinatorNote("Checking the durable coordinator record…");
+    if (!silent) setCoordinatorNote("Refreshing coordinator status…");
     try {
       const base = `${getAgentRuntime()}/v1/tasks/${encodeURIComponent(packet.id)}`;
       const [taskResponse, eventsResponse] = await Promise.all([
@@ -67,17 +60,36 @@ export function GauntletHandoffCard({ handoffId }: { handoffId: string }) {
       const status = remoteStatus === "completed" ? "completed"
         : remoteStatus === "cancelled" ? "cancelled"
         : remoteStatus === "failed" || remoteStatus === "denied" ? "blocked"
+        : remoteStatus === "needs_input" ? "needs_input"
         : packet.status;
-      const updated = await bridge.gauntlet?.patch(packet.id, { status, phase, nextAction: remoteStatus === "running" || remoteStatus === "queued"
-        ? "The coordinator is still active remotely. Check again for progress or resume only after it becomes blocked."
-        : packet.nextAction });
-      if (updated) setPacket(updated);
+      const nextAction = remoteStatus === "running" || remoteStatus === "queued"
+        ? "Coordinator is active. Status refreshes automatically while it works."
+        : remoteStatus === "needs_input"
+          ? "Coordinator needs a project decision before it can create a builder handoff."
+          : packet.nextAction;
+      if (status !== packet.status || phase !== packet.phase || nextAction !== packet.nextAction) {
+        const updated = await bridge.gauntlet?.patch(packet.id, { status, phase, nextAction });
+        if (updated) setPacket(updated);
+      }
     } catch (error) {
       setCoordinatorNote(`Coordinator status could not be read: ${error instanceof Error ? error.message : "unknown error"}. Your local checkpoint is preserved.`);
     } finally {
-      setBusy(false);
+      if (!silent) setBusy(false);
     }
-  };
+  }, [packet]);
+
+  // Read the durable server record on arrival, then keep an active coordinator
+  // fresh without asking the user to babysit a "Check" button.  A paused run
+  // deliberately stops polling because its next action requires user input.
+  useEffect(() => {
+    if (!packet || packet.status !== "accepted") return;
+    void checkCoordinator(true);
+    const timer = window.setInterval(() => void checkCoordinator(true), 12_000);
+    return () => window.clearInterval(timer);
+  }, [packet?.id, packet?.status, checkCoordinator]);
+
+  if (!packet) return null;
+  const resume = () => window.dispatchEvent(new CustomEvent("chat:prefill", { detail: resumeText(packet) }));
   const signIn = async () => {
     setBusy(true);
     try {
@@ -91,7 +103,7 @@ export function GauntletHandoffCard({ handoffId }: { handoffId: string }) {
 
   return <section className="rounded-lg border border-accent/35 bg-accent/5 px-3 py-2.5 text-xs" aria-label="Gauntlet checkpoint">
     <div className="flex items-center justify-between gap-3">
-      <span className="font-medium text-text">Gauntlet checkpoint</span>
+      <span className="font-medium text-text">Gauntlet run</span>
       <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] text-muted">{packet.status} · {packet.phase}</span>
     </div>
     <p className="mt-1 text-muted line-clamp-2"><span className="text-text">Bar:</span> {packet.qualityBar}</p>
@@ -99,8 +111,7 @@ export function GauntletHandoffCard({ handoffId }: { handoffId: string }) {
     <p className="mt-1.5 text-muted">Next: {packet.nextAction}</p>
     {coordinatorNote && <p className="mt-1.5 text-muted" role="status">{coordinatorNote}</p>}
     <div className="mt-2 flex gap-2">
-      {packet.status === "ready" && <button disabled={busy} onClick={() => void accept()} className="rounded border border-accent/50 px-2 py-1 text-accent hover:bg-accent/10 disabled:opacity-50">Accept ownership</button>}
-      <button disabled={busy} onClick={() => void checkCoordinator()} className="rounded border border-border/60 px-2 py-1 text-text hover:bg-surface2 disabled:opacity-50">Check coordinator</button>
+      <button disabled={busy} onClick={() => void checkCoordinator()} className="rounded border border-border/60 px-2 py-1 text-text hover:bg-surface2 disabled:opacity-50">Refresh now</button>
       {requiresSignIn && <button disabled={busy} onClick={() => void signIn()} className="rounded border border-accent/50 px-2 py-1 text-accent hover:bg-accent/10 disabled:opacity-50">Sign in to Memex</button>}
       <button onClick={resume} className="rounded border border-border/60 px-2 py-1 text-text hover:bg-surface2">Resume with preserved brief</button>
     </div>

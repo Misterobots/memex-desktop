@@ -177,17 +177,23 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
         setGauntletError("Choose a named, fetchable reference for the quality bar before starting the Gauntlet.");
         return;
       }
-      const packet = previous ?? await bridge.gauntlet.create({
+      const created = previous ?? await bridge.gauntlet.create({
         sessionId, workspaceKey, role: "coordinator", goal: content, qualityBar: gauntletBar.trim(),
         effort: { model: selectedModel ?? "swarm", outputDetail: runPreferences.outputDetail, reasoningSummary: runPreferences.reasoningSummary, reasoningEffort: runPreferences.reasoningEffort },
       });
+      // Coordinator ownership is bookkeeping for durable recovery, not a
+      // decision the user should have to make before their requested work can
+      // start.  Record it as soon as a new desktop checkpoint exists.
+      const packet = !previous && created.status === "ready"
+        ? await bridge.gauntlet.accept(created.id, "desktop coordinator") ?? created
+        : created;
       handoffId = packet.id;
       handoffPacket = packet;
       appendEvent(sessionId, assistantId, {
         type: "status",
           content: previous
             ? `Resumed Gauntlet checkpoint ${packet.id.slice(0, 8)} — using the preserved original goal, quality bar, and effort policy.`
-            : `Gauntlet checkpoint ${packet.id.slice(0, 8)} saved — goal, quality bar, and effort policy are preserved locally.`,
+            : `Gauntlet checkpoint ${packet.id.slice(0, 8)} saved — coordinator ownership, goal, quality bar, and effort policy are preserved locally.`,
         receivedAt: Date.now(), data: { type: "gauntlet_checkpoint", handoffId: packet.id },
       });
       syncSession();
@@ -216,7 +222,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       onRunStarted: (runId) => {
         updateMessageRunId(sessionId, assistantId, runId);
         if (handoffId && bridge?.gauntlet) {
-          void bridge.gauntlet.patch(handoffId, { runId, phase: "build", nextAction: "Review the builder output against the quality bar, then explicitly assign a critic." });
+          void bridge.gauntlet.patch(handoffId, { runId, phase: "scope", nextAction: "Coordinator is preparing the first builder handoff against the preserved quality bar." });
         }
         syncSession();
       },
