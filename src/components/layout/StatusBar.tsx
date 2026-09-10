@@ -43,7 +43,14 @@ function SessionUsage() {
 export function StatusBar() {
   const { connections, selectedModel, toggleSidebar, sidebarOpen } = useStore();
 
-  const allConnected = Object.values(connections).every((c) => c === "connected");
+  // The harness is the desktop application's connection. Memory and a direct
+  // Ollama endpoint are useful local capabilities, but they are optional: the
+  // harness may route inference itself. Do not turn their absence into a
+  // misleading global "Degraded" state.
+  const runtimeConnected = connections.agentRuntime === "connected";
+  const localServicesLimited = runtimeConnected && (
+    connections.mempalace !== "connected" || connections.ollama !== "connected"
+  );
   // Reserve space for the native window-controls overlay (Electron, Win/Linux
   // only — Mac controls are top-left, and the web app has no native controls).
   const isMac = typeof navigator !== "undefined" && /Mac/.test(navigator.userAgent);
@@ -74,8 +81,10 @@ export function StatusBar() {
           className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-surface transition-colors cursor-default"
           title={`runtime: ${connections.agentRuntime} · memory: ${connections.mempalace} · ollama: ${connections.ollama}`}
         >
-          <span className={`w-2 h-2 rounded-full ${allConnected ? DOT.connected : connections.agentRuntime === "checking" ? DOT.checking : DOT.disconnected}`} />
-          <span className="text-muted text-xs">{allConnected ? "Connected" : "Degraded"}</span>
+          <span className={`w-2 h-2 rounded-full ${runtimeConnected ? DOT.connected : connections.agentRuntime === "checking" ? DOT.checking : DOT.disconnected}`} />
+          <span className="text-muted text-xs">
+            {runtimeConnected ? (localServicesLimited ? "Connected · limited" : "Connected") : "Runtime unavailable"}
+          </span>
         </div>
         <SessionUsage />
         <span className="hidden sm:inline-block text-xs text-faint px-2 py-1 rounded-md bg-surface border border-border/60 max-w-[160px] truncate">

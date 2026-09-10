@@ -26,6 +26,18 @@ async function probe(url: string, headers?: HeadersInit, init?: RequestInit): Pr
   } catch { return false; }
 }
 
+/**
+ * The local runtime's root route is not a liveness endpoint.  In some
+ * deployments it intentionally waits for an application response, which made
+ * the desktop mark an otherwise running harness as offline.  Prefer the
+ * documented node-health route and retain /docs as a compatibility fallback
+ * for older local harness builds.
+ */
+async function localAgentHealth(agentRuntime: string): Promise<boolean> {
+  if (await probe(`${agentRuntime}/api/v1/health/nodes`)) return true;
+  return probe(`${agentRuntime}/docs`);
+}
+
 async function publicAgentHealth(url: string, headers: HeadersInit): Promise<{ agentRuntime: boolean; ollama: boolean }> {
   try {
     const r = await fetch(url, { headers, signal: AbortSignal.timeout(4000) });
@@ -60,7 +72,7 @@ async function check(config: ConfigStore): Promise<HealthStatus> {
           body: JSON.stringify({ query: "healthcheck", limit: 1 }),
         })
       : probe(`${mempalace}/health`),
-    isPublicProfile ? Promise.resolve(false) : probe(`${agentRuntime}/`),
+    isPublicProfile ? Promise.resolve(false) : localAgentHealth(agentRuntime),
     isPublicProfile ? Promise.resolve(false) : probe(`${ollama}/api/version`),
   ]);
   const ar = isPublicProfile ? publicHealth.agentRuntime : lanAr;
