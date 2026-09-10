@@ -95,6 +95,9 @@ describe("workspace output delivery", () => {
     expect(activityPresentation({ type: "tool_call_start", content: "run_command started.", data: { type: "tool_start", tool_name: "run_command", tool_input: { command: "npm test" } } })).toMatchObject({
       tone: "tool", title: "Running run_command", command: "npm test",
     });
+    expect(activityPresentation({ type: "tool_call_result", content: "SECRET=value", data: { type: "tool_result", tool_name: "read_file", tool_output: "SECRET=value" } })).toMatchObject({
+      tone: "tool", title: "read_file completed", detail: "Result received.", command: undefined,
+    });
     expect(activityPresentation({ type: "status", content: "Coordinator updated the worker plan.", data: { type: "swarm_task_list" } })).toMatchObject({
       tone: "progress", title: "Coordinator updated the worker plan.",
     });

@@ -129,8 +129,12 @@ export function activityPresentation(event: MessageEvent): ActivityPresentation 
   const isTool = event.type === "tool_call_start" || event.type === "tool_call_result" || rawType === "tool_start" || rawType === "tool_result" || eventType === "tool_use" || eventType === "tool_result";
   if (isTool) {
     const name = text(data.tool_name ?? data.name ?? data.tool ?? actor) ?? "Command";
-    const detail = toolDetail(data) ?? (body !== name ? body : undefined);
-    return { tone: "tool", title: event.type === "tool_call_result" || rawType === "tool_result" ? `${name} completed` : `Running ${name}`, detail, command: detail, actor };
+    const isResult = event.type === "tool_call_result" || rawType === "tool_result";
+    // Tool output can include arbitrary file content, including local secrets.
+    // The activity trace reports lifecycle, while the dedicated output/review
+    // surfaces own any user-authorized result inspection.
+    const detail = isResult ? "Result received." : toolDetail(data) ?? (body !== name ? body : undefined);
+    return { tone: "tool", title: isResult ? `${name} completed` : `Running ${name}`, detail, command: isResult ? undefined : detail, actor };
   }
   if (event.type === "thought" || eventType === "thought" || rawType === "thinking") {
     const detail = activityDetail(body, "thought");
