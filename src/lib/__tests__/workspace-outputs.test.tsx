@@ -106,10 +106,11 @@ describe("workspace output delivery", () => {
       { type: "tool_call_start", content: "run_command started.", data: { type: "tool_start", tool_name: "run_command", tool_input: { command: "npm test" } } },
       { type: "status", content: "Coordinator updated the worker plan.", data: { type: "swarm_task_list" } },
     ] }} />);
-    expect(markup).toContain("Intent");
-    expect(markup).toContain("Command");
-    expect(markup).toContain("Progress");
-    expect(markup).toContain("border-pink-400/60");
+    expect(markup).toContain("Thinking");
+    expect(markup).toContain("Tool: Running run_command");
+    expect(markup).toContain("Activity: Coordinator updated the worker plan.");
+    expect(markup).toContain("text-pink-100");
+    expect(markup).not.toContain("border-pink-400/60");
   });
   it("shows runtime-marked execution summaries while keeping unmarked thought private", () => {
     expect(activityPresentation({ type: "thought", content: "I’m reviewing the selected workspace before making changes.", data: { type: "thought", safe_summary: true } })).toMatchObject({
