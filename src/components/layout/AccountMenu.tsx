@@ -2,11 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { desktop } from "../../lib/desktop";
 import { useStore } from "../../lib/store";
 
-/** Persistent, Codex-style account control for the public Memex session. */
+/** Persistent desktop connection/account control. */
 export function AccountMenu() {
-  const { connections, setConnections, setActiveTab } = useStore();
+  const { connections, setActiveTab } = useStore();
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState<"signIn" | "signOut" | null>(null);
   const [uid, setUid] = useState("");
   const [notice, setNotice] = useState("");
   const root = useRef<HTMLDivElement>(null);
@@ -40,42 +39,6 @@ export function AccountMenu() {
     return () => window.removeEventListener("memex:notice", showNotice);
   }, []);
 
-  const signIn = async () => {
-    if (!bridge) return;
-    setBusy("signIn");
-    try {
-      const complete = await bridge.remoteAuth.signIn();
-      if (!complete) { setNotice("Sign-in was cancelled."); return; }
-      const health = await bridge.health.check();
-      setConnections({
-        agentRuntime: health.agentRuntime as "connected" | "disconnected",
-        mempalace: health.mempalace as "connected" | "disconnected",
-        ollama: health.ollama as "connected" | "disconnected",
-      });
-      setNotice(health.agentRuntime === "connected" ? "Signed in to Memex." : "Signed in — checking Memex connection.");
-    } catch {
-      setNotice("Could not complete sign-in. Please try again.");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const signOut = async () => {
-    if (!bridge) return;
-    setBusy("signOut");
-    try {
-      const complete = await bridge.remoteAuth.signOut();
-      if (!complete) throw new Error("Sign-out did not complete");
-      setConnections({ agentRuntime: "disconnected", mempalace: "disconnected", ollama: "disconnected" });
-      setOpen(false);
-      setNotice("Signed out of Memex on this desktop.");
-    } catch {
-      setNotice("Could not sign out. Please try again.");
-    } finally {
-      setBusy(null);
-    }
-  };
-
   return (
     <div ref={root} className="relative">
       {notice && (
@@ -88,22 +51,16 @@ export function AccountMenu() {
           <div className="px-2 py-1.5">
             <div className="text-sm font-medium text-text truncate">{uid || "Memex account"}</div>
             <div className={`mt-0.5 text-xs ${connected ? "text-green" : "text-muted"}`}>
-              {connected ? "Connected to Memex Anywhere" : "Signed out or unavailable"}
+              {connected ? "Connected to local Memex runtime" : "Local runtime unavailable"}
             </div>
           </div>
           <div className="my-1 border-t border-border/60" />
           <button onClick={() => { setActiveTab("settings"); setOpen(false); }} className="w-full rounded-lg px-2 py-2 text-left text-sm text-muted hover:bg-surface hover:text-text">
             Account & routing settings
           </button>
-          {connected ? (
-            <button onClick={signOut} disabled={busy !== null} className="w-full rounded-lg px-2 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 disabled:opacity-50">
-              {busy === "signOut" ? "Signing out…" : "Sign out"}
-            </button>
-          ) : (
-            <button onClick={signIn} disabled={busy !== null} className="w-full rounded-lg px-2 py-2 text-left text-sm text-accent hover:bg-accent/10 disabled:opacity-50">
-              {busy === "signIn" ? "Signing in…" : "Sign in to Memex"}
-            </button>
-          )}
+          <button onClick={() => void bridge?.health.check()} className="w-full rounded-lg px-2 py-2 text-left text-sm text-accent hover:bg-accent/10">
+            Check local connection
+          </button>
         </div>
       )}
       <button onClick={() => setOpen((value) => !value)} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-surface2">

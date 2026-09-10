@@ -120,7 +120,10 @@ const SEED_PROFILES: RuntimeProfile[] = [
   },
 ];
 
-const DEFAULT_ACTIVE = "memex-anywhere";
+// Desktop is local-first.  A hosted profile remains available, but a fresh
+// installation must not appear signed out/degraded simply because its optional
+// hosted browser session has not been established yet.
+const DEFAULT_ACTIVE = "localhost";
 
 export class ConfigStore {
   private configPath: string;
