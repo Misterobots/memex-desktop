@@ -26,19 +26,7 @@ async function probe(url: string, headers?: HeadersInit, init?: RequestInit): Pr
   } catch { return false; }
 }
 
-/**
- * The local runtime's root route is not a liveness endpoint.  In some
- * deployments it intentionally waits for an application response, which made
- * the desktop mark an otherwise running harness as offline.  Prefer the
- * documented node-health route and retain /docs as a compatibility fallback
- * for older local harness builds.
- */
-async function localAgentHealth(agentRuntime: string): Promise<boolean> {
-  if (await probe(`${agentRuntime}/api/v1/health/nodes`)) return true;
-  return probe(`${agentRuntime}/docs`);
-}
-
-async function publicAgentHealth(url: string, headers: HeadersInit): Promise<{ agentRuntime: boolean; ollama: boolean }> {
+async function agentHealth(url: string, headers?: HeadersInit): Promise<{ agentRuntime: boolean; ollama: boolean }> {
   try {
     const r = await fetch(url, { headers, signal: AbortSignal.timeout(4000) });
     if (!r.ok) return { agentRuntime: false, ollama: false };
@@ -56,13 +44,14 @@ async function publicAgentHealth(url: string, headers: HeadersInit): Promise<{ a
 }
 
 async function check(config: ConfigStore): Promise<HealthStatus> {
-  const { agentRuntime, mempalace, ollama } = config.getUrls();
+  const { agentRuntime, mempalace } = config.getUrls();
   const isPublicProfile = agentRuntime.startsWith(MEMEX_PUBLIC_ORIGIN);
   const headers = isPublicProfile ? await publicSessionHeaders() : undefined;
-  const [publicHealth, mp, lanAr, lanOl] = await Promise.all([
-    isPublicProfile
-      ? publicAgentHealth(`${agentRuntime}/api/v1/health/nodes`, headers ?? {})
-      : Promise.resolve({ agentRuntime: false, ollama: false }),
+  const [runtimeHealth, mp] = await Promise.all([
+    // Both local and hosted deployments expose their model-node registry via
+    // the harness. This is the authoritative model-health signal; a desktop
+    // process cannot reliably reach Docker's internal Ollama listener.
+    agentHealth(`${agentRuntime}/api/v1/health/nodes`, headers),
     // MemPalace has no public /health endpoint. Its documented, used-in-
     // production contract is POST /v1/memories/search, not GET /v1/memories.
     isPublicProfile
@@ -72,15 +61,11 @@ async function check(config: ConfigStore): Promise<HealthStatus> {
           body: JSON.stringify({ query: "healthcheck", limit: 1 }),
         })
       : probe(`${mempalace}/health`),
-    isPublicProfile ? Promise.resolve(false) : localAgentHealth(agentRuntime),
-    isPublicProfile ? Promise.resolve(false) : probe(`${ollama}/api/version`),
   ]);
-  const ar = isPublicProfile ? publicHealth.agentRuntime : lanAr;
-  const ol = isPublicProfile ? publicHealth.ollama : lanOl;
   return {
-    agentRuntime: ar ? "connected" : "disconnected",
+    agentRuntime: runtimeHealth.agentRuntime ? "connected" : "disconnected",
     mempalace:    mp ? "connected" : "disconnected",
-    ollama:       ol ? "connected" : "disconnected",
+    ollama:       runtimeHealth.ollama ? "connected" : "disconnected",
     checkedAt:    new Date().toISOString(),
   };
 }

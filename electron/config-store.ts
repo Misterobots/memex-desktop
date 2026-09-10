@@ -112,9 +112,15 @@ const SEED_PROFILES: RuntimeProfile[] = [
     id:           "localhost",
     name:         "Localhost",
     providerType: "internal",
-    agentRuntime: "http://localhost:8008",
-    mempalace:    "http://localhost:8200",
-    ollama:       "http://localhost:11434",
+    // Lovelace's WSL/Docker port relay listens on IPv6 loopback.  An explicit
+    // address avoids Windows resolving localhost to an unusable IPv4 route.
+    agentRuntime: "http://[::1]:8008",
+    // Memory is a companion service on Hopper, not a local process.
+    mempalace:    "http://192.168.2.102:8200",
+    // The harness owns the Docker-internal Ollama route.  Keep this endpoint
+    // for advanced direct use, while health derives model availability from
+    // the harness node registry.
+    ollama:       "http://[::1]:11434",
     defaultModel: "qwen3:14b",
     readonly:     true,
   },
@@ -148,6 +154,15 @@ export class ConfigStore {
           if (!raw.profiles.find((p) => p.id === seed.id)) {
             raw.profiles.unshift(seed);
           }
+        }
+        // Repair the original localhost seed on existing installs. It pointed
+        // to IPv4-only loopback and a memory service that is not local on this
+        // workstation, so a working harness was displayed as three failures.
+        const localhostSeed = SEED_PROFILES.find((p) => p.id === "localhost")!;
+        const localhost = raw.profiles.find((p) => p.id === "localhost");
+        if (localhost && localhost.readonly && localhost.agentRuntime === "http://localhost:8008") {
+          Object.assign(localhost, localhostSeed);
+          this.persist(raw);
         }
         if (!hadAnywhere) {
           raw.activeProfileId = DEFAULT_ACTIVE;

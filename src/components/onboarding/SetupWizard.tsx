@@ -98,7 +98,7 @@ export function SetupWizard({ onComplete }: Props) {
   const [localError, setLocalError] = useState("");
   const [localModel, setLocalModel] = useState("qwen3:8b");
   const [localUrls, setLocalUrls] = useState({
-    harnessUrl: "http://127.0.0.1:8008", mempalaceUrl: "http://127.0.0.1:8200", ollamaUrl: "http://127.0.0.1:11434",
+    harnessUrl: "http://[::1]:8008", mempalaceUrl: "http://192.168.2.102:8200", ollamaUrl: "http://[::1]:11434",
     openWebUiUrl: "http://127.0.0.1:3000", comfyUiUrl: "http://127.0.0.1:8188",
   });
   const publicProfile = profiles.find((p) => p.id === "memex-anywhere");

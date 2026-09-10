@@ -18,8 +18,8 @@ export interface LocalLlmInspection {
 }
 
 export const LOCAL_SERVICE_DEFAULTS = {
-  ollama: "http://127.0.0.1:11434", openWebUi: "http://127.0.0.1:3000",
-  comfyUi: "http://127.0.0.1:8188", harness: "http://127.0.0.1:8008", mempalace: "http://127.0.0.1:8200",
+  ollama: "http://[::1]:11434", openWebUi: "http://127.0.0.1:3000",
+  comfyUi: "http://127.0.0.1:8188", harness: "http://[::1]:8008", mempalace: "http://192.168.2.102:8200",
 } as const;
 
 export function recommendLocalModels(gpus: LocalGpu[], systemRamGb: number): LocalModelRecommendation[] {
