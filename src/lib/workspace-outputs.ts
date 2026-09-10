@@ -137,6 +137,10 @@ export function activityPresentation(event: MessageEvent): ActivityPresentation 
     return { tone: "tool", title: isResult ? `${name} completed` : `Running ${name}`, detail, command: isResult ? undefined : detail, actor };
   }
   if (event.type === "thought" || eventType === "thought" || rawType === "thinking") {
+    // The runtime marks only its own observable, user-safe execution summaries
+    // this way. Other thought events remain summarized so this surface never
+    // becomes an accidental display of private scratchpad.
+    if (data.safe_summary === true) return { tone: "intent", title: body, actor };
     const detail = activityDetail(body, "thought");
     return { tone: "intent", title: actor ? `${actor} is assessing the task` : "Thinking", detail, actor };
   }

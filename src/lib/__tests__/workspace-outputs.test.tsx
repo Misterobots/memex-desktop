@@ -111,6 +111,14 @@ describe("workspace output delivery", () => {
     expect(markup).toContain("Progress");
     expect(markup).toContain("border-pink-400/60");
   });
+  it("shows runtime-marked execution summaries while keeping unmarked thought private", () => {
+    expect(activityPresentation({ type: "thought", content: "I’m reviewing the selected workspace before making changes.", data: { type: "thought", safe_summary: true } })).toMatchObject({
+      tone: "intent", title: "I’m reviewing the selected workspace before making changes.",
+    });
+    expect(activityPresentation({ type: "thought", content: "private scratchpad text" })).toMatchObject({
+      tone: "intent", title: "Thinking", detail: "Considering response",
+    });
+  });
   it.each<ChatDisplayMode>(["summary", "normal", "thought"])("keeps real media and cancellation visible in %s", (displayMode) => {
     const media = normalizeSSEDelta({ type: "media_attachment", content: { filename: "test.png", mimeType: "image/png", url: "/api/backend/delivered_artifacts/test.png", downloadUrl: "/api/backend/delivered_artifacts/test.png?dl=1" } })!;
     const markup = renderToStaticMarkup(<MessageBubble displayMode={displayMode} message={{ ...message, content: "", events: [media, { type: "status", content: "Stopped by you.", data: { type: "cancelled" } }] }} />);
