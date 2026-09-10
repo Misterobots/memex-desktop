@@ -49,7 +49,7 @@ export function GauntletHandoffCard({ handoffId }: { handoffId: string }) {
         return;
       }
       if (taskResponse.status < 200 || taskResponse.status >= 300) throw new Error(`status ${taskResponse.status}`);
-      const task = JSON.parse(taskResponse.body || "{}") as { run?: { status?: string; phase?: string } };
+      const task = JSON.parse(taskResponse.body || "{}") as { run?: { status?: string; phase?: string; error?: string } };
       const events = eventsResponse.status >= 200 && eventsResponse.status < 300
         ? JSON.parse(eventsResponse.body || "{}") as { events?: unknown[] } : { events: [] };
       const remoteStatus = task.run?.status || "unknown";
@@ -64,6 +64,8 @@ export function GauntletHandoffCard({ handoffId }: { handoffId: string }) {
         : packet.status;
       const nextAction = remoteStatus === "running" || remoteStatus === "queued"
         ? "Coordinator is active. Status refreshes automatically while it works."
+        : remoteStatus === "needs_input" && /runtime restarted/i.test(task.run?.error || "")
+          ? "The runtime restarted. Resume from this preserved Gauntlet checkpoint; its goal, bar, effort policy, and prior critic evidence stay intact."
         : remoteStatus === "needs_input"
           ? "Coordinator needs a project decision before it can create a builder handoff."
           : packet.nextAction;
@@ -113,7 +115,7 @@ export function GauntletHandoffCard({ handoffId }: { handoffId: string }) {
     <div className="mt-2 flex gap-2">
       <button disabled={busy} onClick={() => void checkCoordinator()} className="rounded border border-border/60 px-2 py-1 text-text hover:bg-surface2 disabled:opacity-50">Refresh now</button>
       {requiresSignIn && <button disabled={busy} onClick={() => void signIn()} className="rounded border border-accent/50 px-2 py-1 text-accent hover:bg-accent/10 disabled:opacity-50">Sign in to Memex</button>}
-      <button onClick={resume} className="rounded border border-border/60 px-2 py-1 text-text hover:bg-surface2">Resume with preserved brief</button>
+      <button onClick={resume} className="rounded border border-border/60 px-2 py-1 text-text hover:bg-surface2">Resume preserved Gauntlet</button>
     </div>
   </section>;
 }
