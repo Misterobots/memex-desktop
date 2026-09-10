@@ -69,7 +69,7 @@ export function AccountMenu() {
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-text">{uid || "Memex"}</span>
-          <span className={`block text-[11px] ${connected ? "text-green" : "text-muted"}`}>{connected ? "Connected" : "Sign in required"}</span>
+          <span className={`block text-[11px] ${connected ? "text-green" : "text-muted"}`}>{connected ? "Connected" : "Runtime unavailable"}</span>
         </span>
         <span className="text-muted">⌄</span>
       </button>
