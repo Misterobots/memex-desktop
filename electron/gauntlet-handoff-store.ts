@@ -39,6 +39,8 @@ export interface GauntletHandoff {
   qualityBar: string;
   /** Immutable after creation. */
   effort: GauntletEffortPolicy;
+  /** Durable user-provided context added when a stopped run is continued. */
+  clarifications: string[];
   owner?: string;
   acceptedAt?: string;
   completed: string[];
@@ -48,18 +50,18 @@ export interface GauntletHandoff {
 }
 
 export type NewGauntletHandoff = Omit<GauntletHandoff,
-  "id" | "version" | "createdAt" | "updatedAt" | "status" | "completed" | "pending" | "deficits" | "phase" | "nextAction"
+  "id" | "version" | "createdAt" | "updatedAt" | "status" | "completed" | "pending" | "deficits" | "phase" | "nextAction" | "clarifications"
 > & Partial<Pick<GauntletHandoff, "status" | "completed" | "pending" | "deficits" | "phase" | "nextAction">>;
 
 type MutablePatch = Partial<Pick<GauntletHandoff,
-  "runId" | "parentId" | "role" | "phase" | "status" | "owner" | "acceptedAt" | "completed" | "pending" | "deficits" | "nextAction"
+  "runId" | "parentId" | "role" | "phase" | "status" | "owner" | "acceptedAt" | "completed" | "pending" | "deficits" | "nextAction" | "clarifications"
 >>;
 
 const ALLOWED: Record<GauntletHandoffStatus, GauntletHandoffStatus[]> = {
   ready: ["accepted", "blocked", "cancelled"],
   accepted: ["ready", "needs_input", "completed", "blocked", "cancelled"],
   needs_input: ["accepted", "blocked", "cancelled"],
-  completed: [], blocked: ["ready", "cancelled"], cancelled: [],
+  completed: [], blocked: ["ready", "cancelled"], cancelled: ["accepted"],
 };
 
 export class GauntletHandoffStore {
@@ -70,7 +72,7 @@ export class GauntletHandoffStore {
     const now = new Date().toISOString();
     const record: GauntletHandoff = {
       id: randomUUID(), version: 1, createdAt: now, updatedAt: now,
-      status: "ready", phase: "scope", completed: [], deficits: [],
+      status: "ready", phase: "scope", completed: [], deficits: [], clarifications: [],
       pending: ["Accept coordinator ownership", "Create a builder handoff", "Create an independent critic handoff"],
       nextAction: "Accept coordinator ownership before work continues.",
       ...input,
@@ -88,6 +90,18 @@ export class GauntletHandoffStore {
     return this.patch(id, { status: "accepted", owner, acceptedAt: new Date().toISOString(), nextAction: "Coordinate a builder handoff against the preserved quality bar." });
   }
 
+  /** Reopen a user-stopped checkpoint without replacing its original contract. */
+  resume(id: string, clarification: string, owner = "desktop coordinator"): GauntletHandoff | null {
+    const existing = this.get(id);
+    if (!existing || existing.status !== "cancelled") return null;
+    const note = clarification.trim();
+    return this.patch(id, {
+      status: "accepted", owner, acceptedAt: new Date().toISOString(),
+      clarifications: note ? [...existing.clarifications, note] : existing.clarifications,
+      nextAction: "Coordinator is resuming from the preserved goal with the new context.",
+    });
+  }
+
   patch(id: string, patch: MutablePatch): GauntletHandoff | null {
     const existing = this.get(id);
     if (!existing) return null;
@@ -97,7 +111,7 @@ export class GauntletHandoffStore {
     const candidate: MutablePatch = {
       runId: patch.runId, parentId: patch.parentId, role: patch.role,
       phase: patch.phase, status: patch.status, owner: patch.owner,
-      acceptedAt: patch.acceptedAt, completed: patch.completed,
+      acceptedAt: patch.acceptedAt, completed: patch.completed, clarifications: patch.clarifications,
       pending: patch.pending, deficits: patch.deficits, nextAction: patch.nextAction,
     };
     const mutable = Object.fromEntries(Object.entries(candidate).filter(([, value]) => value !== undefined)) as MutablePatch;
@@ -113,7 +127,7 @@ export class GauntletHandoffStore {
       const records = new Map<string, GauntletHandoff>();
       for (const raw of readFileSync(this.path, "utf8").split("\n").filter(Boolean)) {
         const line = JSON.parse(raw) as GauntletHandoff & { _patch?: boolean };
-        if (!line._patch) records.set(line.id, line);
+        if (!line._patch) records.set(line.id, { ...line, clarifications: line.clarifications ?? [] });
         else {
           const prior = records.get(line.id);
           if (prior) records.set(line.id, { ...prior, ...line, _patch: undefined } as GauntletHandoff);

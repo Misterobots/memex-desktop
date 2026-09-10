@@ -564,6 +564,7 @@ export function registerAllIpc(ctx: IpcContext): void {
   // Gauntlet packets are intentionally local and append-only. This keeps the
   // goal/bar/effort policy available even if the hosted coordinator changes.
   autoWireStore("gauntlet", gauntletHandoffs, { create: "create", get: "get", forSession: "forSession", patch: "patch", accept: "accept" });
+  ipcMain.handle("gauntlet:resume", (_event, id: string, clarification: string) => gauntletHandoffs.resume(id, clarification));
 
   // ── Local LLM setup ──────────────────────────────────────────────────────
   ipcMain.handle("localLlm:inspect", () => inspectLocalLlm());

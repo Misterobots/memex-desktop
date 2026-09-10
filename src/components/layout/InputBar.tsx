@@ -168,17 +168,23 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
     const bridge = desktop();
     if (mode === "gauntlet" && bridge?.gauntlet) {
       const mentionedId = content.match(/Resume Gauntlet checkpoint\s+([\w-]+)/i)?.[1];
+      const continuationText = content.replace(/^\s*start\s+fresh\s*[:,-]?\s*/i, "").trim() || content;
       const sessionPackets = await bridge.gauntlet.forSession(sessionId);
+      const startFresh = /\bstart\s+fresh\b/i.test(content);
+      const stopped = sessionPackets.find((candidate) => candidate.status === "cancelled") ?? null;
       const previous = mentionedId
         ? await bridge.gauntlet.get(mentionedId)
-        : /\bresume\b/i.test(content) ? sessionPackets.find((candidate) => candidate.status === "ready" || candidate.status === "accepted") ?? null : null;
+        : startFresh ? null
+        : stopped ?? (/\bresume\b/i.test(content) ? sessionPackets.find((candidate) => candidate.status === "ready" || candidate.status === "accepted") ?? null : null);
       if (!previous && !gauntletBar.trim()) {
         setText(content);
         setGauntletError("Choose a named, fetchable reference for the quality bar before starting the Gauntlet.");
         return;
       }
-      const created = previous ?? await bridge.gauntlet.create({
-        sessionId, workspaceKey, role: "coordinator", goal: content, qualityBar: gauntletBar.trim(),
+      const created = previous?.status === "cancelled"
+        ? await bridge.gauntlet.resume(previous.id, content) ?? previous
+        : previous ?? await bridge.gauntlet.create({
+        sessionId, workspaceKey, role: "coordinator", goal: continuationText, qualityBar: gauntletBar.trim(),
         effort: { model: selectedModel ?? "swarm", outputDetail: runPreferences.outputDetail, reasoningSummary: runPreferences.reasoningSummary, reasoningEffort: runPreferences.reasoningEffort },
       });
       // Coordinator ownership is bookkeeping for durable recovery, not a
@@ -192,7 +198,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       appendEvent(sessionId, assistantId, {
         type: "status",
           content: previous
-            ? `Resumed Gauntlet checkpoint ${packet.id.slice(0, 8)} — using the preserved original goal, quality bar, and effort policy.`
+            ? `Resumed Gauntlet checkpoint ${packet.id.slice(0, 8)} — your added context is attached to the preserved original goal, quality bar, and effort policy.`
             : `Gauntlet checkpoint ${packet.id.slice(0, 8)} saved — coordinator ownership, goal, quality bar, and effort policy are preserved locally.`,
         receivedAt: Date.now(), data: { type: "gauntlet_checkpoint", handoffId: packet.id },
       });
@@ -208,12 +214,13 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
         id: handoffId, role: "coordinator", phase: "scope",
         goal: handoffPacket?.goal ?? content,
         qualityBar: handoffPacket?.qualityBar ?? gauntletBar.trim(),
-        effort: {
+          effort: {
           model: handoffPacket?.effort.model ?? selectedModel ?? "swarm",
           outputDetail: handoffPacket?.effort.outputDetail ?? runPreferences.outputDetail,
           reasoningSummary: handoffPacket?.effort.reasoningSummary ?? runPreferences.reasoningSummary,
           reasoningEffort: handoffPacket?.effort.reasoningEffort ?? runPreferences.reasoningEffort,
-        },
+          },
+          clarifications: handoffPacket?.clarifications ?? [],
       } : undefined,
       modeFlags: { ...MODE_FLAGS[mode], ...extraFlags, ...(runPreferences.reasoningEffort === "high" ? { ultrathink_mode: true } : {}) },
       sessionId,

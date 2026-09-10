@@ -122,7 +122,7 @@ export interface GauntletHandoff {
   role: GauntletRole; phase: GauntletPhase; status: GauntletHandoffStatus;
   goal: string; qualityBar: string;
   effort: { model: string; outputDetail: "low" | "medium" | "high"; reasoningSummary: "auto" | "concise" | "detailed" | "none"; reasoningEffort: "low" | "medium" | "high" };
-  owner?: string; acceptedAt?: string; completed: string[]; pending: string[]; deficits: string[]; nextAction: string;
+  owner?: string; acceptedAt?: string; completed: string[]; pending: string[]; deficits: string[]; nextAction: string; clarifications: string[];
 }
 
 // Fallback constants used when not running inside Electron (e.g. browser dev).
@@ -319,11 +319,12 @@ export interface MemexBridge {
   };
 
   gauntlet: {
-    create: (input: Omit<GauntletHandoff, "id" | "version" | "createdAt" | "updatedAt" | "status" | "completed" | "pending" | "deficits" | "phase" | "nextAction"> & Partial<Pick<GauntletHandoff, "status" | "completed" | "pending" | "deficits" | "phase" | "nextAction">>) => Promise<GauntletHandoff>;
+    create: (input: Omit<GauntletHandoff, "id" | "version" | "createdAt" | "updatedAt" | "status" | "completed" | "pending" | "deficits" | "phase" | "nextAction" | "clarifications"> & Partial<Pick<GauntletHandoff, "status" | "completed" | "pending" | "deficits" | "phase" | "nextAction">>) => Promise<GauntletHandoff>;
     get: (id: string) => Promise<GauntletHandoff | null>;
     forSession: (sessionId: string) => Promise<GauntletHandoff[]>;
     patch: (id: string, patch: Partial<GauntletHandoff>) => Promise<GauntletHandoff | null>;
     accept: (id: string, owner: string) => Promise<GauntletHandoff | null>;
+    resume: (id: string, clarification: string) => Promise<GauntletHandoff | null>;
   };
 
   localLlm: {

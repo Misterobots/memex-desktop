@@ -36,4 +36,13 @@ describe("GauntletHandoffStore", () => {
     expect(handoffs.patch(accepted.id, { status: "completed" })?.status).toBe("completed");
     expect(handoffs.patch(accepted.id, { status: "ready" })).toBeNull();
   });
+
+  it("reopens a user-stopped checkpoint and preserves its original contract with added context", () => {
+    const handoffs = store();
+    const packet = handoffs.create({ sessionId: "session-3", role: "coordinator", goal: "Original goal", qualityBar: "Reference", effort });
+    const accepted = handoffs.accept(packet.id, "coordinator")!;
+    expect(handoffs.patch(accepted.id, { status: "cancelled" })?.status).toBe("cancelled");
+    const resumed = handoffs.resume(packet.id, "The project is at C:/work/project")!;
+    expect(resumed).toMatchObject({ status: "accepted", goal: "Original goal", qualityBar: "Reference", effort, clarifications: ["The project is at C:/work/project"] });
+  });
 });

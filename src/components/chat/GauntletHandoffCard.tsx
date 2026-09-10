@@ -116,6 +116,7 @@ export function GauntletHandoffCard({ handoffId }: { handoffId: string }) {
       <button disabled={busy} onClick={() => void checkCoordinator()} className="rounded border border-border/60 px-2 py-1 text-text hover:bg-surface2 disabled:opacity-50">Refresh now</button>
       {requiresSignIn && <button disabled={busy} onClick={() => void signIn()} className="rounded border border-accent/50 px-2 py-1 text-accent hover:bg-accent/10 disabled:opacity-50">Sign in to Memex</button>}
       <button onClick={resume} className="rounded border border-border/60 px-2 py-1 text-text hover:bg-surface2">Resume preserved Gauntlet</button>
+      {packet.status === "cancelled" && <button onClick={() => window.dispatchEvent(new CustomEvent("chat:prefill", { detail: "Start fresh: " }))} className="rounded border border-border/60 px-2 py-1 text-muted hover:bg-surface2">Start fresh</button>}
     </div>
   </section>;
 }
