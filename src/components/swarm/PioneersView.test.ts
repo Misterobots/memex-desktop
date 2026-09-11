@@ -39,4 +39,13 @@ describe("Pioneers Theatre event adapter", () => {
     expect(workers[0].pioneer_name).toBe("Shannon");
     expect(workers[0].activities.at(-1)?.text).toBe("Reading the project");
   });
+
+  it("does not turn control-plane narration into duplicate Rost workers", () => {
+    const workers = pioneersFromEvents([
+      event("swarm_worker_created", { worker_id: "swarmresearcher", role: "researcher", pioneer_name: "Shannon", task: "Inspect the project" }),
+      { type: "agent_event", agent_name: "Coordinator", content: "Spawned Shannon (researcher)" },
+      { type: "agent_event", agent_name: "System", content: "[Coordinator] Running implementation" },
+    ]);
+    expect(workers.map((worker) => worker.pioneer_name)).toEqual(["Shannon"]);
+  });
 });
