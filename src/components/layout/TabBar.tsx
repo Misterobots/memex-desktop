@@ -176,7 +176,11 @@ export function TabBar() {
     // Sites deliberately has no top-level tab: it is a Design subspace.
     // Treat it as valid whenever Design is available rather than redirecting
     // the user to the shell default after choosing it.
-    const activeIsVisible = tabs.some((tab) => tab.id === activeTab || (activeTab === "sites" && tab.id === "design"));
+    // Settings is intentionally reached through the persistent account control,
+    // not the focused workspace navigation. It remains a valid destination in
+    // either shell; otherwise this guard immediately redirects a Settings click
+    // back to Chat/Code and makes the view appear to flash.
+    const activeIsVisible = activeTab === "settings" || tabs.some((tab) => tab.id === activeTab || (activeTab === "sites" && tab.id === "design"));
     if (features && !activeIsVisible) setActiveTab(shellMode === "code" ? "dev" : "chat");
   }, [activeTab, features, shellMode, setActiveTab]);
 

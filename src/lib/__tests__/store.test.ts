@@ -101,6 +101,13 @@ describe("experience-owned sessions", () => {
     expect(useStore.getState()).toMatchObject({ shellMode: "code", activeTab: "design", designSurface: "sites" });
   });
 
+  it("keeps Settings open across shell changes", () => {
+    useStore.getState().setActiveTab("settings");
+    useStore.getState().setShellMode("code");
+
+    expect(useStore.getState()).toMatchObject({ shellMode: "code", activeTab: "settings" });
+  });
+
   it("titles a new thread from its first user prompt", () => {
     const id = useStore.getState().createSession("research");
     useStore.getState().addMessage(id, {

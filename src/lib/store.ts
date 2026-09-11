@@ -266,9 +266,10 @@ export const useStore = create<AppState>()(
       setShellMode: (shellMode) => set((state) => ({
         shellMode,
         // Design (and its Sites subspace) plus Routines are shared. Keep those
-        // contexts visible across the switch; otherwise land in the workspace's
-        // primary surface instead of leaving the user on a hidden destination.
-        activeTab: SHELL_TABS[shellMode].includes(state.activeTab)
+        // contexts visible across the switch. Settings is a persistent utility
+        // route opened from the account menu, so do not turn a shell switch into
+        // a surprise redirect away from it.
+        activeTab: state.activeTab === "settings" || SHELL_TABS[shellMode].includes(state.activeTab)
           ? state.activeTab
           : shellMode === "code" ? "dev" : "chat",
       })),
