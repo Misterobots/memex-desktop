@@ -181,6 +181,12 @@ export function PioneersView({ events, active, workspaceKey = "global" }: { even
   const [dismissed, setDismissed] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [arrivalIndex, setArrivalIndex] = useState(0);
+  const [treeOpen, setTreeOpen] = useState(() => {
+    try { return localStorage.getItem(`memex.layout.pioneersTree:${workspaceKey}`) !== "0"; } catch { return true; }
+  });
+  const [dockOpen, setDockOpen] = useState(() => {
+    try { return localStorage.getItem(`memex.layout.pioneersDock:${workspaceKey}`) !== "0"; } catch { return true; }
+  });
   const [panelWidth, setPanelWidth] = useState(() => {
     try { return Math.min(720, Math.max(330, Number(localStorage.getItem(`memex.layout.pioneersWidth:${workspaceKey}`)) || 460)); } catch { return 460; }
   });
@@ -199,8 +205,20 @@ export function PioneersView({ events, active, workspaceKey = "global" }: { even
     try { const saved = Number(localStorage.getItem(`memex.layout.pioneersWidth:${workspaceKey}`)); if (saved) setPanelWidth(Math.min(720, Math.max(330, saved))); } catch { /* storage unavailable */ }
   }, [workspaceKey]);
   useEffect(() => {
+    try {
+      setTreeOpen(localStorage.getItem(`memex.layout.pioneersTree:${workspaceKey}`) !== "0");
+      setDockOpen(localStorage.getItem(`memex.layout.pioneersDock:${workspaceKey}`) !== "0");
+    } catch { setTreeOpen(true); setDockOpen(true); }
+  }, [workspaceKey]);
+  useEffect(() => {
     try { localStorage.setItem(`memex.layout.pioneersWidth:${workspaceKey}`, String(panelWidth)); } catch { /* storage unavailable */ }
   }, [panelWidth, workspaceKey]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(`memex.layout.pioneersTree:${workspaceKey}`, treeOpen ? "1" : "0");
+      localStorage.setItem(`memex.layout.pioneersDock:${workspaceKey}`, dockOpen ? "1" : "0");
+    } catch { /* storage unavailable */ }
+  }, [treeOpen, dockOpen, workspaceKey]);
   useEffect(() => {
     if (!resizing) return;
     const resizePanel = (event: PointerEvent) => setPanelWidth(Math.round(Math.min(720, Math.max(330, window.innerWidth - event.clientX))));
@@ -218,10 +236,9 @@ export function PioneersView({ events, active, workspaceKey = "global" }: { even
     {!visible && <button onClick={() => setDismissed(false)} className="absolute right-3 top-3 z-20 rounded-full border border-accent/40 bg-surface px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-accent shadow-lg">Show Pioneers · {workers.length}</button>}
     <aside aria-label="Pioneers" style={{ width: visible ? panelWidth : 0 }} className="relative flex h-full shrink-0 overflow-hidden border-l border-border/60 bg-surface transition-[width] duration-500">
       <button type="button" aria-label="Resize Pioneers panel" title="Drag to resize Pioneers" onPointerDown={(event) => { event.preventDefault(); setResizing(true); }} className="absolute -left-1 top-0 z-20 h-full w-2 cursor-col-resize hover:bg-accent/20 focus:outline-none focus:bg-accent/20" />
-      <div style={{ width: panelWidth }} className="flex h-full min-w-[330px] flex-col"><header className="flex shrink-0 items-center gap-2 border-b border-border/60 px-4 py-3"><span className={`h-2 w-2 rounded-full ${active ? "animate-pulse bg-accent" : "bg-emerald-400"}`} /><span className="text-xs font-bold uppercase tracking-widest text-text">Pioneers</span><span className="text-[10px] text-faint">{phaseLabel(phase, workers)}</span><span className="ml-auto text-[10px] text-faint">{workers.length} active</span><button onClick={() => setDismissed(true)} className="ml-2 text-faint hover:text-text" aria-label="Collapse Pioneers">→</button></header>
+      <div style={{ width: panelWidth }} className="flex h-full min-w-[330px] flex-col"><header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border/60 px-4 py-3"><span className={`h-2 w-2 rounded-full ${active ? "animate-pulse bg-accent" : "bg-emerald-400"}`} /><span className="text-xs font-bold uppercase tracking-widest text-text">Pioneers</span><span className="min-w-0 truncate text-[10px] text-faint">{phaseLabel(phase, workers)}</span><span className="ml-auto text-[10px] text-faint">{workers.length} active</span><button type="button" onClick={() => setTreeOpen((open) => !open)} className={`rounded border px-2 py-1 text-[9px] font-bold uppercase tracking-widest transition-colors ${treeOpen ? "border-accent/40 bg-accent/10 text-accent" : "border-border/60 text-faint hover:text-text"}`} aria-expanded={treeOpen} aria-controls="pioneers-tree">{treeOpen ? "Tree" : "Agent"}</button><button type="button" onClick={() => setDockOpen((open) => !open)} className={`rounded border px-2 py-1 text-[9px] font-bold uppercase tracking-widest transition-colors ${dockOpen ? "border-accent/40 bg-accent/10 text-accent" : "border-border/60 text-faint hover:text-text"}`} aria-pressed={dockOpen}>Agent Dock {dockOpen ? "On" : "Off"}</button><button onClick={() => setDismissed(true)} className="ml-1 text-faint hover:text-text" aria-label="Collapse Pioneers">→</button></header>
         {arrival && arrivalIndex < workers.length && active && <div className="h-[250px] shrink-0 border-b border-border/60"><LanyardCard worker={arrival} onDone={() => setArrivalIndex((index) => Math.min(index + 1, workers.length))} /></div>}
-        <div className="flex min-h-0 flex-1"><div className={`min-w-0 overflow-y-auto ${selectedWorker ? "w-[52%]" : "w-full"}`}><div className="border-b border-border/60 px-4 py-2 text-[9px] font-black uppercase tracking-[0.25em] text-faint">Rost · Pioneer badges</div>{workers.map((worker) => <Badge key={worker.worker_id} worker={worker} selected={selected === worker.worker_id} onClick={() => setSelected(selected === worker.worker_id ? null : worker.worker_id)} />)}</div>{selectedWorker && <div className="w-[48%] min-w-0"><Detail worker={selectedWorker} onClose={() => setSelected(null)} /></div>}</div>
-        <div className="shrink-0 border-t border-border/60 px-4 py-2 text-[9px] font-black uppercase tracking-[0.25em] text-faint">AgentDock · live activity</div><div className="flex shrink-0 gap-2 overflow-x-auto px-3 pb-3">{workers.filter((worker) => worker.state === "running" || worker.state === "pending").slice(0, 3).map((worker) => <button key={worker.worker_id} onClick={() => setSelected(worker.worker_id)} className="min-w-[110px] rounded-lg border border-border/60 bg-surface2 px-2 py-2 text-left hover:border-accent/50"><div className="flex items-center gap-2"><Portrait worker={worker} /><span className="truncate text-[10px] font-bold text-text">{worker.pioneer_name}</span></div><div className="mt-2 truncate text-[9px] text-muted">{worker.activities.at(-1)?.text ?? worker.task}</div></button>)}</div>
+        <div id="pioneers-tree" className="relative flex min-h-0 flex-1">{treeOpen ? <><div className={`min-w-0 overflow-y-auto ${selectedWorker ? "w-[52%]" : "w-full"}`}><div className="border-b border-border/60 px-4 py-2 text-[9px] font-black uppercase tracking-[0.25em] text-faint">Rost · Pioneer badges</div>{workers.map((worker) => <Badge key={worker.worker_id} worker={worker} selected={selected === worker.worker_id} onClick={() => setSelected(selected === worker.worker_id ? null : worker.worker_id)} />)}</div>{selectedWorker && <div className="w-[48%] min-w-0"><Detail worker={selectedWorker} onClose={() => setSelected(null)} /></div>}</> : <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center"><Portrait worker={workers.find((worker) => worker.state === "running") ?? workers[0]} large /><div><div className="text-sm font-bold text-text">Agent view</div><div className="mt-1 text-[10px] text-muted">The Rost is collapsed. Use the Tree toggle to browse every Pioneer.</div></div></div>}{dockOpen && <div className="absolute bottom-3 right-3 z-10 w-[min(300px,calc(100%-1.5rem))] rounded-xl border border-border/60 bg-surface/95 p-2 shadow-2xl backdrop-blur"><div className="mb-2 flex items-center justify-between px-1"><span className="text-[9px] font-black uppercase tracking-[0.25em] text-faint">AgentDock · live</span><span className="text-[9px] text-accent">{workers.filter((worker) => worker.state === "running").length} working</span></div><div className="flex gap-2 overflow-x-auto">{workers.filter((worker) => worker.state === "running" || worker.state === "pending").slice(0, 3).map((worker) => <button key={worker.worker_id} onClick={() => { setSelected(worker.worker_id); setTreeOpen(true); }} className="min-w-[110px] rounded-lg border border-border/60 bg-surface2 px-2 py-2 text-left hover:border-accent/50"><div className="flex items-center gap-2"><Portrait worker={worker} /><span className="truncate text-[10px] font-bold text-text">{worker.pioneer_name}</span></div><div className="mt-2 truncate text-[9px] text-muted">{worker.activities.at(-1)?.text ?? worker.task}</div></button>)}</div></div>}</div>
       </div>
     </aside>
   </>;
