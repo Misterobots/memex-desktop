@@ -2,7 +2,7 @@ import type { ChatDisplayMode, ChatMessage, ExperienceId } from "../../types/mem
 import { useState } from "react";
 import { RunInspectorPanel } from "./RunInspectorPanel";
 import { ResponseActions } from "./ResponseActions";
-import { LiveActivity } from "./LiveActivity";
+import { LiveActivity, WorkTraceHeader } from "./LiveActivity";
 import { SteeringCard } from "./SteeringCard";
 import { MessageOutputs } from "./MessageOutputs";
 import { MessageContent } from "./MessageContent";
@@ -99,6 +99,7 @@ function ResponseTimeline({ events, active, waiting, verbose, fallback }: {
     </>;
   }
   return <div className="space-y-2.5">
+    <WorkTraceHeader events={events} active={active} />
     {entries.map((entry, index) => entry.kind === "response"
       ? <MessageContent key={`response-${index}`} content={entry.content} />
       : <LiveActivity key={`activity-${index}`} events={entry.events} active={active} waiting={waiting} verbose={verbose} hideHeader />)}

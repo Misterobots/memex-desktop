@@ -120,7 +120,7 @@ function toolDetail(data: Record<string, unknown>): string | undefined {
  * display private model scratchpad: `thought` events are runtime-provided
  * summaries and retain their original, user-safe wording.
  */
-export function activityPresentation(event: MessageEvent): ActivityPresentation {
+export function activityPresentation(event: MessageEvent, detailed = false): ActivityPresentation {
   const data = record(event.data);
   const rawType = String(data.type ?? event.type);
   const eventType = String(data.event_type ?? data.kind ?? "");
@@ -134,13 +134,17 @@ export function activityPresentation(event: MessageEvent): ActivityPresentation 
     // The activity trace reports lifecycle, while the dedicated output/review
     // surfaces own any user-authorized result inspection.
     const detail = isResult ? "Result received." : toolDetail(data) ?? (body !== name ? body : undefined);
-    return { tone: "tool", title: isResult ? `${name} completed` : `Running ${name}`, detail, command: isResult ? undefined : detail, actor };
+    return { tone: "tool", title: isResult ? `Ran ${name}` : `Running ${name}`, detail, command: isResult ? undefined : detail, actor };
   }
   if (event.type === "thought" || eventType === "thought" || rawType === "thinking") {
     // The runtime marks only its own observable, user-safe execution summaries
     // this way. Other thought events remain summarized so this surface never
     // becomes an accidental display of private scratchpad.
     if (data.safe_summary === true) return { tone: "intent", title: body, actor };
+    if (detailed) {
+      const detail = activityDetail(body, "thought");
+      return { tone: "intent", title: body, detail: detail !== body ? detail : undefined, actor };
+    }
     const detail = activityDetail(body, "thought");
     return { tone: "intent", title: actor ? `${actor} is assessing the task` : "Thinking", detail, actor };
   }

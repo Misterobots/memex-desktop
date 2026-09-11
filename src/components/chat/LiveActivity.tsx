@@ -6,6 +6,27 @@ function elapsedLabel(seconds: number) {
   return seconds < 60 ? seconds + "s" : Math.floor(seconds / 60) + "m " + seconds % 60 + "s";
 }
 
+export function WorkTraceHeader({ events, active }: { events: MessageEvent[]; active: boolean }) {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const start = events[0]?.receivedAt ?? Date.now();
+    const tick = () => setSeconds(Math.max(0, Math.floor((Date.now() - start) / 1000)));
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [active, events]);
+  const first = events[0]?.receivedAt;
+  const last = events.at(-1)?.receivedAt;
+  const recorded = first && last ? Math.max(0, Math.floor((last - first) / 1000)) : seconds;
+  return <div className="flex items-center gap-2 border-b border-border/60 pb-2 text-xs text-muted" role="status">
+    <span className={active ? "w-1.5 h-1.5 rounded-full bg-accent status-dot-active" : "w-1.5 h-1.5 rounded-full bg-muted"} />
+    <span>{active ? "Working for" : "Worked for"} <span className="tabular-nums">{elapsedLabel(active ? seconds : recorded)}</span></span>
+    <span className="text-faint">·</span>
+    <span>{active ? "Live activity" : "Activity complete"}</span>
+  </div>;
+}
+
 function ActivityGlyph({ tone }: { tone: "intent" | "tool" | "progress" | "issue" }) {
   const common = "h-3.5 w-3.5 shrink-0";
   if (tone === "tool") return <svg aria-hidden viewBox="0 0 16 16" className={`${common} text-pink-300`} fill="none" stroke="currentColor" strokeWidth="1.4"><rect x="2.25" y="2.25" width="11.5" height="11.5" rx="2" /><path d="m5 8 1.6 1.6L11 5.5" /></svg>;
@@ -35,6 +56,9 @@ export function LiveActivity({ events, active, waiting, verbose = false, brief =
   const latest = presentationEvents.at(-1) ? activityLabel(presentationEvents.at(-1)!.content) : (waiting ? "Waiting for the model…" : "Working…");
   const receipt = events.at(-1)?.receivedAt;
   const quietFor = receipt ? Math.max(0, Math.floor((Date.now() - receipt) / 1000)) : seconds;
+  const recordedSeconds = events[0]?.receivedAt && receipt
+    ? Math.max(0, Math.floor((receipt - events[0].receivedAt) / 1000))
+    : seconds;
   const failed = errorEvents(events).length > 0;
   const stopped = events.some((event) => event.data?.type === "cancelled");
   const completed = events.some((event) => event.data?.type === "stream_complete");
@@ -46,14 +70,14 @@ export function LiveActivity({ events, active, waiting, verbose = false, brief =
   return <section aria-label="Run activity" className="text-sm">
     {!hideHeader && <div className="flex items-center gap-2 text-xs text-muted" role="status">
       <span className={active ? "w-1.5 h-1.5 rounded-full bg-accent status-dot-active" : "w-1.5 h-1.5 rounded-full bg-muted"} />
-      <span>{heading}</span>
+      <span>{active ? heading : `Worked for ${elapsedLabel(recordedSeconds)}`}</span>
       {active && <span className="tabular-nums">{elapsedLabel(seconds)}</span>}
     </div>}
     {brief ? <p className="mt-2 text-xs text-muted break-words">{latest}</p> : (
-      <div className="mt-3 space-y-2.5">
+      <div className={`${hideHeader ? "mt-0" : "mt-3"} space-y-2.5`}>
         {verbose && !hideHeader && <p className="border-b border-border pb-2 text-[10px] font-medium uppercase tracking-wider text-muted">Reasoning and activity</p>}
         {timelineEvents.map((event, index) => {
-          const item = activityPresentation(event);
+          const item = activityPresentation(event, verbose);
           const label = item.tone === "intent" ? "Thinking" : item.tone === "tool" ? "Tool" : item.tone === "issue" ? "Issue" : "Activity";
           const textClass = item.tone === "intent" ? "text-blue-100" : item.tone === "tool" ? "text-pink-100" : item.tone === "issue" ? "text-red-200" : "text-emerald-100";
           const detailClass = item.tone === "intent" ? "text-blue-200/70" : item.tone === "tool" ? "text-pink-200/70" : item.tone === "issue" ? "text-red-200/70" : "text-emerald-200/70";
