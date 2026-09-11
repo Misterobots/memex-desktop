@@ -21,9 +21,10 @@ describe("LiveAgentRoster", () => {
 
   it("renders a compact live roster in the Code sidebar", () => {
     const markup = renderToStaticMarkup(<LiveAgentRoster events={events} active />);
-    expect(markup).toContain("Agents");
+    expect(markup).toContain("Pioneers");
     expect(markup).toContain("Ada");
     expect(markup).toContain("Lin");
     expect(markup).toContain("Live");
+    expect(markup).toContain("Builder completed");
   });
 });
