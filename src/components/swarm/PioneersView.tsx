@@ -204,6 +204,7 @@ export function PioneersView({ events, active, workspaceKey = "global" }: { even
     try { return Math.min(720, Math.max(330, Number(localStorage.getItem(`memex.layout.pioneersWidth:${workspaceKey}`)) || 460)); } catch { return 460; }
   });
   const [resizing, setResizing] = useState(false);
+  const [, setComposerClearance] = useState(112);
   const seenIds = useRef<string[]>([]);
   const currentIds = workers.map((worker) => worker.worker_id);
   useEffect(() => {
@@ -240,6 +241,23 @@ export function PioneersView({ events, active, workspaceKey = "global" }: { even
     window.addEventListener("pointerup", stop);
     return () => { window.removeEventListener("pointermove", resizePanel); window.removeEventListener("pointerup", stop); };
   }, [resizing]);
+  useEffect(() => {
+    const composer = document.querySelector<HTMLElement>(".memex-composer");
+    if (!composer) return;
+    const update = () => {
+      const clearance = Math.ceil(composer.getBoundingClientRect().height) + 12;
+      setComposerClearance(clearance);
+      document.documentElement.style.setProperty("--memex-composer-clearance", `${clearance}px`);
+    };
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(update);
+    observer.observe(composer);
+    return () => {
+      observer.disconnect();
+      document.documentElement.style.removeProperty("--memex-composer-clearance");
+    };
+  }, [workspaceKey, events.length]);
   if (!workers.length) return null;
   const arrival = workers[arrivalIndex] ?? null;
   const selectedWorker = selected ? workers.find((worker) => worker.worker_id === selected) : null;

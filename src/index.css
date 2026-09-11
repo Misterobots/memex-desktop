@@ -31,6 +31,10 @@ html, body, #root {
 .drag-region { -webkit-app-region: drag; }
 .no-drag { -webkit-app-region: no-drag; }
 
+/* The floating AgentDock must track the actual composer height (including
+   multi-line quality-bar inputs), not a fixed bottom offset. */
+[aria-label="Agent Dock"] { bottom: var(--memex-composer-clearance, 6.5rem) !important; }
+
 /* Streaming cursor */
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 .cursor-blink::after {

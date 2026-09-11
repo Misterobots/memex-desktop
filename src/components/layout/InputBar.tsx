@@ -302,7 +302,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
   };
 
   return (
-    <div className="px-6 pb-5 pt-2 flex-shrink-0">
+    <div className="memex-composer px-6 pb-5 pt-2 flex-shrink-0">
       <div className="max-w-conversation mx-auto">
         <div className="bg-surface border border-border rounded-2xl px-3 pt-3 pb-2 focus-within:border-accent/50 transition-colors shadow-lg shadow-black/10">
           {mode === "gauntlet" && <label className="mb-2 block px-2 text-xs text-muted">Quality bar
