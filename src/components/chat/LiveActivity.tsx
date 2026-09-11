@@ -6,7 +6,9 @@ function elapsedLabel(seconds: number) {
   return seconds < 60 ? seconds + "s" : Math.floor(seconds / 60) + "m " + seconds % 60 + "s";
 }
 
-export function WorkTraceHeader({ events, active }: { events: MessageEvent[]; active: boolean }) {
+export function WorkTraceHeader({ events, active, expanded, onToggle }: {
+  events: MessageEvent[]; active: boolean; expanded: boolean; onToggle: () => void;
+}) {
   const [seconds, setSeconds] = useState(0);
   useEffect(() => {
     if (!active) return;
@@ -24,6 +26,9 @@ export function WorkTraceHeader({ events, active }: { events: MessageEvent[]; ac
     <span>{active ? "Working for" : "Worked for"} <span className="tabular-nums">{elapsedLabel(active ? seconds : recorded)}</span></span>
     <span className="text-faint">·</span>
     <span>{active ? "Live activity" : "Activity complete"}</span>
+    <button type="button" aria-label={expanded ? "Collapse activity" : "Expand activity"} aria-expanded={expanded} onClick={onToggle} className="ml-auto rounded px-1 text-sm text-muted hover:bg-surface2 hover:text-text">
+      <span className={`inline-block transition-transform ${expanded ? "rotate-90" : ""}`}>›</span>
+    </button>
   </div>;
 }
 

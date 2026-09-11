@@ -91,6 +91,8 @@ function ResponseTimeline({ events, active, waiting, verbose, fallback }: {
   fallback: string;
 }) {
   const entries = responseTimeline(events, verbose);
+  const hasActivity = entries.some((entry) => entry.kind === "activity");
+  const [activityOpen, setActivityOpen] = useState(active);
   if (!entries.some((entry) => entry.kind === "response")) {
     const activity = entries.find((entry): entry is Extract<TimelineEntry, { kind: "activity" }> => entry.kind === "activity");
     return <>
@@ -99,10 +101,10 @@ function ResponseTimeline({ events, active, waiting, verbose, fallback }: {
     </>;
   }
   return <div className="space-y-2.5">
-    <WorkTraceHeader events={events} active={active} />
+    {hasActivity && <WorkTraceHeader events={events} active={active} expanded={activityOpen} onToggle={() => setActivityOpen((open) => !open)} />}
     {entries.map((entry, index) => entry.kind === "response"
       ? <MessageContent key={`response-${index}`} content={entry.content} />
-      : <LiveActivity key={`activity-${index}`} events={entry.events} active={active} waiting={waiting} verbose={verbose} hideHeader />)}
+      : activityOpen && <LiveActivity key={`activity-${index}`} events={entry.events} active={active} waiting={waiting} verbose={verbose} hideHeader />)}
   </div>;
 }
 

@@ -65,13 +65,13 @@ export function LiveAgentRoster({ events, active }: { events: MessageEvent[]; ac
     failed: "bg-red",
     waiting: "bg-yellow",
   };
-  return <section aria-label="Active agents" className="border-b border-border/60 px-3 py-3">
+  return <section aria-label="Active agents" aria-live="polite" className="border-b border-border/60 px-3 py-3">
     <div className="mb-2 flex items-center justify-between">
       <span className="text-[10px] font-medium uppercase tracking-wider text-faint">Agents</span>
       {active && <span className="text-[10px] text-accent">Live</span>}
     </div>
-    <div className="space-y-1">
-      {agents.map((agent) => <div key={agent.id} className="rounded-md border border-border/60 bg-canvas/40 px-2.5 py-2">
+    <div className="divide-y divide-border/50">
+      {agents.map((agent) => <div key={agent.id} className="py-2 first:pt-0 last:pb-0">
         <div className="flex items-center gap-2 text-xs text-text">
           <span aria-label={agent.state} className={`h-1.5 w-1.5 shrink-0 rounded-full ${indicator[agent.state]}`} />
           <span className="min-w-0 truncate font-medium">{agent.name}</span>
