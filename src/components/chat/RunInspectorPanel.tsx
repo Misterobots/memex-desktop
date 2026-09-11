@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { desktop }               from "../../lib/desktop";
+import { desktop, isDesktop }     from "../../lib/desktop";
 import type { ArtifactRecord }   from "../../lib/desktop";
 import type { RunRecord, RunEvent, RunEventType } from "../../types/memex";
 import { modeLabel } from "../../types/memex";
@@ -67,6 +67,10 @@ export function RunInspectorPanel({ runId, onClose }: Props) {
   const [viewing,   setViewing]   = useState<ArtifactRecord | null>(null);
 
   const bridge = desktop();
+  // Windows/Linux use a native title-bar overlay on the right edge. Keep the
+  // inspector close action inside the renderer's safe area so it cannot sit
+  // underneath the minimize/maximize/close controls.
+  const nativeWindowControls = isDesktop() && typeof navigator !== "undefined" && !/Mac/.test(navigator.userAgent);
 
   useEffect(() => {
     if (!bridge) return;
@@ -119,7 +123,7 @@ export function RunInspectorPanel({ runId, onClose }: Props) {
     <div className="flex flex-col h-full w-full md:w-80 border-l border-border/40 bg-canvas flex-shrink-0">
 
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 flex-shrink-0">
+      <div className={`flex items-center justify-between px-4 py-3 border-b border-border/40 flex-shrink-0 ${nativeWindowControls ? "pr-[140px]" : ""}`}>
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-muted uppercase tracking-wide">Run Inspector</span>
           {run && (
