@@ -90,13 +90,6 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
       </div>
 
       <div className="flex-1 min-w-0 space-y-2.5">
-        {isActive && showActivity ? (
-          <LiveActivity events={events} active={true} waiting={isWaiting} verbose={showThoughts} brief={!showActivity} />
-        ) : showActivity && events.length > 0 && (
-          <LiveActivity events={events} active={false} waiting={false} verbose={showThoughts} />
-        )}
-        {showActivity && <AgentWorkTrace events={events} active={isActive} />}
-
         {clarification?.clarification && sessionId && (
           <SteeringCard card={clarification.clarification} messageId={message.id} sessionId={sessionId} experience={experience} workspaceKey={workspaceKey} gauntletHandoffId={gauntletHandoffId} />
         )}
@@ -110,6 +103,16 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
             {isActive && message.content && <span className="cursor-blink" />}
           </div>
         )}
+
+        {/* The response is the primary reading surface. Place status and agent
+            drill-down after it so a growing response never jumps below a
+            repeatedly re-rendered activity history. */}
+        {isActive && showActivity ? (
+          <LiveActivity events={events} active={true} waiting={isWaiting} verbose={showThoughts} brief={!showActivity} />
+        ) : showActivity && events.length > 0 && (
+          <LiveActivity events={events} active={false} waiting={false} verbose={showThoughts} />
+        )}
+        {showActivity && <AgentWorkTrace events={events} active={isActive} />}
 
         {!isActive && needsUnrealSetup(message.content) && <UnrealEngineSetup compact onContinue={(install) => {
           window.dispatchEvent(new CustomEvent("chat:prefill", { detail:

@@ -15,8 +15,8 @@ describe("AgentWorkTrace", () => {
   it("retains coordinator assignments and attaches worker work updates", () => {
     const work = agentWorkFromEvents(events);
     expect(work).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "builder", name: "Ada", task: "Implement the launcher", state: "working", events: expect.arrayContaining([events[1]]) }),
-      expect.objectContaining({ id: "critic", name: "Lin", task: "Review the result", state: "waiting" }),
+      expect.objectContaining({ id: "builder", name: "Ada", task: "Implement the launcher", state: "working", events: [events[1]] }),
+      expect.objectContaining({ id: "critic", name: "Lin", task: "Review the result", state: "waiting", events: [] }),
     ]));
   });
 

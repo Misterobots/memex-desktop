@@ -32,9 +32,9 @@ function workerId(candidate: Record<string, unknown>): string | undefined {
 }
 
 /**
- * Preserve the coordinator's worker plan and attach the subsequent worker
- * events to it. The sidebar uses a compact version of this data; this fuller
- * trace belongs with the conversation so work is inspectable in context.
+ * Preserve the coordinator's worker plan and attach subsequent worker-only
+ * execution updates to it. Plain response chunks remain in the assistant
+ * message: copying them here would show the same response once per worker.
  */
 export function agentWorkFromEvents(events: MessageEvent[]): AgentWork[] {
   const agents = new Map<string, AgentWork>();
@@ -59,10 +59,16 @@ export function agentWorkFromEvents(events: MessageEvent[]): AgentWork[] {
     const rawType = String(data.type ?? event.type);
     if (rawType === "swarm_task_list") {
       const workers = Array.isArray(data.workers) ? data.workers : Array.isArray(data.tasks) ? data.tasks : [];
-      workers.forEach((worker) => upsert(record(worker), event));
+      workers.forEach((worker) => upsert(record(worker)));
       continue;
     }
-    if (rawType === "swarm_worker_created" || event.type === "agent_event" || data.worker_id || data.pioneer_name || event.pioneer_name || event.agent_name) {
+    const workerUpdate = rawType === "swarm_worker_created"
+      || event.type === "agent_event"
+      || event.type === "thought"
+      || event.type === "tool_call_start"
+      || event.type === "tool_call_result"
+      || Boolean(data.worker_id);
+    if (workerUpdate) {
       upsert({ ...data, pioneer_name: event.pioneer_name ?? data.pioneer_name, agent_name: event.agent_name ?? data.agent_name }, event);
     }
   }
