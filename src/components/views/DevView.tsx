@@ -122,8 +122,8 @@ export function DevView() {
             type="button"
             aria-label="Resize explorer panel"
             title="Drag to resize explorer"
-            onPointerDown={(event) => { event.preventDefault(); setResizingExplorer(true); }}
-            className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize hover:bg-accent/20 focus:outline-none focus:bg-accent/20"
+            onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setResizingExplorer(true); }}
+            className="absolute -right-1 top-0 z-10 h-full w-2 touch-none cursor-col-resize hover:bg-accent/20 focus:outline-none focus:bg-accent/20"
           />
         </aside>
       )}
@@ -242,14 +242,14 @@ export function DevView() {
                   aria-valuemin={25}
                   aria-valuemax={70}
                   aria-valuenow={bottomHeight}
-                  onPointerDown={(event) => { event.preventDefault(); setResizing(true); }}
+                  onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setResizing(true); }}
                   onKeyDown={(event) => {
                     if (event.key === "ArrowUp") { event.preventDefault(); setBottomHeight((value) => Math.min(70, value + 5)); }
                     if (event.key === "ArrowDown") { event.preventDefault(); setBottomHeight((value) => Math.max(25, value - 5)); }
                     if (event.key === "Home") { event.preventDefault(); setBottomHeight(25); }
                     if (event.key === "End") { event.preventDefault(); setBottomHeight(70); }
                   }}
-                  className="h-4 w-3 -ml-2 mr-1 cursor-row-resize rounded hover:bg-accent/20 focus:outline-none focus:bg-accent/20"
+                  className="h-5 w-4 -ml-2 mr-1 touch-none cursor-row-resize rounded hover:bg-accent/20 focus:outline-none focus:bg-accent/20"
                   title="Drag to resize project tools"
                 />
                 <span className="text-xs text-faint font-medium">{bottomPane === "terminal" ? "Terminal" : `Browser · ${folderName ?? "Project"}`}</span>
