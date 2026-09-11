@@ -1,0 +1,194 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { MessageEvent } from "../../types/memex";
+
+export type PioneerState = "pending" | "running" | "completed" | "failed" | "cancelled";
+
+export interface PioneerActivity {
+  id: string;
+  text: string;
+  kind: "status" | "tool" | "thought" | "result";
+  at: number;
+}
+
+export interface PioneerWorker {
+  worker_id: string;
+  role: string;
+  pioneer_name: string;
+  pioneer_full_name?: string;
+  pioneer_motto?: string;
+  task: string;
+  phase: string;
+  state: PioneerState;
+  output?: string;
+  activities: PioneerActivity[];
+}
+
+const ROLE_COLORS: Record<string, string> = {
+  researcher: "#f59e0b",
+  architect: "#60a5fa",
+  coder: "#a78bfa",
+  devops: "#34d399",
+  analyst: "#22d3ee",
+  verifier: "#fb7185",
+};
+
+function object(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+function str(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+function rawType(event: MessageEvent): string {
+  return String(event.data?.type ?? event.type ?? "").toLowerCase();
+}
+function stateFor(value: unknown): PioneerState {
+  const valueText = String(value ?? "").toLowerCase();
+  if (/(fail|error|blocked)/.test(valueText)) return "failed";
+  if (/(complete|done|pass|accepted)/.test(valueText)) return "completed";
+  if (/(cancel|abort)/.test(valueText)) return "cancelled";
+  if (/(pending|queue|wait)/.test(valueText)) return "pending";
+  return "running";
+}
+
+function activityKind(type: string): PioneerActivity["kind"] {
+  if (type.includes("tool") || type.includes("command") || type.includes("file")) return "tool";
+  if (type.includes("thought") || type.includes("reason")) return "thought";
+  if (type.includes("result") || type.includes("complete") || type.includes("output")) return "result";
+  return "status";
+}
+
+/** Convert the runtime's swarm event contract into the Theatre model. */
+export function pioneersFromEvents(events: MessageEvent[]): PioneerWorker[] {
+  const workers = new Map<string, PioneerWorker>();
+  const aliases = new Map<string, string>();
+  const ensure = (candidate: Record<string, unknown>, event?: MessageEvent): PioneerWorker | null => {
+    const id = str(candidate.worker_id ?? candidate.workerId ?? candidate.id ?? candidate.agent_id ?? event?.agent_name ?? event?.pioneer_name);
+    if (!id) return null;
+    const prior = workers.get(id);
+    const name = str(candidate.pioneer_name ?? candidate.pioneerName ?? candidate.agent_name ?? candidate.name ?? event?.pioneer_name ?? event?.agent_name)
+      ?? prior?.pioneer_name ?? str(candidate.role) ?? "Pioneer";
+    const worker: PioneerWorker = {
+      worker_id: id,
+      role: str(candidate.role) ?? prior?.role ?? "worker",
+      pioneer_name: name,
+      pioneer_full_name: str(candidate.pioneer_full_name ?? candidate.pioneerFullName) ?? prior?.pioneer_full_name,
+      pioneer_motto: str(candidate.pioneer_motto ?? candidate.pioneerMotto) ?? prior?.pioneer_motto,
+      task: str(candidate.task ?? candidate.current_task ?? candidate.description) ?? prior?.task ?? "Awaiting assignment",
+      phase: str(candidate.phase ?? candidate.phase_name ?? candidate.phaseName) ?? prior?.phase ?? "1",
+      state: stateFor(candidate.state ?? candidate.status ?? candidate.event_type ?? prior?.state ?? "running"),
+      output: str(candidate.output ?? candidate.result) ?? prior?.output,
+      activities: prior?.activities ?? [],
+    };
+    workers.set(id, worker);
+    aliases.set(name.toLowerCase(), id);
+    if (event?.agent_name) aliases.set(event.agent_name.toLowerCase(), id);
+    if (event?.pioneer_name) aliases.set(event.pioneer_name.toLowerCase(), id);
+    return worker;
+  };
+  const append = (worker: PioneerWorker, event: MessageEvent, type: string) => {
+    const text = event.content?.trim();
+    if (!text) return;
+    const activity: PioneerActivity = {
+      id: `${event.receivedAt ?? Date.now()}-${worker.worker_id}-${worker.activities.length}`,
+      text: text.length > 240 ? `${text.slice(0, 237)}…` : text,
+      kind: activityKind(type),
+      at: event.receivedAt ?? Date.now(),
+    };
+    const next = worker.activities.filter((item) => item.text !== activity.text).slice(-39);
+    workers.set(worker.worker_id, { ...worker, activities: [...next, activity] });
+  };
+
+  for (const event of events) {
+    const data = object(event.data);
+    const type = rawType(event);
+    if (type === "swarm_task_list" || type === "swarm_workers" || Array.isArray(data.workers)) {
+      const list = Array.isArray(data.workers) ? data.workers : Array.isArray(data.tasks) ? data.tasks : [];
+      list.forEach((item) => ensure(object(item), event));
+      continue;
+    }
+    const knownWorker = str(data.worker_id ?? data.workerId ?? data.agent_id ?? event.agent_name ?? event.pioneer_name);
+    const aliasId = knownWorker && !workers.has(knownWorker) ? aliases.get(knownWorker.toLowerCase()) : knownWorker;
+    const worker = ensure({ ...data, worker_id: aliasId ?? knownWorker }, event);
+    if (!worker) continue;
+    const nextState = data.state ?? data.status ?? (type.includes("completed") || type.includes("failed") ? type : undefined);
+    if (nextState) workers.set(worker.worker_id, { ...workers.get(worker.worker_id)!, state: stateFor(nextState) });
+    if (str(data.output ?? data.result)) workers.set(worker.worker_id, { ...workers.get(worker.worker_id)!, output: str(data.output ?? data.result) });
+    append(workers.get(worker.worker_id)!, event, type);
+  }
+  return [...workers.values()];
+}
+
+function color(role: string) { return ROLE_COLORS[role.toLowerCase()] ?? "#94a3b8"; }
+function phaseLabel(phase: string, workers: PioneerWorker[]) {
+  if (!workers.length) return "Waiting for pioneers";
+  if (workers.some((worker) => worker.state === "running")) return phase === "1" ? "Decomposing task" : `Phase ${phase} · pioneers working`;
+  if (workers.every((worker) => worker.state === "completed")) return "Reviewing pioneer findings";
+  if (workers.some((worker) => worker.state === "failed")) return "Recovering from pioneer failure";
+  return `Phase ${phase} · assembling Rost`;
+}
+
+function Portrait({ worker, large = false }: { worker: PioneerWorker; large?: boolean }) {
+  const accent = color(worker.role);
+  const initials = worker.pioneer_name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+  return <div className={`${large ? "h-16 w-16 text-xl" : "h-10 w-10 text-xs"} relative flex shrink-0 items-center justify-center overflow-hidden rounded-full border-2 font-black`} style={{ borderColor: `${accent}99`, color: accent, background: `${accent}18`, boxShadow: `0 0 22px ${accent}25` }}>
+    <span>{initials || "P"}</span>
+    <span className="absolute inset-0 opacity-20" style={{ background: `repeating-linear-gradient(135deg, transparent 0 4px, ${accent} 5px 6px)` }} />
+  </div>;
+}
+
+function LanyardCard({ worker, onDone }: { worker: PioneerWorker; onDone: () => void }) {
+  const accent = color(worker.role);
+  useEffect(() => { const timer = window.setTimeout(onDone, 4200); return () => window.clearTimeout(timer); }, [onDone]);
+  return <div className="pioneer-lanyard flex h-full flex-col items-center justify-center py-4">
+    <div className="h-10 w-px bg-white/30" />
+    <div className="relative w-[min(270px,90%)] overflow-hidden rounded-xl border bg-surface shadow-2xl" style={{ borderColor: `${accent}70`, boxShadow: `0 20px 50px #0008, 0 0 0 1px ${accent}20` }}>
+      <div className="h-1" style={{ background: `linear-gradient(90deg, transparent, ${accent}, white, ${accent}, transparent)` }} />
+      <div className="border-b px-4 py-2" style={{ borderColor: `${accent}30`, background: `${accent}12` }}><div className="flex items-center justify-between text-[9px] font-black uppercase tracking-[0.25em] text-faint"><span>Memex</span><span style={{ color: accent }}>Pioneer Division</span></div><div className="mt-1 text-[8px] font-mono text-faint">AGENT CREDENTIAL · ACTIVE SESSION</div></div>
+      <div className="flex gap-3 px-4 py-4"><div><Portrait worker={worker} large /><div className="mt-1 text-center text-[7px] font-mono text-faint">PHOTO ID</div></div><div className="min-w-0 flex-1"><div className="text-sm font-black text-text">{worker.pioneer_name}</div><div className="mt-0.5 truncate text-[10px] text-muted">{worker.pioneer_full_name ?? worker.role}</div><span className="mt-2 inline-flex rounded px-2 py-0.5 text-[9px] font-bold uppercase" style={{ color: accent, background: `${accent}20`, border: `1px solid ${accent}50` }}>{worker.role}</span><div className="mt-3 text-[8px] font-mono uppercase text-faint">Clearance · active</div><div className="mt-1 text-[8px] font-mono uppercase text-faint">Phase · {worker.phase}</div></div></div>
+      {worker.pioneer_motto && <div className="mx-4 mb-3 border-l-2 px-2 py-1.5 text-[9px] italic text-muted" style={{ borderColor: `${accent}70`, background: `${accent}0d` }}>“{worker.pioneer_motto}”</div>}
+      <div className="flex items-center justify-between border-t px-4 py-2 text-[8px] font-mono text-faint" style={{ borderColor: `${accent}25` }}><span>{worker.worker_id.slice(-10).toUpperCase()}</span><span style={{ color: accent }}>● ACTIVE</span></div>
+    </div>
+  </div>;
+}
+
+function Badge({ worker, selected, onClick }: { worker: PioneerWorker; selected: boolean; onClick: () => void }) {
+  const accent = color(worker.role);
+  return <button onClick={onClick} className={`group relative flex w-full items-center gap-3 border-b px-4 py-3 text-left transition-colors hover:bg-surface2 ${selected ? "bg-surface2" : ""}`}><span className="h-9 w-0.5 rounded-full" style={{ background: worker.state === "running" ? accent : worker.state === "completed" ? "#34d399" : worker.state === "failed" ? "#fb7185" : "#64748b" }} /><Portrait worker={worker} /><span className="min-w-0 flex-1"><span className="flex items-center gap-2"><span className="truncate text-xs font-bold text-text">{worker.pioneer_name}</span><span className="text-[9px] uppercase tracking-widest" style={{ color: accent }}>{worker.role}</span></span><span className="mt-0.5 block truncate text-[10px] text-muted">{worker.task}</span><span className="mt-1 block text-[9px] uppercase tracking-widest" style={{ color: worker.state === "running" ? accent : undefined }}>{worker.state === "running" ? "Working" : worker.state}</span></span><span className="text-xs text-faint transition-transform group-hover:translate-x-0.5">›</span></button>;
+}
+
+function Detail({ worker, onClose }: { worker: PioneerWorker; onClose: () => void }) {
+  const accent = color(worker.role);
+  return <div className="flex h-full min-w-0 flex-col border-l border-border/60 bg-surface"><div className="flex items-center justify-between border-b border-border/60 px-3 py-2"><span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: accent }}>{worker.role}</span><button onClick={onClose} className="text-faint hover:text-text" aria-label="Close pioneer details">×</button></div><div className="overflow-y-auto"><div className="flex flex-col items-center border-b border-border/60 px-3 py-4" style={{ background: `${accent}0d` }}><Portrait worker={worker} large /><div className="mt-2 text-center text-sm font-black text-text">{worker.pioneer_full_name ?? worker.pioneer_name}</div><div className="mt-1 text-[9px] uppercase tracking-widest text-faint">{worker.state}</div>{worker.pioneer_motto && <div className="mt-2 text-center text-[10px] italic text-muted">“{worker.pioneer_motto}”</div>}</div><div className="border-b border-border/60 px-3 py-3"><div className="mb-1 text-[9px] font-black uppercase tracking-widest text-faint">Task</div><div className="text-[11px] leading-5 text-text">{worker.task}</div></div><div className="px-3 py-3"><div className="mb-2 text-[9px] font-black uppercase tracking-widest text-faint">Activity</div>{worker.activities.length ? <ol className="space-y-2">{worker.activities.slice(-20).map((activity) => <li key={activity.id} className="border-l-2 pl-2 text-[10px] leading-4 text-muted" style={{ borderColor: `${accent}70` }}><span className="mr-1 text-[8px] uppercase tracking-widest" style={{ color: accent }}>{activity.kind}</span>{activity.text}</li>)}</ol> : <div className="text-[10px] text-faint">Waiting for the first update…</div>}</div>{worker.output && <div className="border-t border-border/60 px-3 py-3"><div className="mb-1 text-[9px] font-black uppercase tracking-widest text-faint">Findings</div><div className="whitespace-pre-wrap text-[10px] leading-4 text-muted">{worker.output}</div></div>}</div></div>;
+}
+
+export function PioneersView({ events, active }: { events: MessageEvent[]; active: boolean }) {
+  const workers = useMemo(() => pioneersFromEvents(events), [events]);
+  const [dismissed, setDismissed] = useState(false);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [arrivalIndex, setArrivalIndex] = useState(0);
+  const seenIds = useRef<string[]>([]);
+  const currentIds = workers.map((worker) => worker.worker_id);
+  useEffect(() => {
+    const unseen = currentIds.filter((id) => !seenIds.current.includes(id));
+    if (unseen.length) {
+      seenIds.current = [...seenIds.current, ...unseen];
+      setArrivalIndex((index) => Math.max(index, seenIds.current.length - unseen.length));
+      setDismissed(false);
+    }
+  }, [currentIds.join("|")]);
+  if (!workers.length) return null;
+  const arrival = workers[arrivalIndex] ?? null;
+  const selectedWorker = selected ? workers.find((worker) => worker.worker_id === selected) : null;
+  const phase = workers.map((worker) => Number(worker.phase) || 1).sort((a, b) => b - a)[0]?.toString() ?? "1";
+  const visible = !dismissed;
+  return <>
+    {!visible && <button onClick={() => setDismissed(false)} className="absolute right-3 top-3 z-20 rounded-full border border-accent/40 bg-surface px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-accent shadow-lg">Show Pioneers · {workers.length}</button>}
+    <aside aria-label="Pioneers" className={`flex h-full shrink-0 overflow-hidden border-l border-border/60 bg-surface transition-[width] duration-500 ${visible ? "w-[min(520px,45vw)]" : "w-0"}`}>
+      <div className="flex h-full w-[min(520px,45vw)] min-w-[330px] flex-col"><header className="flex shrink-0 items-center gap-2 border-b border-border/60 px-4 py-3"><span className={`h-2 w-2 rounded-full ${active ? "animate-pulse bg-accent" : "bg-emerald-400"}`} /><span className="text-xs font-bold uppercase tracking-widest text-text">Pioneers</span><span className="text-[10px] text-faint">{phaseLabel(phase, workers)}</span><span className="ml-auto text-[10px] text-faint">{workers.length} active</span><button onClick={() => setDismissed(true)} className="ml-2 text-faint hover:text-text" aria-label="Collapse Pioneers">→</button></header>
+        {arrival && arrivalIndex < workers.length && active && <div className="h-[250px] shrink-0 border-b border-border/60"><LanyardCard worker={arrival} onDone={() => setArrivalIndex((index) => Math.min(index + 1, workers.length))} /></div>}
+        <div className="flex min-h-0 flex-1"><div className={`min-w-0 overflow-y-auto ${selectedWorker ? "w-[52%]" : "w-full"}`}><div className="border-b border-border/60 px-4 py-2 text-[9px] font-black uppercase tracking-[0.25em] text-faint">Rost · Pioneer badges</div>{workers.map((worker) => <Badge key={worker.worker_id} worker={worker} selected={selected === worker.worker_id} onClick={() => setSelected(selected === worker.worker_id ? null : worker.worker_id)} />)}</div>{selectedWorker && <div className="w-[48%] min-w-0"><Detail worker={selectedWorker} onClose={() => setSelected(null)} /></div>}</div>
+        <div className="shrink-0 border-t border-border/60 px-4 py-2 text-[9px] font-black uppercase tracking-[0.25em] text-faint">AgentDock · live activity</div><div className="flex shrink-0 gap-2 overflow-x-auto px-3 pb-3">{workers.filter((worker) => worker.state === "running" || worker.state === "pending").slice(0, 3).map((worker) => <button key={worker.worker_id} onClick={() => setSelected(worker.worker_id)} className="min-w-[110px] rounded-lg border border-border/60 bg-surface2 px-2 py-2 text-left hover:border-accent/50"><div className="flex items-center gap-2"><Portrait worker={worker} /><span className="truncate text-[10px] font-bold text-text">{worker.pioneer_name}</span></div><div className="mt-2 truncate text-[9px] text-muted">{worker.activities.at(-1)?.text ?? worker.task}</div></button>)}</div>
+      </div>
+    </aside>
+  </>;
+}

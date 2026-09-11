@@ -15,7 +15,7 @@ import { PrintWorkflowPanel } from "../dev/PrintWorkflowPanel";
 import { WorktreePanel } from "../dev/WorktreePanel";
 import { WorkspaceProjectsPanel } from "../dev/WorkspaceProjectsPanel";
 import { CodeUtilityMenu } from "../dev/CodeUtilityMenu";
-import { LiveAgentRoster } from "../sidebar/LiveAgentRoster";
+import { PioneersView } from "../swarm/PioneersView";
 
 type PrimaryPane = "projects" | "chat" | "editor" | "tasks" | "print";
 type BottomPane  = "terminal" | "browser" | "none";
@@ -82,10 +82,6 @@ export function DevView() {
               <SessionList experience="code" workspaceKey={cwd} newLabel="New agent thread" />
             </div>
           )}
-          {session && <LiveAgentRoster
-            events={session.messages.flatMap((message) => message.events)}
-            active={Boolean(streamingSessions[session.id])}
-          />}
           <div className="flex-1 overflow-y-auto py-1 min-h-0">
             {cwd ? (
               <FileTree root={cwd} onFileClick={(path) => { setOpenFile(path); setPrimary("editor"); }} />
@@ -248,6 +244,10 @@ export function DevView() {
           )}
         </div>
       </div>
+      {session && <PioneersView
+        events={session.messages.flatMap((message) => message.events)}
+        active={Boolean(streamingSessions[session.id])}
+      />}
     </div>
   );
 }
