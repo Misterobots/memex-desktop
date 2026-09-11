@@ -49,6 +49,10 @@ interface AppState {
   cwd: string;
   sidebarOpen: boolean;
   commandPaletteOpen: boolean;
+  /** Global UI chrome scale. Kept separate from generated artifact sizing. */
+  uiScale: number;
+  /** Spacing preset for dense or comfortable workspace layouts. */
+  uiDensity: "comfortable" | "compact";
   streamingSessions: Record<string, boolean>;
   stopStreams: Record<string, (() => void) | undefined>;
 
@@ -76,6 +80,8 @@ interface AppState {
   setMode: (mode: MemexMode) => void;
   setCwd: (cwd: string) => void;
   toggleSidebar: () => void;
+  setUiScale: (scale: number) => void;
+  setUiDensity: (density: "comfortable" | "compact") => void;
   setCommandPalette: (open: boolean) => void;
   setStreaming: (sessionId: string, streaming: boolean, stop?: () => void) => void;
 
@@ -113,6 +119,8 @@ export const useStore = create<AppState>()(
       cwd: "",
       sidebarOpen: true,
       commandPaletteOpen: false,
+      uiScale: 1,
+      uiDensity: "comfortable",
       streamingSessions: {},
       stopStreams: {},
       connections: {
@@ -277,6 +285,8 @@ export const useStore = create<AppState>()(
       setMode:           (mode)              => set({ mode }),
       setCwd:            (cwd)               => set({ cwd }),
       toggleSidebar:     ()                  => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+      setUiScale:        (uiScale)           => set({ uiScale: Math.min(1.25, Math.max(0.9, uiScale)) }),
+      setUiDensity:      (uiDensity)        => set({ uiDensity }),
       setCommandPalette: (open)              => set({ commandPaletteOpen: open }),
       setStreaming: (sessionId, streaming, stop) => set((s) => ({
         streamingSessions: { ...s.streamingSessions, [sessionId]: streaming },
@@ -298,7 +308,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: "memex-desktop",
-      version: 7,
+      version: 8,
       // mode is intentionally NOT persisted — it's a per-session intent, and a
       // sticky "swarm" silently turned greetings into build orchestration.
       // Each launch starts in the default "chat" mode.
@@ -312,6 +322,8 @@ export const useStore = create<AppState>()(
         designSurface: s.designSurface,
         cwd: s.cwd,
         sidebarOpen: s.sidebarOpen,
+        uiScale: s.uiScale,
+        uiDensity: s.uiDensity,
         selectedModel: s.selectedModel,
       }),
       // Drop any previously-persisted mode so existing installs reset to chat.
@@ -350,6 +362,10 @@ export const useStore = create<AppState>()(
           if (persisted.activeTab === "sites") persisted.activeTab = "design";
         }
         if (persisted && version < 7) persisted.workspaceRunPreferences = {};
+        if (persisted && version < 8) {
+          persisted.uiScale = typeof persisted.uiScale === "number" ? persisted.uiScale : 1;
+          persisted.uiDensity = persisted.uiDensity === "compact" ? "compact" : "comfortable";
+        }
         return persisted;
       },
     }

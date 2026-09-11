@@ -28,6 +28,8 @@ describe("experience-owned sessions", () => {
       shellMode: "chat",
       designSurface: "product",
       cwd: "",
+      uiScale: 1,
+      uiDensity: "comfortable",
       streamingSessions: {},
       stopStreams: {},
     });
@@ -81,6 +83,15 @@ describe("experience-owned sessions", () => {
     useStore.getState().setActiveTab("memory");
 
     expect(useStore.getState().activeSession()).toBeNull();
+  });
+
+  it("clamps the global UI scale and keeps density as a persisted preference", () => {
+    useStore.getState().setUiScale(2);
+    expect(useStore.getState().uiScale).toBe(1.25);
+    useStore.getState().setUiScale(0.1);
+    expect(useStore.getState().uiScale).toBe(0.9);
+    useStore.getState().setUiDensity("compact");
+    expect(useStore.getState().uiDensity).toBe("compact");
   });
 
   it("switches between focused shells while preserving shared Design and Routines destinations", () => {

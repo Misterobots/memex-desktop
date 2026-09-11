@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useStore } from "../../lib/store";
 import { StatusBar } from "./StatusBar";
 import { TabBar } from "./TabBar";
@@ -21,7 +21,7 @@ import { ExportPanel }     from "../shared/ExportPanel";
 import { DiffReviewContext, useDiffReviewStore } from "../../hooks/useDiffReview";
 
 function AppShellInner() {
-  const { activeTab } = useStore();
+  const { activeTab, uiScale, uiDensity } = useStore();
   const diffReview = useDiffReviewStore();
   const [exportOpen, setExportOpen] = useState(false);
 
@@ -37,9 +37,26 @@ function AppShellInner() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  // Keep Tailwind's rem-based typography and spacing in sync with the user's
+  // persisted UI scale. This intentionally affects app chrome only; generated
+  // files and previews retain their own dimensions.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--memex-ui-scale", String(uiScale));
+    root.style.fontSize = `${14 * uiScale}px`;
+    return () => {
+      root.style.removeProperty("--memex-ui-scale");
+      root.style.fontSize = "14px";
+    };
+  }, [uiScale]);
+
   return (
     <DiffReviewContext.Provider value={diffReview}>
-      <div className="flex flex-col h-full bg-canvas">
+      <div
+        className="flex flex-col h-full bg-canvas"
+        data-density={uiDensity}
+        style={{ "--memex-density-gap": uiDensity === "compact" ? "0.75" : "1" } as CSSProperties}
+      >
         <StatusBar />
         <div className="flex flex-1 min-h-0">
           <TabBar />
