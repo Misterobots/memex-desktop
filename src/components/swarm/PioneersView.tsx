@@ -178,14 +178,13 @@ function Detail({ worker, onClose }: { worker: PioneerWorker; onClose: () => voi
 
 export function PioneersView({ events, active, workspaceKey = "global" }: { events: MessageEvent[]; active: boolean; workspaceKey?: string }) {
   const workers = useMemo(() => pioneersFromEvents(events), [events]);
-  const [dismissed, setDismissed] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(() => {
+    try { return localStorage.getItem(`memex.layout.pioneersPanel:${workspaceKey}`) !== "0"; } catch { return true; }
+  });
   const [selected, setSelected] = useState<string | null>(null);
   const [arrivalIndex, setArrivalIndex] = useState(0);
-  const [treeOpen, setTreeOpen] = useState(() => {
-    try { return localStorage.getItem(`memex.layout.pioneersTree:${workspaceKey}`) !== "0"; } catch { return true; }
-  });
-  const [dockOpen, setDockOpen] = useState(() => {
-    try { return localStorage.getItem(`memex.layout.pioneersDock:${workspaceKey}`) !== "0"; } catch { return true; }
+  const [dockMode, setDockMode] = useState(() => {
+    try { return localStorage.getItem(`memex.layout.pioneersDockMode:${workspaceKey}`) === "1"; } catch { return false; }
   });
   const [panelWidth, setPanelWidth] = useState(() => {
     try { return Math.min(720, Math.max(330, Number(localStorage.getItem(`memex.layout.pioneersWidth:${workspaceKey}`)) || 460)); } catch { return 460; }
@@ -198,7 +197,7 @@ export function PioneersView({ events, active, workspaceKey = "global" }: { even
     if (unseen.length) {
       seenIds.current = [...seenIds.current, ...unseen];
       setArrivalIndex((index) => Math.max(index, seenIds.current.length - unseen.length));
-      setDismissed(false);
+      setPanelOpen(true);
     }
   }, [currentIds.join("|")]);
   useEffect(() => {
@@ -206,19 +205,19 @@ export function PioneersView({ events, active, workspaceKey = "global" }: { even
   }, [workspaceKey]);
   useEffect(() => {
     try {
-      setTreeOpen(localStorage.getItem(`memex.layout.pioneersTree:${workspaceKey}`) !== "0");
-      setDockOpen(localStorage.getItem(`memex.layout.pioneersDock:${workspaceKey}`) !== "0");
-    } catch { setTreeOpen(true); setDockOpen(true); }
+      setPanelOpen(localStorage.getItem(`memex.layout.pioneersPanel:${workspaceKey}`) !== "0");
+      setDockMode(localStorage.getItem(`memex.layout.pioneersDockMode:${workspaceKey}`) === "1");
+    } catch { setPanelOpen(true); setDockMode(false); }
   }, [workspaceKey]);
   useEffect(() => {
     try { localStorage.setItem(`memex.layout.pioneersWidth:${workspaceKey}`, String(panelWidth)); } catch { /* storage unavailable */ }
   }, [panelWidth, workspaceKey]);
   useEffect(() => {
     try {
-      localStorage.setItem(`memex.layout.pioneersTree:${workspaceKey}`, treeOpen ? "1" : "0");
-      localStorage.setItem(`memex.layout.pioneersDock:${workspaceKey}`, dockOpen ? "1" : "0");
+      localStorage.setItem(`memex.layout.pioneersPanel:${workspaceKey}`, panelOpen ? "1" : "0");
+      localStorage.setItem(`memex.layout.pioneersDockMode:${workspaceKey}`, dockMode ? "1" : "0");
     } catch { /* storage unavailable */ }
-  }, [treeOpen, dockOpen, workspaceKey]);
+  }, [panelOpen, dockMode, workspaceKey]);
   useEffect(() => {
     if (!resizing) return;
     const resizePanel = (event: PointerEvent) => setPanelWidth(Math.round(Math.min(720, Math.max(330, window.innerWidth - event.clientX))));
@@ -231,14 +230,16 @@ export function PioneersView({ events, active, workspaceKey = "global" }: { even
   const arrival = workers[arrivalIndex] ?? null;
   const selectedWorker = selected ? workers.find((worker) => worker.worker_id === selected) : null;
   const phase = workers.map((worker) => Number(worker.phase) || 1).sort((a, b) => b - a)[0]?.toString() ?? "1";
-  const visible = !dismissed;
+  const visible = panelOpen;
+  const liveWorkers = workers.filter((worker) => worker.state === "running" || worker.state === "pending").slice(0, 3);
+  if (!visible) return <button onClick={() => setPanelOpen(true)} className="fixed bottom-3 right-3 z-30 rounded-full border border-accent/40 bg-surface px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-accent shadow-lg">Show Pioneers · {workers.length}</button>;
+  if (dockMode) return <div aria-label="Agent Dock" className="fixed bottom-3 right-3 z-30 w-[min(520px,calc(100vw-1.5rem))] rounded-xl border border-border/60 bg-surface/95 p-3 shadow-2xl backdrop-blur"><div className="mb-2 flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${active ? "animate-pulse bg-accent" : "bg-emerald-400"}`} /><span className="text-xs font-bold uppercase tracking-widest text-text">AgentDock</span><span className="text-[10px] text-faint">{liveWorkers.length} live</span><div className="ml-auto flex items-center gap-2"><button type="button" onClick={() => setDockMode(false)} className="rounded border border-accent/40 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-accent hover:bg-accent/10">Full panel</button><button type="button" onClick={() => setPanelOpen(false)} className="text-faint hover:text-text" aria-label="Hide Pioneers">×</button></div></div><div className="flex gap-2 overflow-x-auto">{liveWorkers.map((worker) => <button key={worker.worker_id} onClick={() => { setSelected(worker.worker_id); setDockMode(false); }} className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-border/60 bg-surface2 px-2 py-2 text-left hover:border-accent/50"><Portrait worker={worker} /><span className="min-w-0 flex-1"><span className="block truncate text-[10px] font-bold text-text">{worker.pioneer_name}</span><span className="mt-1 block truncate text-[9px] text-muted">{worker.activities.at(-1)?.text ?? worker.task}</span></span></button>)}</div></div>;
   return <>
-    {!visible && <button onClick={() => setDismissed(false)} className="absolute right-3 top-3 z-20 rounded-full border border-accent/40 bg-surface px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-accent shadow-lg">Show Pioneers · {workers.length}</button>}
-    <aside aria-label="Pioneers" style={{ width: visible ? panelWidth : 0 }} className="relative flex h-full shrink-0 overflow-hidden border-l border-border/60 bg-surface transition-[width] duration-500">
+    <aside aria-label="Pioneers" style={{ width: panelWidth }} className="relative flex h-full shrink-0 overflow-hidden border-l border-border/60 bg-surface transition-[width] duration-500">
       <button type="button" aria-label="Resize Pioneers panel" title="Drag to resize Pioneers" onPointerDown={(event) => { event.preventDefault(); setResizing(true); }} className="absolute -left-1 top-0 z-20 h-full w-2 cursor-col-resize hover:bg-accent/20 focus:outline-none focus:bg-accent/20" />
-      <div style={{ width: panelWidth }} className="flex h-full min-w-[330px] flex-col"><header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border/60 px-4 py-3"><span className={`h-2 w-2 rounded-full ${active ? "animate-pulse bg-accent" : "bg-emerald-400"}`} /><span className="text-xs font-bold uppercase tracking-widest text-text">Pioneers</span><span className="min-w-0 truncate text-[10px] text-faint">{phaseLabel(phase, workers)}</span><span className="ml-auto text-[10px] text-faint">{workers.length} active</span><button type="button" onClick={() => setTreeOpen((open) => !open)} className={`rounded border px-2 py-1 text-[9px] font-bold uppercase tracking-widest transition-colors ${treeOpen ? "border-accent/40 bg-accent/10 text-accent" : "border-border/60 text-faint hover:text-text"}`} aria-expanded={treeOpen} aria-controls="pioneers-tree">{treeOpen ? "Tree" : "Agent"}</button><button type="button" onClick={() => setDockOpen((open) => !open)} className={`rounded border px-2 py-1 text-[9px] font-bold uppercase tracking-widest transition-colors ${dockOpen ? "border-accent/40 bg-accent/10 text-accent" : "border-border/60 text-faint hover:text-text"}`} aria-pressed={dockOpen}>Agent Dock {dockOpen ? "On" : "Off"}</button><button onClick={() => setDismissed(true)} className="ml-1 text-faint hover:text-text" aria-label="Collapse Pioneers">→</button></header>
+      <div style={{ width: panelWidth }} className="flex h-full min-w-[330px] flex-col"><header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border/60 px-4 py-3"><span className={`h-2 w-2 rounded-full ${active ? "animate-pulse bg-accent" : "bg-emerald-400"}`} /><span className="text-xs font-bold uppercase tracking-widest text-text">Pioneers</span><span className="min-w-0 truncate text-[10px] text-faint">{phaseLabel(phase, workers)}</span><span className="ml-auto text-[10px] text-faint">{workers.length} active</span><button type="button" onClick={() => setDockMode(true)} className="rounded border border-accent/40 bg-accent/10 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-accent hover:bg-accent/20">Agent Dock</button><button type="button" onClick={() => setPanelOpen(false)} className="ml-1 text-faint hover:text-text" aria-label="Hide Pioneers panel">×</button></header>
         {arrival && arrivalIndex < workers.length && active && <div className="h-[250px] shrink-0 border-b border-border/60"><LanyardCard worker={arrival} onDone={() => setArrivalIndex((index) => Math.min(index + 1, workers.length))} /></div>}
-        <div id="pioneers-tree" className="relative flex min-h-0 flex-1">{treeOpen ? <><div className={`min-w-0 overflow-y-auto ${selectedWorker ? "w-[52%]" : "w-full"}`}><div className="border-b border-border/60 px-4 py-2 text-[9px] font-black uppercase tracking-[0.25em] text-faint">Rost · Pioneer badges</div>{workers.map((worker) => <Badge key={worker.worker_id} worker={worker} selected={selected === worker.worker_id} onClick={() => setSelected(selected === worker.worker_id ? null : worker.worker_id)} />)}</div>{selectedWorker && <div className="w-[48%] min-w-0"><Detail worker={selectedWorker} onClose={() => setSelected(null)} /></div>}</> : <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center"><Portrait worker={workers.find((worker) => worker.state === "running") ?? workers[0]} large /><div><div className="text-sm font-bold text-text">Agent view</div><div className="mt-1 text-[10px] text-muted">The Rost is collapsed. Use the Tree toggle to browse every Pioneer.</div></div></div>}{dockOpen && <div className="absolute bottom-3 left-3 right-3 z-10 w-auto rounded-xl border border-border/60 bg-surface/95 p-2 shadow-2xl backdrop-blur"><div className="mb-2 flex items-center justify-between px-1"><span className="text-[9px] font-black uppercase tracking-[0.25em] text-faint">AgentDock · live</span><span className="text-[9px] text-accent">{workers.filter((worker) => worker.state === "running").length} working</span></div><div className="flex gap-2 overflow-x-auto">{workers.filter((worker) => worker.state === "running" || worker.state === "pending").slice(0, 3).map((worker) => <button key={worker.worker_id} onClick={() => { setSelected(worker.worker_id); setTreeOpen(true); }} className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-border/60 bg-surface2 px-2 py-2 text-left hover:border-accent/50"><Portrait worker={worker} /><span className="min-w-0 flex-1"><span className="block truncate text-[10px] font-bold text-text">{worker.pioneer_name}</span><span className="mt-1 block truncate text-[9px] text-muted">{worker.activities.at(-1)?.text ?? worker.task}</span></span></button>)}</div></div>}</div>
+        <div id="pioneers-tree" className="relative flex min-h-0 flex-1"><div className={`min-w-0 overflow-y-auto ${selectedWorker ? "w-[52%]" : "w-full"}`}><div className="border-b border-border/60 px-4 py-2 text-[9px] font-black uppercase tracking-[0.25em] text-faint">Rost · Pioneer badges</div>{workers.map((worker) => <Badge key={worker.worker_id} worker={worker} selected={selected === worker.worker_id} onClick={() => setSelected(selected === worker.worker_id ? null : worker.worker_id)} />)}</div>{selectedWorker && <div className="w-[48%] min-w-0"><Detail worker={selectedWorker} onClose={() => setSelected(null)} /></div>}</div>
       </div>
     </aside>
   </>;
