@@ -7,6 +7,7 @@ import { SteeringCard } from "./SteeringCard";
 import { MessageOutputs } from "./MessageOutputs";
 import { MessageContent } from "./MessageContent";
 import { GauntletHandoffCard } from "./GauntletHandoffCard";
+import { AgentWorkTrace } from "./AgentWorkTrace";
 import { UnrealEngineSetup } from "../setup/UnrealEngineSetup";
 import { needsUnrealSetup } from "../../lib/capability-recovery";
 import { errorEvents, outputsFromEvents } from "../../lib/workspace-outputs";
@@ -94,6 +95,7 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
         ) : showActivity && events.length > 0 && (
           <LiveActivity events={events} active={false} waiting={false} verbose={showThoughts} />
         )}
+        {showActivity && <AgentWorkTrace events={events} active={isActive} />}
 
         {clarification?.clarification && sessionId && (
           <SteeringCard card={clarification.clarification} messageId={message.id} sessionId={sessionId} experience={experience} workspaceKey={workspaceKey} gauntletHandoffId={gauntletHandoffId} />
