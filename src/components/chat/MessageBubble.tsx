@@ -10,7 +10,7 @@ import { GauntletHandoffCard } from "./GauntletHandoffCard";
 import { AgentWorkTrace } from "./AgentWorkTrace";
 import { UnrealEngineSetup } from "../setup/UnrealEngineSetup";
 import { needsUnrealSetup } from "../../lib/capability-recovery";
-import { errorEvents, outputsFromEvents } from "../../lib/workspace-outputs";
+import { activityEvents, errorEvents, isActivityEvent, outputsFromEvents } from "../../lib/workspace-outputs";
 
 // Lazy import to avoid hard dep on ChatView context when used outside it
 import { useInspector } from "../views/ChatView";
@@ -49,6 +49,60 @@ function RunButton({ runId }: { runId: string }) {
       <RunInspectorPanel runId={runId} onClose={() => setLocalOpen(false)} />
     </div>}
   </>);
+}
+
+type TimelineEntry =
+  | { kind: "response"; content: string }
+  | { kind: "activity"; events: import("../../types/memex").MessageEvent[] };
+
+/** Preserve the runtime event order: narrative text, then the work it describes. */
+export function responseTimeline(events: import("../../types/memex").MessageEvent[], detailed: boolean): TimelineEntry[] {
+  const keptActivity = new Set(activityEvents(events, detailed));
+  const entries: TimelineEntry[] = [];
+  let response = "";
+  let activity: import("../../types/memex").MessageEvent[] = [];
+  const flushResponse = () => {
+    if (response) entries.push({ kind: "response", content: response });
+    response = "";
+  };
+  const flushActivity = () => {
+    if (activity.length) entries.push({ kind: "activity", events: activity });
+    activity = [];
+  };
+  for (const event of events) {
+    if (event.type === "message" || event.type === "response") {
+      flushActivity();
+      response += event.content;
+    } else if (isActivityEvent(event, detailed) && keptActivity.has(event)) {
+      flushResponse();
+      activity.push(event);
+    }
+  }
+  flushResponse();
+  flushActivity();
+  return entries;
+}
+
+function ResponseTimeline({ events, active, waiting, verbose, fallback }: {
+  events: import("../../types/memex").MessageEvent[];
+  active: boolean;
+  waiting: boolean;
+  verbose: boolean;
+  fallback: string;
+}) {
+  const entries = responseTimeline(events, verbose);
+  if (!entries.some((entry) => entry.kind === "response")) {
+    const activity = entries.find((entry): entry is Extract<TimelineEntry, { kind: "activity" }> => entry.kind === "activity");
+    return <>
+      {fallback || waiting ? <div className={waiting ? "cursor-blink" : ""}><MessageContent content={fallback} /></div> : null}
+      {activity && <LiveActivity events={activity.events} active={active} waiting={waiting} verbose={verbose} />}
+    </>;
+  }
+  return <div className="space-y-2.5">
+    {entries.map((entry, index) => entry.kind === "response"
+      ? <MessageContent key={`response-${index}`} content={entry.content} />
+      : <LiveActivity key={`activity-${index}`} events={entry.events} active={active} waiting={waiting} verbose={verbose} hideHeader />)}
+  </div>;
 }
 
 export function MessageBubble({ message, isActive = false, displayMode = "normal", sessionId, experience, workspaceKey }: Props) {
@@ -97,20 +151,8 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
         {errors.map((event, index) => <p key={index} role="alert" className="text-sm text-red-400">{event.content}</p>)}
         {disconnected && <p role="status" className="text-sm text-amber-300">No completed response was received in this view. The connection may have been interrupted; the runtime may still be working. Any received output is preserved below.</p>}
         {!isActive && events.some((event) => event.data?.type === "cancelled") && <p role="status" className="text-sm text-muted">Stopped. Any partial output is preserved below.</p>}
-        {(message.content || isWaiting) && (
-          <div className={isWaiting ? "cursor-blink" : ""}>
-            <MessageContent content={message.content} />
-            {isActive && message.content && <span className="cursor-blink" />}
-          </div>
-        )}
-
-        {/* The response is the primary reading surface. Place status and agent
-            drill-down after it so a growing response never jumps below a
-            repeatedly re-rendered activity history. */}
-        {isActive && showActivity ? (
-          <LiveActivity events={events} active={true} waiting={isWaiting} verbose={showThoughts} brief={!showActivity} />
-        ) : showActivity && events.length > 0 && (
-          <LiveActivity events={events} active={false} waiting={false} verbose={showThoughts} />
+        {(message.content || isWaiting || events.length > 0) && (
+          <ResponseTimeline events={events} active={isActive} waiting={isWaiting} verbose={showThoughts} fallback={message.content} />
         )}
         {showActivity && <AgentWorkTrace events={events} active={isActive} />}
 

@@ -15,8 +15,8 @@ function ActivityGlyph({ tone }: { tone: "intent" | "tool" | "progress" | "issue
 }
 
 /** A chronological, user-readable work trace based only on runtime events. */
-export function LiveActivity({ events, active, waiting, verbose = false, brief = false }: {
-  events: MessageEvent[]; active: boolean; waiting: boolean; verbose?: boolean; brief?: boolean;
+export function LiveActivity({ events, active, waiting, verbose = false, brief = false, hideHeader = false }: {
+  events: MessageEvent[]; active: boolean; waiting: boolean; verbose?: boolean; brief?: boolean; hideHeader?: boolean;
 }) {
   const [seconds, setSeconds] = useState(0);
   useEffect(() => {
@@ -44,14 +44,14 @@ export function LiveActivity({ events, active, waiting, verbose = false, brief =
   const timelineEvents = (verbose ? milestones : presentationEvents).filter((event) => activityLabel(event.content) !== "Ready");
   if (!active && milestones.length === 0) return null;
   return <section aria-label="Run activity" className="text-sm">
-    <div className="flex items-center gap-2 text-xs text-muted" role="status">
+    {!hideHeader && <div className="flex items-center gap-2 text-xs text-muted" role="status">
       <span className={active ? "w-1.5 h-1.5 rounded-full bg-accent status-dot-active" : "w-1.5 h-1.5 rounded-full bg-muted"} />
       <span>{heading}</span>
       {active && <span className="tabular-nums">{elapsedLabel(seconds)}</span>}
-    </div>
+    </div>}
     {brief ? <p className="mt-2 text-xs text-muted break-words">{latest}</p> : (
       <div className="mt-3 space-y-2.5">
-        {verbose && <p className="border-b border-border pb-2 text-[10px] font-medium uppercase tracking-wider text-muted">Reasoning and activity</p>}
+        {verbose && !hideHeader && <p className="border-b border-border pb-2 text-[10px] font-medium uppercase tracking-wider text-muted">Reasoning and activity</p>}
         {timelineEvents.map((event, index) => {
           const item = activityPresentation(event);
           const label = item.tone === "intent" ? "Thinking" : item.tone === "tool" ? "Tool" : item.tone === "issue" ? "Issue" : "Activity";

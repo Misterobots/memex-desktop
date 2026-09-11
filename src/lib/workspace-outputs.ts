@@ -181,15 +181,22 @@ export function outputsFromEvents(events: MessageEvent[]): WorkspaceOutput[] {
   });
 }
 
+/** Whether an event belongs in the chronological activity trace. */
+export function isActivityEvent(event: MessageEvent, detailed: boolean): boolean {
+    const rawType = String(event.data?.type ?? event.type);
+    if (outputEventTypes.includes(rawType) || ["message", "response", "clarification_card"].includes(event.type)) return false;
+    if (["workshop_questions", "workflow_next_steps"].includes(rawType)) return false;
+    if (!detailed && (["stream_mode", "turn_metadata"].includes(rawType) || event.type === "log")) return false;
+    if (!detailed && /^(Runtime is still waiting|Stream mode:|Model queue status received)/.test(event.content)) return false;
+    if (!detailed && /Generating HTML —|since the last server update/.test(event.content)) return true;
+    return true;
+}
+
 export function activityEvents(events: MessageEvent[], detailed: boolean): MessageEvent[] {
   const result: MessageEvent[] = [];
   const progressPositions = new Map<string, number>();
   for (const event of events) {
-    const rawType = String(event.data?.type ?? event.type);
-    if (outputEventTypes.includes(rawType) || ["message", "response", "clarification_card"].includes(event.type)) continue;
-    if (["workshop_questions", "workflow_next_steps"].includes(rawType)) continue;
-    if (!detailed && (["stream_mode", "turn_metadata"].includes(rawType) || event.type === "log")) continue;
-    if (!detailed && /^(Runtime is still waiting|Stream mode:|Model queue status received)/.test(event.content)) continue;
+    if (!isActivityEvent(event, detailed)) continue;
     if (!detailed && /Generating HTML —|since the last server update/.test(event.content)) {
       const key = event.content.split("—")[0];
       const position = progressPositions.get(key);
