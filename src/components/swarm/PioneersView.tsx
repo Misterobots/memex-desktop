@@ -38,6 +38,11 @@ function object(value: unknown): Record<string, unknown> {
 function str(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
+function key(value: string): string { return value.toLowerCase().replace(/[^a-z0-9]+/g, ""); }
+function labelParts(value: string): { name: string; role?: string } {
+  const match = value.trim().match(/^(.*?)[\s:_-]+(researcher|architect|coder|devops|analyst|verifier)$/i);
+  return match ? { name: match[1].trim(), role: match[2].toLowerCase() } : { name: value.trim() };
+}
 function rawType(event: MessageEvent): string {
   return String(event.data?.type ?? event.type ?? "").toLowerCase();
 }
@@ -62,14 +67,24 @@ export function pioneersFromEvents(events: MessageEvent[]): PioneerWorker[] {
   const workers = new Map<string, PioneerWorker>();
   const aliases = new Map<string, string>();
   const ensure = (candidate: Record<string, unknown>, event?: MessageEvent): PioneerWorker | null => {
-    const id = str(candidate.worker_id ?? candidate.workerId ?? candidate.id ?? candidate.agent_id ?? event?.agent_name ?? event?.pioneer_name);
-    if (!id) return null;
+    const rawId = str(candidate.worker_id ?? candidate.workerId ?? candidate.id ?? candidate.agent_id ?? event?.agent_name ?? event?.pioneer_name);
+    if (!rawId) return null;
+    const rawName = str(candidate.pioneer_name ?? candidate.pioneerName ?? candidate.agent_name ?? candidate.name ?? event?.pioneer_name ?? event?.agent_name);
+    const parts = rawName ? labelParts(rawName) : { name: "" };
+    const inferredRole = str(candidate.role) ?? parts.role;
+    const id = aliases.get(key(rawId))
+      ?? aliases.get(key(parts.name))
+      ?? (inferredRole ? aliases.get(key(`${parts.name} ${inferredRole}`)) : undefined)
+      ?? rawId;
     const prior = workers.get(id);
-    const name = str(candidate.pioneer_name ?? candidate.pioneerName ?? candidate.agent_name ?? candidate.name ?? event?.pioneer_name ?? event?.agent_name)
-      ?? prior?.pioneer_name ?? str(candidate.role) ?? "Pioneer";
+    const name = str(candidate.pioneer_name ?? candidate.pioneerName ?? candidate.name ?? event?.pioneer_name)
+      ?? (parts.name || undefined)
+      ?? prior?.pioneer_name
+      ?? inferredRole
+      ?? "Pioneer";
     const worker: PioneerWorker = {
       worker_id: id,
-      role: str(candidate.role) ?? prior?.role ?? "worker",
+      role: inferredRole ?? prior?.role ?? "worker",
       pioneer_name: name,
       pioneer_full_name: str(candidate.pioneer_full_name ?? candidate.pioneerFullName) ?? prior?.pioneer_full_name,
       pioneer_motto: str(candidate.pioneer_motto ?? candidate.pioneerMotto) ?? prior?.pioneer_motto,
@@ -80,9 +95,9 @@ export function pioneersFromEvents(events: MessageEvent[]): PioneerWorker[] {
       activities: prior?.activities ?? [],
     };
     workers.set(id, worker);
-    aliases.set(name.toLowerCase(), id);
-    if (event?.agent_name) aliases.set(event.agent_name.toLowerCase(), id);
-    if (event?.pioneer_name) aliases.set(event.pioneer_name.toLowerCase(), id);
+    for (const alias of [rawId, name, `${name} ${worker.role}`, event?.agent_name, event?.pioneer_name]) {
+      if (alias) aliases.set(key(alias), id);
+    }
     return worker;
   };
   const append = (worker: PioneerWorker, event: MessageEvent, type: string) => {

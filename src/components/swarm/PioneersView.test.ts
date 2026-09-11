@@ -28,4 +28,15 @@ describe("Pioneers Theatre event adapter", () => {
     ]);
     expect(workers[0].activities.at(-1)?.text).toBe("Searching sources");
   });
+
+  it("normalizes coordinator labels such as Shannon RESEARCHER onto the worker", () => {
+    const workers = pioneersFromEvents([
+      event("swarm_worker_created", { worker_id: "swarmresearcher", role: "researcher", pioneer_name: "Shannon", task: "Inspect the project" }),
+      { type: "agent_event", agent_name: "Shannon RESEARCHER", content: "Reading the project", receivedAt: Date.now() },
+    ]);
+    expect(workers).toHaveLength(1);
+    expect(workers[0].worker_id).toBe("swarmresearcher");
+    expect(workers[0].pioneer_name).toBe("Shannon");
+    expect(workers[0].activities.at(-1)?.text).toBe("Reading the project");
+  });
 });
