@@ -27,6 +27,25 @@ export function WorkTraceHeader({ events, active }: { events: MessageEvent[]; ac
   </div>;
 }
 
+export type ActivityRow =
+  | { kind: "tool-group"; events: MessageEvent[] }
+  | { kind: "event"; event: MessageEvent };
+
+/** Group adjacent tool lifecycle events so long runs read like Codex's compact
+ * command transcript instead of a wall of repeated rows. */
+export function activityRows(events: MessageEvent[]): ActivityRow[] {
+  const rows: ActivityRow[] = [];
+  for (const event of events) {
+    const isTool = event.type === "tool_call_start" || event.type === "tool_call_result"
+      || event.data?.type === "tool_start" || event.data?.type === "tool_result";
+    const last = rows.at(-1);
+    if (isTool && last?.kind === "tool-group") last.events.push(event);
+    else if (isTool) rows.push({ kind: "tool-group", events: [event] });
+    else rows.push({ kind: "event", event });
+  }
+  return rows;
+}
+
 function ActivityGlyph({ tone }: { tone: "intent" | "tool" | "progress" | "issue" }) {
   const common = "h-3.5 w-3.5 shrink-0";
   if (tone === "tool") return <svg aria-hidden viewBox="0 0 16 16" className={`${common} text-pink-300`} fill="none" stroke="currentColor" strokeWidth="1.4"><rect x="2.25" y="2.25" width="11.5" height="11.5" rx="2" /><path d="m5 8 1.6 1.6L11 5.5" /></svg>;
@@ -66,6 +85,7 @@ export function LiveActivity({ events, active, waiting, verbose = false, brief =
   // look like background work is still progressing.
   const heading = active ? "Working" : failed ? "Run failed" : stopped ? "Stopped" : completed ? "Completed activity" : "Activity";
   const timelineEvents = (verbose ? milestones : presentationEvents).filter((event) => activityLabel(event.content) !== "Ready");
+  const rows = activityRows(timelineEvents);
   if (!active && milestones.length === 0) return null;
   return <section aria-label="Run activity" className="text-sm">
     {!hideHeader && <div className="flex items-center gap-2 text-xs text-muted" role="status">
@@ -76,7 +96,28 @@ export function LiveActivity({ events, active, waiting, verbose = false, brief =
     {brief ? <p className="mt-2 text-xs text-muted break-words">{latest}</p> : (
       <div className={`${hideHeader ? "mt-0" : "mt-3"} space-y-2.5`}>
         {verbose && !hideHeader && <p className="border-b border-border pb-2 text-[10px] font-medium uppercase tracking-wider text-muted">Reasoning and activity</p>}
-        {timelineEvents.map((event, index) => {
+        {rows.map((row, index) => {
+          if (row.kind === "tool-group") {
+            const tools = row.events.map((event) => activityPresentation(event, verbose));
+            const names = [...new Set(tools.map((item) => item.title.replace(/^(?:Running|Ran) /, "")))];
+            const summary = names.length === 1 ? `${active ? "Running" : "Ran"} ${names[0]}` : `${active ? "Running" : "Ran"} commands`;
+            return <details key={`tools-${index}`} aria-label={summary} className="group text-xs leading-5">
+              <summary className="flex cursor-pointer list-none items-center gap-2 text-pink-100">
+                <ActivityGlyph tone="tool" />
+                <span className="font-medium">{summary}</span>
+                {row.events.length > 1 && <span className="text-[10px] text-muted">{row.events.length} events</span>}
+                <span className="ml-auto text-[10px] text-muted transition-transform group-open:rotate-90">›</span>
+              </summary>
+              <div className="ml-5 mt-1.5 space-y-1 border-l border-pink-300/35 pl-3">
+                {tools.map((item, toolIndex) => <div key={toolIndex} className="min-w-0">
+                  <p className="break-words text-pink-100/90">{item.title}{item.actor && <span className="ml-1.5 text-[10px] text-muted">{item.actor}</span>}</p>
+                  {item.command && <pre className="mt-0.5 max-h-32 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] text-pink-100/75">{item.command}</pre>}
+                  {!item.command && item.detail && <p className="text-pink-200/65">{item.detail}</p>}
+                </div>)}
+              </div>
+            </details>;
+          }
+          const event = row.event;
           const item = activityPresentation(event, verbose);
           const label = item.tone === "intent" ? "Thinking" : item.tone === "tool" ? "Tool" : item.tone === "issue" ? "Issue" : "Activity";
           const textClass = item.tone === "intent" ? "text-blue-100" : item.tone === "tool" ? "text-pink-100" : item.tone === "issue" ? "text-red-200" : "text-emerald-100";

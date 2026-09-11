@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { sessionScopeKey, useStore } from "../../lib/store";
 import { isDesktop } from "../../lib/desktop";
 import { MessageBubble } from "./MessageBubble";
@@ -57,6 +57,7 @@ export function ConversationPane({ experience = "chat", workspaceKey, displayMod
   const containerRef = useRef<HTMLDivElement>(null);
   const pinnedRef    = useRef(true);              // is the user parked at the bottom?
   const prevLenRef   = useRef(0);
+  const [atLatest, setAtLatest] = useState(true);
 
   const messages = session?.messages ?? [];
   const last = messages[messages.length - 1];
@@ -69,7 +70,17 @@ export function ConversationPane({ experience = "chat", workspaceKey, displayMod
   const handleScroll = () => {
     const el = containerRef.current;
     if (!el) return;
-    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    const pinned = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    pinnedRef.current = pinned;
+    setAtLatest(pinned);
+  };
+
+  const jumpToLatest = () => {
+    const el = containerRef.current;
+    if (!el) return;
+    pinnedRef.current = true;
+    setAtLatest(true);
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   };
 
   useEffect(() => {
@@ -79,7 +90,10 @@ export function ConversationPane({ experience = "chat", workspaceKey, displayMod
     prevLenRef.current = messages.length;
     // A new message (your send, or the assistant bubble) always pulls the view
     // down; streaming growth only follows when already pinned to the bottom.
-    if (isNewMessage) pinnedRef.current = true;
+    if (isNewMessage) {
+      pinnedRef.current = true;
+      setAtLatest(true);
+    }
     if (isNewMessage || pinnedRef.current) el.scrollTop = el.scrollHeight;
   }, [messages.length, streamSignal, streaming]);
 
@@ -88,7 +102,7 @@ export function ConversationPane({ experience = "chat", workspaceKey, displayMod
   }
 
   return (
-    <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
+    <div ref={containerRef} onScroll={handleScroll} className="relative flex-1 overflow-y-auto">
       <div className="max-w-conversation mx-auto px-6 py-8 space-y-7">
         {messages.map((msg, i) => (
           <MessageBubble
@@ -103,6 +117,15 @@ export function ConversationPane({ experience = "chat", workspaceKey, displayMod
         ))}
         <div className="h-4" />
       </div>
+      {streaming && !atLatest && <button
+        type="button"
+        onClick={jumpToLatest}
+        aria-label="Jump to latest activity"
+        title="Jump to latest activity"
+        className="sticky bottom-4 left-full z-10 ml-[calc(100%-3.5rem)] flex h-8 w-8 -translate-x-4 items-center justify-center rounded-full border border-border bg-surface2 text-text shadow-lg hover:border-accent hover:text-accent"
+      >
+        ↓
+      </button>}
     </div>
   );
 }

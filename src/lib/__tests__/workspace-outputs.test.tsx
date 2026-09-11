@@ -117,7 +117,8 @@ describe("workspace output delivery", () => {
       { type: "status", content: "Coordinator updated the worker plan.", data: { type: "swarm_task_list" } },
     ] }} />);
     expect(markup).toContain("Thinking");
-    expect(markup).toContain("Tool: Running run_command");
+    expect(markup).toContain("Ran run_command");
+    expect(markup).toContain("Running run_command");
     expect(markup).toContain("Activity: Coordinator updated the worker plan.");
     expect(markup).toContain("text-pink-100");
     expect(markup).not.toContain("border-pink-400/60");
