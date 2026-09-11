@@ -49,6 +49,8 @@ export interface StreamOptions {
   gauntletHandoff?: { id: string; role: string; phase: string; goal: string; qualityBar: string; effort: Record<string, string>; clarifications?: string[] };
   /** Ollama model id to route to (e.g. "qwen3-coder:30b"). Defaults to "swarm". */
   model?: string;
+  /** Optional backend routing hint (for example, `general` for Routines). */
+  skill?: string;
   /** Enable owner-scoped MemPalace recall and background extraction. */
   memoryEnabled?: boolean;
   sessionId?: string;
@@ -155,6 +157,7 @@ export function streamChat(opts: StreamOptions): () => void {
     model: opts.model || "swarm",
     messages: opts.messages,
     stream: true,
+    ...(opts.skill ? { skill: opts.skill } : {}),
     session_id: opts.sessionId ?? "default_session",
     // MemPalace memory is part of the desktop contract: the runtime recalls
     // relevant owner-scoped memories and extracts durable facts after a turn.

@@ -209,6 +209,10 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       messages: history,
       mode,
       model: selectedModel,
+      // Routines are ordinary repeatable-work requests, not Product Workshop
+      // discovery sessions. Tell the router to keep this workspace in the
+      // conversational path even when the prompt is ambiguous.
+      skill: experience === "goals" ? "general" : undefined,
       style: runPreferences.outputDetail === "low" ? "concise" : runPreferences.outputDetail === "high" ? "explanatory" : undefined,
       gauntletBar: handoffPacket?.qualityBar ?? (mode === "gauntlet" ? gauntletBar.trim() : undefined),
       gauntletHandoff: mode === "gauntlet" && handoffId ? {
