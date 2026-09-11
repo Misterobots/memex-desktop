@@ -191,9 +191,9 @@ contextBridge.exposeInMainWorld("memex", {
     check:   () => ipcRenderer.invoke("health:check"),
     getLast: () => ipcRenderer.invoke("health:getLast"),
     onStatus: (cb: (status: {
-      agentRuntime: "connected" | "disconnected";
-      mempalace:    "connected" | "disconnected";
-      ollama:       "connected" | "disconnected";
+      agentRuntime: "connected" | "disconnected" | "sign_in_required";
+      mempalace:    "connected" | "disconnected" | "sign_in_required";
+      ollama:       "connected" | "disconnected" | "sign_in_required";
       checkedAt:    string;
     }) => void) => {
       ipcRenderer.on("health:status", (_e, s) => cb(s));

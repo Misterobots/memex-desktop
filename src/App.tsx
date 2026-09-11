@@ -45,17 +45,17 @@ export default function App() {
       // Subscribe to native health:status events from main process
       offHealth = bridge.health.onStatus((s) => {
         setConnections({
-          agentRuntime: s.agentRuntime as "connected" | "disconnected",
-          mempalace:    s.mempalace    as "connected" | "disconnected",
-          ollama:       s.ollama       as "connected" | "disconnected",
+          agentRuntime: s.agentRuntime,
+          mempalace:    s.mempalace,
+          ollama:       s.ollama,
         });
       });
       // Seed with last known status if available
       bridge.health.getLast().then((s) => {
         if (s) setConnections({
-          agentRuntime: s.agentRuntime as "connected" | "disconnected",
-          mempalace:    s.mempalace    as "connected" | "disconnected",
-          ollama:       s.ollama       as "connected" | "disconnected",
+          agentRuntime: s.agentRuntime,
+          mempalace:    s.mempalace,
+          ollama:       s.ollama,
         });
       });
     } else {

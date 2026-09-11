@@ -11,6 +11,8 @@ export function AccountMenu() {
   const root = useRef<HTMLDivElement>(null);
   const bridge = desktop();
   const connected = connections.agentRuntime === "connected";
+  const signInRequired = connections.agentRuntime === "sign_in_required";
+  const connectionLabel = connected ? "Connected" : signInRequired ? "Sign in required" : "Runtime unavailable";
 
   useEffect(() => {
     bridge?.identity?.get().then(setUid).catch(() => {});
@@ -50,17 +52,15 @@ export function AccountMenu() {
         <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-64 rounded-xl border border-border/70 bg-surface2 p-2 shadow-2xl">
           <div className="px-2 py-1.5">
             <div className="text-sm font-medium text-text truncate">{uid || "Memex account"}</div>
-            <div className={`mt-0.5 text-xs ${connected ? "text-green" : "text-muted"}`}>
-              {connected ? "Connected to local Memex runtime" : "Local runtime unavailable"}
+            <div className={`mt-0.5 text-xs ${connected ? "text-green" : signInRequired ? "text-yellow" : "text-muted"}`}>
+              {connected ? "Connected to Memex runtime" : signInRequired ? "Sign in to Memex Anywhere to check Agent Swarm" : "Memex runtime unavailable"}
             </div>
           </div>
           <div className="my-1 border-t border-border/60" />
           <button onClick={() => { setActiveTab("settings"); setOpen(false); }} className="w-full rounded-lg px-2 py-2 text-left text-sm text-muted hover:bg-surface hover:text-text">
             Account & routing settings
           </button>
-          <button onClick={() => void bridge?.health.check()} className="w-full rounded-lg px-2 py-2 text-left text-sm text-accent hover:bg-accent/10">
-            Check local connection
-          </button>
+          {signInRequired ? <button onClick={() => void bridge?.remoteAuth.signIn().then(() => bridge.health.check())} className="w-full rounded-lg px-2 py-2 text-left text-sm text-accent hover:bg-accent/10">Sign in to Memex</button> : <button onClick={() => void bridge?.health.check()} className="w-full rounded-lg px-2 py-2 text-left text-sm text-accent hover:bg-accent/10">Check connection</button>}
         </div>
       )}
       <button onClick={() => setOpen((value) => !value)} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-surface2">
@@ -69,7 +69,7 @@ export function AccountMenu() {
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-text">{uid || "Memex"}</span>
-          <span className={`block text-[11px] ${connected ? "text-green" : "text-muted"}`}>{connected ? "Connected" : "Runtime unavailable"}</span>
+          <span className={`block text-[11px] ${connected ? "text-green" : signInRequired ? "text-yellow" : "text-muted"}`}>{connectionLabel}</span>
         </span>
         <span className="text-muted">⌄</span>
       </button>

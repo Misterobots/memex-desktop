@@ -2,18 +2,19 @@
 import { ipcMain, BrowserWindow } from "electron";
 import type { ConfigStore } from "./config-store";
 import { MEMEX_PUBLIC_ORIGIN, publicSessionHeaders } from "./remote-auth";
+import { classifyHealthResponse, type NativeConnectionStatus } from "./health-status";
 
 export interface HealthStatus {
-  agentRuntime: "connected" | "disconnected";
-  mempalace:    "connected" | "disconnected";
-  ollama:       "connected" | "disconnected";
+  agentRuntime: NativeConnectionStatus;
+  mempalace:    NativeConnectionStatus;
+  ollama:       NativeConnectionStatus;
   checkedAt:    string;
 }
 
 let timer:      ReturnType<typeof setInterval> | null = null;
 let lastStatus: HealthStatus | null = null;
 
-async function probe(url: string, headers?: HeadersInit, init?: RequestInit): Promise<boolean> {
+async function probe(url: string, publicProfile: boolean, headers?: HeadersInit, init?: RequestInit): Promise<NativeConnectionStatus> {
   try {
     // Preserve request-specific headers (notably MemPalace's JSON content
     // type) while adding the Authentik session cookie. Passing `headers`
@@ -21,25 +22,26 @@ async function probe(url: string, headers?: HeadersInit, init?: RequestInit): Pr
     // text/plain and producing a false offline result.
     const mergedHeaders = new Headers(init?.headers);
     for (const [name, value] of new Headers(headers)) mergedHeaders.set(name, value);
-    const r = await fetch(url, { ...init, headers: mergedHeaders, signal: AbortSignal.timeout(4000) });
-    return r.ok;
-  } catch { return false; }
+    const r = await fetch(url, { ...init, headers: mergedHeaders, redirect: publicProfile ? "manual" : "follow", signal: AbortSignal.timeout(4000) });
+    return classifyHealthResponse(r.status, r.headers.get("content-type"), publicProfile);
+  } catch { return "disconnected"; }
 }
 
-async function agentHealth(url: string, headers?: HeadersInit): Promise<{ agentRuntime: boolean; ollama: boolean }> {
+async function agentHealth(url: string, publicProfile: boolean, headers?: HeadersInit): Promise<{ agentRuntime: NativeConnectionStatus; ollama: NativeConnectionStatus }> {
   try {
-    const r = await fetch(url, { headers, signal: AbortSignal.timeout(4000) });
-    if (!r.ok) return { agentRuntime: false, ollama: false };
+    const r = await fetch(url, { headers, redirect: publicProfile ? "manual" : "follow", signal: AbortSignal.timeout(4000) });
+    const agentRuntime = classifyHealthResponse(r.status, r.headers.get("content-type"), publicProfile);
+    if (agentRuntime !== "connected") return { agentRuntime, ollama: agentRuntime === "sign_in_required" ? "sign_in_required" : "disconnected" };
     const body = await r.json() as { nodes?: Array<{ healthy?: boolean }> };
     return {
-      agentRuntime: true,
+      agentRuntime,
       // Remote Desktop intentionally has no direct Ollama URL.  The agent
       // runtime owns model routing, so show its reported healthy inference
       // nodes rather than probing an inaccessible private address.
-      ollama: Array.isArray(body.nodes) && body.nodes.some((node) => node.healthy === true),
+      ollama: Array.isArray(body.nodes) && body.nodes.some((node) => node.healthy === true) ? "connected" : "disconnected",
     };
   } catch {
-    return { agentRuntime: false, ollama: false };
+    return { agentRuntime: "disconnected", ollama: "disconnected" };
   }
 }
 
@@ -51,21 +53,21 @@ async function check(config: ConfigStore): Promise<HealthStatus> {
     // Both local and hosted deployments expose their model-node registry via
     // the harness. This is the authoritative model-health signal; a desktop
     // process cannot reliably reach Docker's internal Ollama listener.
-    agentHealth(`${agentRuntime}/api/v1/health/nodes`, headers),
+    agentHealth(`${agentRuntime}/api/v1/health/nodes`, isPublicProfile, headers),
     // MemPalace has no public /health endpoint. Its documented, used-in-
     // production contract is POST /v1/memories/search, not GET /v1/memories.
     isPublicProfile
-      ? probe(`${mempalace}/v1/memories/search`, headers, {
+      ? probe(`${mempalace}/v1/memories/search`, true, headers, {
           method: "POST",
           headers: { ...(headers ?? {}), "Content-Type": "application/json" },
           body: JSON.stringify({ query: "healthcheck", limit: 1 }),
         })
-      : probe(`${mempalace}/health`),
+      : probe(`${mempalace}/health`, false),
   ]);
   return {
-    agentRuntime: runtimeHealth.agentRuntime ? "connected" : "disconnected",
-    mempalace:    mp ? "connected" : "disconnected",
-    ollama:       runtimeHealth.ollama ? "connected" : "disconnected",
+    agentRuntime: runtimeHealth.agentRuntime,
+    mempalace:    mp,
+    ollama:       runtimeHealth.ollama,
     checkedAt:    new Date().toISOString(),
   };
 }

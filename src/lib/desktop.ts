@@ -3,7 +3,7 @@
  * The React app uses this to access native capabilities.
  * Gracefully no-ops when not running in Electron.
  */
-import type { RunRecord, RunEvent, EvalCase, EvalResult } from "../types/memex";
+import type { RunRecord, RunEvent, EvalCase, EvalResult, ConnectionStatus } from "../types/memex";
 export type { RunRecord, RunEvent, EvalCase, EvalResult };
 
 export type PermissionMode = "trusted" | "workspace" | "ask";
@@ -266,9 +266,9 @@ export interface MemexBridge {
   };
 
   health: {
-    check:    () => Promise<{ agentRuntime: string; mempalace: string; ollama: string; checkedAt: string }>;
-    getLast:  () => Promise<{ agentRuntime: string; mempalace: string; ollama: string; checkedAt: string } | null>;
-    onStatus: (cb: (s: { agentRuntime: string; mempalace: string; ollama: string; checkedAt: string }) => void) => () => void;
+    check:    () => Promise<{ agentRuntime: ConnectionStatus["agentRuntime"]; mempalace: ConnectionStatus["mempalace"]; ollama: ConnectionStatus["ollama"]; checkedAt: string }>;
+    getLast:  () => Promise<{ agentRuntime: ConnectionStatus["agentRuntime"]; mempalace: ConnectionStatus["mempalace"]; ollama: ConnectionStatus["ollama"]; checkedAt: string } | null>;
+    onStatus: (cb: (s: { agentRuntime: ConnectionStatus["agentRuntime"]; mempalace: ConnectionStatus["mempalace"]; ollama: ConnectionStatus["ollama"]; checkedAt: string }) => void) => () => void;
   };
 
   workspace: {
