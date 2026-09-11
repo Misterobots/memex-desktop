@@ -176,11 +176,15 @@ function Detail({ worker, onClose }: { worker: PioneerWorker; onClose: () => voi
   return <div className="flex h-full min-w-0 flex-col border-l border-border/60 bg-surface"><div className="flex items-center justify-between border-b border-border/60 px-3 py-2"><span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: accent }}>{worker.role}</span><button onClick={onClose} className="text-faint hover:text-text" aria-label="Close pioneer details">×</button></div><div className="overflow-y-auto"><div className="flex flex-col items-center border-b border-border/60 px-3 py-4" style={{ background: `${accent}0d` }}><Portrait worker={worker} large /><div className="mt-2 text-center text-sm font-black text-text">{worker.pioneer_full_name ?? worker.pioneer_name}</div><div className="mt-1 text-[9px] uppercase tracking-widest text-faint">{worker.state}</div>{worker.pioneer_motto && <div className="mt-2 text-center text-[10px] italic text-muted">“{worker.pioneer_motto}”</div>}</div><div className="border-b border-border/60 px-3 py-3"><div className="mb-1 text-[9px] font-black uppercase tracking-widest text-faint">Task</div><div className="text-[11px] leading-5 text-text">{worker.task}</div></div><div className="px-3 py-3"><div className="mb-2 text-[9px] font-black uppercase tracking-widest text-faint">Activity</div>{worker.activities.length ? <ol className="space-y-2">{worker.activities.slice(-20).map((activity) => <li key={activity.id} className="border-l-2 pl-2 text-[10px] leading-4 text-muted" style={{ borderColor: `${accent}70` }}><span className="mr-1 text-[8px] uppercase tracking-widest" style={{ color: accent }}>{activity.kind}</span>{activity.text}</li>)}</ol> : <div className="text-[10px] text-faint">Waiting for the first update…</div>}</div>{worker.output && <div className="border-t border-border/60 px-3 py-3"><div className="mb-1 text-[9px] font-black uppercase tracking-widest text-faint">Findings</div><div className="whitespace-pre-wrap text-[10px] leading-4 text-muted">{worker.output}</div></div>}</div></div>;
 }
 
-export function PioneersView({ events, active }: { events: MessageEvent[]; active: boolean }) {
+export function PioneersView({ events, active, workspaceKey = "global" }: { events: MessageEvent[]; active: boolean; workspaceKey?: string }) {
   const workers = useMemo(() => pioneersFromEvents(events), [events]);
   const [dismissed, setDismissed] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [arrivalIndex, setArrivalIndex] = useState(0);
+  const [panelWidth, setPanelWidth] = useState(() => {
+    try { return Math.min(720, Math.max(330, Number(localStorage.getItem(`memex.layout.pioneersWidth:${workspaceKey}`)) || 460)); } catch { return 460; }
+  });
+  const [resizing, setResizing] = useState(false);
   const seenIds = useRef<string[]>([]);
   const currentIds = workers.map((worker) => worker.worker_id);
   useEffect(() => {
@@ -191,6 +195,20 @@ export function PioneersView({ events, active }: { events: MessageEvent[]; activ
       setDismissed(false);
     }
   }, [currentIds.join("|")]);
+  useEffect(() => {
+    try { const saved = Number(localStorage.getItem(`memex.layout.pioneersWidth:${workspaceKey}`)); if (saved) setPanelWidth(Math.min(720, Math.max(330, saved))); } catch { /* storage unavailable */ }
+  }, [workspaceKey]);
+  useEffect(() => {
+    try { localStorage.setItem(`memex.layout.pioneersWidth:${workspaceKey}`, String(panelWidth)); } catch { /* storage unavailable */ }
+  }, [panelWidth, workspaceKey]);
+  useEffect(() => {
+    if (!resizing) return;
+    const resizePanel = (event: PointerEvent) => setPanelWidth(Math.round(Math.min(720, Math.max(330, window.innerWidth - event.clientX))));
+    const stop = () => setResizing(false);
+    window.addEventListener("pointermove", resizePanel);
+    window.addEventListener("pointerup", stop);
+    return () => { window.removeEventListener("pointermove", resizePanel); window.removeEventListener("pointerup", stop); };
+  }, [resizing]);
   if (!workers.length) return null;
   const arrival = workers[arrivalIndex] ?? null;
   const selectedWorker = selected ? workers.find((worker) => worker.worker_id === selected) : null;
@@ -198,8 +216,9 @@ export function PioneersView({ events, active }: { events: MessageEvent[]; activ
   const visible = !dismissed;
   return <>
     {!visible && <button onClick={() => setDismissed(false)} className="absolute right-3 top-3 z-20 rounded-full border border-accent/40 bg-surface px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-accent shadow-lg">Show Pioneers · {workers.length}</button>}
-    <aside aria-label="Pioneers" className={`flex h-full shrink-0 overflow-hidden border-l border-border/60 bg-surface transition-[width] duration-500 ${visible ? "w-[min(520px,45vw)]" : "w-0"}`}>
-      <div className="flex h-full w-[min(520px,45vw)] min-w-[330px] flex-col"><header className="flex shrink-0 items-center gap-2 border-b border-border/60 px-4 py-3"><span className={`h-2 w-2 rounded-full ${active ? "animate-pulse bg-accent" : "bg-emerald-400"}`} /><span className="text-xs font-bold uppercase tracking-widest text-text">Pioneers</span><span className="text-[10px] text-faint">{phaseLabel(phase, workers)}</span><span className="ml-auto text-[10px] text-faint">{workers.length} active</span><button onClick={() => setDismissed(true)} className="ml-2 text-faint hover:text-text" aria-label="Collapse Pioneers">→</button></header>
+    <aside aria-label="Pioneers" style={{ width: visible ? panelWidth : 0 }} className="relative flex h-full shrink-0 overflow-hidden border-l border-border/60 bg-surface transition-[width] duration-500">
+      <button type="button" aria-label="Resize Pioneers panel" title="Drag to resize Pioneers" onPointerDown={(event) => { event.preventDefault(); setResizing(true); }} className="absolute -left-1 top-0 z-20 h-full w-2 cursor-col-resize hover:bg-accent/20 focus:outline-none focus:bg-accent/20" />
+      <div style={{ width: panelWidth }} className="flex h-full min-w-[330px] flex-col"><header className="flex shrink-0 items-center gap-2 border-b border-border/60 px-4 py-3"><span className={`h-2 w-2 rounded-full ${active ? "animate-pulse bg-accent" : "bg-emerald-400"}`} /><span className="text-xs font-bold uppercase tracking-widest text-text">Pioneers</span><span className="text-[10px] text-faint">{phaseLabel(phase, workers)}</span><span className="ml-auto text-[10px] text-faint">{workers.length} active</span><button onClick={() => setDismissed(true)} className="ml-2 text-faint hover:text-text" aria-label="Collapse Pioneers">→</button></header>
         {arrival && arrivalIndex < workers.length && active && <div className="h-[250px] shrink-0 border-b border-border/60"><LanyardCard worker={arrival} onDone={() => setArrivalIndex((index) => Math.min(index + 1, workers.length))} /></div>}
         <div className="flex min-h-0 flex-1"><div className={`min-w-0 overflow-y-auto ${selectedWorker ? "w-[52%]" : "w-full"}`}><div className="border-b border-border/60 px-4 py-2 text-[9px] font-black uppercase tracking-[0.25em] text-faint">Rost · Pioneer badges</div>{workers.map((worker) => <Badge key={worker.worker_id} worker={worker} selected={selected === worker.worker_id} onClick={() => setSelected(selected === worker.worker_id ? null : worker.worker_id)} />)}</div>{selectedWorker && <div className="w-[48%] min-w-0"><Detail worker={selectedWorker} onClose={() => setSelected(null)} /></div>}</div>
         <div className="shrink-0 border-t border-border/60 px-4 py-2 text-[9px] font-black uppercase tracking-[0.25em] text-faint">AgentDock · live activity</div><div className="flex shrink-0 gap-2 overflow-x-auto px-3 pb-3">{workers.filter((worker) => worker.state === "running" || worker.state === "pending").slice(0, 3).map((worker) => <button key={worker.worker_id} onClick={() => setSelected(worker.worker_id)} className="min-w-[110px] rounded-lg border border-border/60 bg-surface2 px-2 py-2 text-left hover:border-accent/50"><div className="flex items-center gap-2"><Portrait worker={worker} /><span className="truncate text-[10px] font-bold text-text">{worker.pioneer_name}</span></div><div className="mt-2 truncate text-[9px] text-muted">{worker.activities.at(-1)?.text ?? worker.task}</div></button>)}</div>

@@ -32,6 +32,10 @@ export function DevView() {
   const [worktreesOpen, setWorktreesOpen] = useState(false);
   const [bottomHeight, setBottomHeight] = useState(40);
   const [resizing, setResizing] = useState(false);
+  const [explorerWidth, setExplorerWidth] = useState(() => {
+    try { return Math.min(420, Math.max(180, Number(localStorage.getItem("memex.layout.explorerWidth")) || 240)); } catch { return 240; }
+  });
+  const [resizingExplorer, setResizingExplorer] = useState(false);
   const workspaceRef = useRef<HTMLDivElement>(null);
 
   const termId = `term-${session?.id ?? `project-${cwd || "unselected"}`}`;
@@ -56,13 +60,30 @@ export function DevView() {
       window.removeEventListener("pointerup", stop);
     };
   }, [resizing]);
+  useEffect(() => {
+    try { const saved = Number(localStorage.getItem(`memex.layout.bottomHeight:${cwd || "unselected"}`)); if (saved) setBottomHeight(Math.min(70, Math.max(25, saved))); } catch { /* storage unavailable */ }
+  }, [cwd]);
+  useEffect(() => {
+    try { localStorage.setItem(`memex.layout.bottomHeight:${cwd || "unselected"}`, String(bottomHeight)); } catch { /* storage unavailable */ }
+  }, [bottomHeight, cwd]);
+  useEffect(() => {
+    try { localStorage.setItem("memex.layout.explorerWidth", String(explorerWidth)); } catch { /* storage unavailable */ }
+  }, [explorerWidth]);
+  useEffect(() => {
+    if (!resizingExplorer) return;
+    const resize = (event: PointerEvent) => setExplorerWidth(Math.round(Math.min(420, Math.max(180, event.clientX))));
+    const stop = () => setResizingExplorer(false);
+    window.addEventListener("pointermove", resize);
+    window.addEventListener("pointerup", stop);
+    return () => { window.removeEventListener("pointermove", resize); window.removeEventListener("pointerup", stop); };
+  }, [resizingExplorer]);
 
 
   return (
     <div className="flex flex-1 min-h-0">
       {/* File explorer */}
       {sidebarOpen && (
-        <aside className="w-[240px] flex-shrink-0 border-r border-border/60 bg-surface flex flex-col">
+        <aside style={{ width: explorerWidth }} className="relative flex-shrink-0 border-r border-border/60 bg-surface flex flex-col">
           <div className="flex items-center justify-between px-3 h-9 border-b border-border/60">
             <span className="text-xs text-faint font-medium truncate">
               {folderName ?? "Explorer"}
@@ -97,6 +118,13 @@ export function DevView() {
               </div>
             )}
           </div>
+          <button
+            type="button"
+            aria-label="Resize explorer panel"
+            title="Drag to resize explorer"
+            onPointerDown={(event) => { event.preventDefault(); setResizingExplorer(true); }}
+            className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize hover:bg-accent/20 focus:outline-none focus:bg-accent/20"
+          />
         </aside>
       )}
 
@@ -247,6 +275,7 @@ export function DevView() {
       {session && <PioneersView
         events={session.messages.flatMap((message) => message.events)}
         active={Boolean(streamingSessions[session.id])}
+        workspaceKey={cwd || "unselected"}
       />}
     </div>
   );
