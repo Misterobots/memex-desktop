@@ -25,7 +25,7 @@ describe("Collective terminology and legacy wire compatibility", () => {
       onEvent: vi.fn(), onDone: resolve, onError: reject,
     }));
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(body).toMatchObject({ model: "swarm", swarm_mode: true, session_id: "legacy-session" });
+    expect(body).toMatchObject({ model: "swarm", swarm_mode: true, memory_enabled: true, session_id: "legacy-session" });
     expect(JSON.stringify(body)).not.toContain("collective");
   });
 });

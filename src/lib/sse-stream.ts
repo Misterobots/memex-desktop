@@ -49,6 +49,8 @@ export interface StreamOptions {
   gauntletHandoff?: { id: string; role: string; phase: string; goal: string; qualityBar: string; effort: Record<string, string>; clarifications?: string[] };
   /** Ollama model id to route to (e.g. "qwen3-coder:30b"). Defaults to "swarm". */
   model?: string;
+  /** Enable owner-scoped MemPalace recall and background extraction. */
+  memoryEnabled?: boolean;
   sessionId?: string;
   /** Workspace identity sent with dev approval decisions. */
   workspaceKey?: string;
@@ -154,6 +156,9 @@ export function streamChat(opts: StreamOptions): () => void {
     messages: opts.messages,
     stream: true,
     session_id: opts.sessionId ?? "default_session",
+    // MemPalace memory is part of the desktop contract: the runtime recalls
+    // relevant owner-scoped memories and extracts durable facts after a turn.
+    memory_enabled: opts.memoryEnabled ?? true,
     already_steered: opts.alreadySteered ?? false,
     dev_resume: opts.devResume ?? false,
     workspace_key: opts.workspaceKey ?? opts.sessionId ?? "default-workspace",
