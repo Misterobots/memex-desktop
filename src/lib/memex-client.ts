@@ -102,3 +102,26 @@ export async function storeMemory(content: string): Promise<void> {
     body: JSON.stringify({ content, memory_type: "semantic", domain: "general" }),
   });
 }
+
+/** Extract durable memories from a completed desktop Code turn. The Code
+ * DevHarness route is intentionally separate from the standard chat router,
+ * so it cannot use the runtime's built-in post-turn extraction hook. */
+export async function extractConversationMemory(conversation: string, ownerId: string): Promise<number> {
+  if (!conversation.trim() || !ownerId.trim()) return 0;
+  try {
+    const response = await apiFetch(`${getMempalace()}/v1/extract`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        conversation: conversation.slice(0, 8000),
+        owner_id: ownerId,
+        agent_id: "memex-desktop",
+      }),
+    });
+    if (!response.ok) return 0;
+    const memories = await response.json() as unknown;
+    return Array.isArray(memories) ? memories.length : 0;
+  } catch {
+    return 0;
+  }
+}

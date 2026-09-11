@@ -3,6 +3,7 @@ import { defaultRunPreferences, sessionScopeKey, useStore } from "../../lib/stor
 import { streamChat } from "../../lib/sse-stream";
 import { desktop, type GauntletHandoff } from "../../lib/desktop";
 import { pushSession } from "../../lib/conv-sync";
+import { extractConversationMemory } from "../../lib/memex-client";
 import { MODE_FLAGS, MODE_LABELS, type ExperienceId, type MemexMode, type ChatMessage, type MessageEvent } from "../../types/memex";
 import { ModelPickerPopover } from "./ModelPickerPopover";
 import { ContextMeter } from "./ContextMeter";
@@ -248,6 +249,20 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       onDone: () => {
         appendEvent(sessionId, assistantId, { type: "status", content: "Response stream ended.", receivedAt: Date.now(), data: { type: "stream_complete" } });
         setStreaming(sessionId, false);
+        // Code runs through DevHarness, which deliberately bypasses the
+        // standard chat router's memory extraction hook. Mirror the completed
+        // turn directly to MemPalace so Code has the same durable memory
+        // behavior without double-extracting standard routes.
+        if (extraFlags.dev_mode && accumulated.trim()) {
+          void (async () => {
+            const ownerId = await bridge?.identity.get().catch(() => "desktop") ?? "desktop";
+            const count = await extractConversationMemory(`User: ${content}\nAssistant: ${accumulated}`, ownerId);
+            if (count > 0) {
+              appendEvent(sessionId, assistantId, { type: "status", content: `MemPalace stored ${count} durable memor${count === 1 ? "y" : "ies"}.`, receivedAt: Date.now(), data: { type: "memory_extract_complete", count } });
+              syncSession();
+            }
+          })();
+        }
         if (handoffId && bridge?.gauntlet) {
           const producedAnswer = accumulated.trim().length > 0;
           const needsCoordinatorInput = useStore.getState().activeSession(experience, workspaceKey)?.messages
