@@ -81,6 +81,16 @@ describe("desktop parity interaction contracts (mocked runtime)", () => {
     expect(request.sessionId).toBe(siteSession?.id);
   });
 
+  it("keeps ordinary Routines prompts on the conversational route", async () => {
+    const user = userEvent.setup();
+    render(<InputBar experience="goals" lockMode="chat" lockModeLabel="Routine" />);
+    await user.type(screen.getByRole("textbox"), "Prepare a repeatable checklist{enter}");
+    expect(vi.mocked(streamChat).mock.calls[0][0]).toMatchObject({
+      skill: "general",
+      mode: "chat",
+    });
+  });
+
   it("keeps Shift+Enter as a newline and allows another send after stream failure", async () => {
     const user = userEvent.setup();
     render(<InputBar />);
