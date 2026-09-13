@@ -102,6 +102,14 @@ export function DevView() {
       window.removeEventListener("pointerup", stop);
     };
   }, [resizing]);
+
+  // The composer moves when the primary or bottom project pane changes even
+  // though its own height may stay the same. Let the floating AgentDock
+  // recompute its viewport-safe clearance immediately after those layout
+  // transitions.
+  useEffect(() => {
+    window.dispatchEvent(new Event("memex:layout-change"));
+  }, [primary, bottomPane, bottomHeight]);
   useEffect(() => {
     try { const saved = Number(localStorage.getItem(`memex.layout.bottomHeight:${cwd || "unselected"}`)); if (saved) setBottomHeight(Math.min(70, Math.max(25, saved))); } catch { /* storage unavailable */ }
   }, [cwd]);

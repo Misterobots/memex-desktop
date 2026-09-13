@@ -269,16 +269,24 @@ export function PioneersView({ events, active, workspaceKey = "global" }: { even
     const composer = document.querySelector<HTMLElement>(".memex-composer");
     if (!composer) return;
     const update = () => {
-      const clearance = Math.ceil(composer.getBoundingClientRect().height) + 12;
+      // Reserve the space from the viewport bottom to the composer's top edge,
+      // not merely the composer's height. The composer can move upward when a
+      // terminal/browser split opens, and height-only clearance lets the dock
+      // overlap that lower pane or the prompt.
+      const rect = composer.getBoundingClientRect();
+      const clearance = Math.max(112, Math.ceil(window.innerHeight - rect.top) + 12);
       setComposerClearance(clearance);
       document.documentElement.style.setProperty("--memex-composer-clearance", `${clearance}px`);
     };
     update();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(update);
-    observer.observe(composer);
+    window.addEventListener("resize", update);
+    window.addEventListener("memex:layout-change", update);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(composer);
     return () => {
-      observer.disconnect();
+      observer?.disconnect();
+      window.removeEventListener("resize", update);
+      window.removeEventListener("memex:layout-change", update);
       document.documentElement.style.removeProperty("--memex-composer-clearance");
     };
   }, [workspaceKey, events.length]);
