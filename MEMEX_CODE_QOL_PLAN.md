@@ -1,8 +1,8 @@
 # Memex Code: comprehensive desktop experience plan
 
 Date: 2026-09-12
-Status: Approved and in progress. Partial implementation is committed in `3f7fdbf`; version bump `56f43d9` and dock adjustment `f76d3e3` produced local installer 0.1.85. Full milestone and installed acceptance remain incomplete.
-Baseline: source commit `ce1574e`; installed executable reports version `0.1.83`.
+Status: Approved and in progress. Partial implementation is committed in `3f7fdbf`; subsequent dock/layout commits `f76d3e3` and `0639625` produced local installer 0.1.86. Full milestone and installed acceptance remain incomplete.
+Baseline: source commit `ce1574e`; the current local installer artifact is version `0.1.86`.
 
 Revision 2: expanded from the initial layout/QoL audit into the complete Code-mode experience backlog. The Q01–Q16 findings remain the evidence register, not the limit of scope. The workstreams and master delivery order below govern the comprehensive plan. All proposed additions require implementation approval; their inclusion is not a claim that they are missing or broken in every existing route.
 
@@ -405,7 +405,7 @@ Follow `AGENTS.md`. This ledger supersedes earlier conversational claims that nu
 | M3 | Partial | Pending | History/filter/agent/stream changes exist; verify identity, hierarchy, chronology, drilldown and six-agent fixtures; do not infer missing backend events solely from screenshots |
 | M4 | Partial | Pending | Editor/terminal foundations exist; qualify work-product journey, native save, review and process preservation |
 | M5 | Pending | Pending | Complete accessibility, recovery, scaling and cross-surface regression qualification after dependencies |
-| M6 | Local installer 0.1.85 generated | Pending | Packaging is recorded; full installed acceptance and release qualification have not passed |
+| M6 | Local installer 0.1.86 generated | Pending | Packaging is recorded; full installed acceptance and release qualification have not passed |
 
 For each item being worked, append or link an evidence record with:
 
