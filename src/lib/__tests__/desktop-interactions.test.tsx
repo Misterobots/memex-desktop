@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { CODE_MODES, InputBar } from "../../components/layout/InputBar";
 import { SessionList } from "../../components/sidebar/SessionList";
 import { DiffReviewModal } from "../../components/shared/DiffReviewModal";
+import { CommandPalette } from "../../components/shared/CommandPalette";
 import { ShortcutCapture } from "../../components/settings/ShortcutCapture";
 import { MessageOutputs } from "../../components/chat/MessageOutputs";
 import { ScheduledTasks } from "../../components/scheduled/ScheduledTasks";
@@ -152,6 +153,23 @@ describe("desktop parity interaction contracts (mocked runtime)", () => {
     await userEvent.setup().click(button);
     fireEvent.keyDown(button, { key: "j", ctrlKey: true, shiftKey: true });
     expect(change).toHaveBeenCalledWith("Control+Shift+J");
+  });
+
+  it("supports keyboard navigation and exposes the active command", async () => {
+    const user = userEvent.setup();
+    render(<CommandPalette />);
+    const input = screen.getByRole("textbox", { name: "Search commands" });
+    const options = screen.getAllByRole("option");
+    expect(options[0].getAttribute("aria-selected")).toBe("true");
+    await user.keyboard("{ArrowDown}{End}");
+    expect(screen.getAllByRole("option").at(-1)?.getAttribute("aria-selected")).toBe("true");
+    await user.keyboard("{Home}");
+    expect(screen.getAllByRole("option")[0].getAttribute("aria-selected")).toBe("true");
+    await user.clear(input);
+    await user.type(input, "Open Code");
+    await user.keyboard("{Enter}");
+    expect(useStore.getState().activeTab).toBe("dev");
+    expect(useStore.getState().commandPaletteOpen).toBe(false);
   });
 
   it("switches generated HTML between preview/source and expands its pane", async () => {
