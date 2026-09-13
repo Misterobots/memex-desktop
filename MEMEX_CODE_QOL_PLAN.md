@@ -41,6 +41,8 @@ Implemented locally in the working tree:
 
 Validation at this checkpoint: `npm run typecheck`, `npm test` (31 files, 137 tests), `npm run build:renderer`, and `git diff --check` all pass; the focused approval-bridge, AgentDock geometry/resize, command-palette keyboard, and task-board recovery regressions are included. The 0.1.87 renderer/package artifact is built but has not replaced the installed executable. True terminal process reattachment after app restart, task archive/unarchive support, live packaged-app dock geometry, live stream/reconnect, and the rest of M1–M6 remain outstanding.
 
+Packaged evidence (not installed acceptance): commit `059d1b4`, Windows x64 NSIS installer `release/Memex Desktop Setup 0.1.87.exe`, SHA-256 `1860E0E40497AACB0DEBDD9DD691BC87DCDB2DDE5A6371653D5333B55282433B`. Installed visual/functional checks have not been performed in this checkpoint.
+
 ## Objective and boundaries
 
 Make Memex Code a dependable desktop workspace with the interaction quality illustrated by the user's Codex references: readable chronological work, discoverable controls, preserved work, useful agent inspection, and responsive, remembered panels across display configurations. Preserve Memex branding, Code/Chat separation, Collective and Gauntlet semantics, Pioneers, and existing functionality. This is not permission to redesign unrelated workspaces or rename features.
