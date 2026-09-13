@@ -1,5 +1,5 @@
 import type { ChatDisplayMode, ChatMessage, ExperienceId } from "../../types/memex";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { RunInspectorPanel } from "./RunInspectorPanel";
 import { ResponseActions } from "./ResponseActions";
 import { LiveActivity, WorkTraceHeader } from "./LiveActivity";
@@ -23,12 +23,26 @@ interface Props {
   sessionId?: string;
   experience?: ExperienceId;
   workspaceKey?: string;
+  /** Original user request, used to offer a safe prefilled retry after a transport failure. */
+  retryPrompt?: string;
 }
 
 function RunButton({ runId }: { runId: string }) {
   const inspector = useInspector(); // returns null when outside ChatView
   const [localOpen, setLocalOpen] = useState(false);
   const isActive = inspector ? inspector.activeRunId === runId : localOpen;
+
+  useEffect(() => {
+    if (!localOpen || inspector) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setLocalOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [localOpen, inspector]);
 
   return (<>
     <button
@@ -45,7 +59,7 @@ function RunButton({ runId }: { runId: string }) {
       </svg>
       Run
     </button>
-    {localOpen && <div role="dialog" aria-label="Run inspector" className="fixed inset-0 z-50 flex justify-end bg-canvas/95">
+    {localOpen && <div role="dialog" aria-modal="true" aria-label="Run inspector" className="fixed inset-x-0 bottom-0 top-8 z-50 flex justify-end bg-canvas/95">
       <RunInspectorPanel runId={runId} onClose={() => setLocalOpen(false)} />
     </div>}
   </>);
@@ -108,7 +122,7 @@ function ResponseTimeline({ events, active, waiting, verbose, fallback }: {
   </div>;
 }
 
-export function MessageBubble({ message, isActive = false, displayMode = "normal", sessionId, experience, workspaceKey }: Props) {
+export function MessageBubble({ message, isActive = false, displayMode = "normal", sessionId, experience, workspaceKey, retryPrompt }: Props) {
   const isUser = message.role === "user";
   // Waiting for the first token on the message that's actively streaming.
   const isWaiting = isActive && !message.content;
@@ -153,6 +167,15 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
 
         {errors.map((event, index) => <p key={index} role="alert" className="text-sm text-red-400">{event.content}</p>)}
         {disconnected && <p role="status" className="text-sm text-amber-300">No completed response was received in this view. The connection may have been interrupted; the runtime may still be working. Any received output is preserved below.</p>}
+        {!isActive && !stopped && retryPrompt?.trim() && (disconnected || errors.length > 0) && (
+          <button
+            type="button"
+            className="rounded-md border border-border/60 bg-surface2/50 px-2.5 py-1.5 text-xs text-muted transition-colors hover:border-accent/60 hover:text-text"
+            onClick={() => window.dispatchEvent(new CustomEvent("chat:prefill", { detail: retryPrompt }))}
+          >
+            Retry response
+          </button>
+        )}
         {!isActive && events.some((event) => event.data?.type === "cancelled") && <p role="status" className="text-sm text-muted">Stopped. Any partial output is preserved below.</p>}
         {(message.content || isWaiting || events.length > 0) && (
           <ResponseTimeline events={events} active={isActive} waiting={isWaiting} verbose={showThoughts} fallback={message.content} />

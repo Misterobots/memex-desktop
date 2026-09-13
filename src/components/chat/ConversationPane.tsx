@@ -113,11 +113,12 @@ export function ConversationPane({ experience = "chat", workspaceKey, displayMod
             sessionId={session.id}
             experience={experience}
             workspaceKey={workspaceKey}
+            retryPrompt={messages[i - 1]?.role === "user" ? messages[i - 1].content : undefined}
           />
         ))}
         <div className="h-4" />
       </div>
-      {streaming && !atLatest && <button
+      {!atLatest && <button
         type="button"
         onClick={jumpToLatest}
         aria-label="Jump to latest activity"

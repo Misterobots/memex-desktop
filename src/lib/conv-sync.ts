@@ -88,9 +88,12 @@ export function pushSession(session: Session): void {
   schedulePush(session.id, pending, 1200);
 }
 
-/** Delete a session from the backend. */
-export function deleteRemoteSession(id: string): void {
+/** Archive a session on the backend (DELETE is a soft archive there). */
+export function archiveRemoteSession(id: string): void {
   apiFetch(`${getAgentRuntime()}/v1/conversations/${encodeURIComponent(id)}`, {
     method: "DELETE",
   }).catch(() => {});
 }
+
+/** @deprecated use archiveRemoteSession; retained for legacy callers. */
+export const deleteRemoteSession = archiveRemoteSession;

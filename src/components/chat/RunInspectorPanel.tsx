@@ -120,7 +120,7 @@ export function RunInspectorPanel({ runId, onClose }: Props) {
   const errors      = counts.error       ?? 0;
 
   return (
-    <div className="flex flex-col h-full w-full md:w-80 border-l border-border/40 bg-canvas flex-shrink-0">
+    <div className="flex h-full w-full max-w-full flex-col border-l border-border/40 bg-canvas flex-shrink-0 sm:w-[min(28rem,calc(100vw-1rem))]">
 
       {/* Header */}
       <div className={`flex items-center justify-between px-4 py-3 border-b border-border/40 flex-shrink-0 ${nativeWindowControls ? "pr-[140px]" : ""}`}>
@@ -133,7 +133,7 @@ export function RunInspectorPanel({ runId, onClose }: Props) {
             </span>
           )}
         </div>
-        <button aria-label="Close run inspector" onClick={onClose} className="text-muted hover:text-text p-0.5">
+        <button aria-label="Close run inspector" title="Close inspector (Esc)" onClick={onClose} className="text-muted hover:text-text p-0.5">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
             <path d="M3 3l10 10M13 3L3 13" />
           </svg>

@@ -5,6 +5,10 @@ import { ipc } from "../../lib/ipc";
 type ProjectFolder = { path: string; name: string; kind: "root" | "folder" };
 
 const IGNORED_FOLDERS = new Set(["node_modules", ".git", "dist", "build", ".next", "__pycache__"]);
+const GENERATED_FOLDERS = new Set([
+  ".claude", ".pytest_cache", ".venv", "$out", "release", "release-0.1.43", "release-0.1.44",
+  "dist-electron", "review-artifacts",
+]);
 
 function basename(path: string) {
   return path.split(/[\\/]/).filter(Boolean).pop() || path;
@@ -14,6 +18,7 @@ export function WorkspaceProjectsPanel({ cwd, onOpen }: { cwd: string | null; on
   const [projects, setProjects] = useState<ProjectFolder[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [query, setQuery] = useState("");
 
   const load = async () => {
     const bridge = desktop();
@@ -27,7 +32,7 @@ export function WorkspaceProjectsPanel({ cwd, onOpen }: { cwd: string | null; on
         try {
           const children = await bridge.fs.readDir(root);
           for (const child of children) {
-            if (child.isDir && !IGNORED_FOLDERS.has(child.name.toLowerCase())) {
+            if (child.isDir && !IGNORED_FOLDERS.has(child.name.toLowerCase()) && !GENERATED_FOLDERS.has(child.name.toLowerCase())) {
               items.push({ path: child.path, name: child.name, kind: "folder" });
             }
           }
@@ -62,13 +67,21 @@ export function WorkspaceProjectsPanel({ cwd, onOpen }: { cwd: string | null; on
           <button onClick={() => void chooseFolder()} className="flex-shrink-0 px-3.5 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:opacity-90">Open folder</button>
         </div>
 
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-xs text-muted">Workspace projects</span>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="mr-auto text-xs text-muted">Workspace projects</span>
+          <label className="sr-only" htmlFor="project-search">Search projects</label>
+          <input id="project-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search projects" className="w-48 rounded-md border border-border/60 bg-surface px-2.5 py-1.5 text-xs text-text placeholder-faint focus:border-accent focus:outline-none" />
           <button onClick={() => void load()} className="text-xs text-accent hover:underline">Refresh</button>
         </div>
-        {loading ? <p className="py-10 text-center text-sm text-muted">Loading projects…</p> : projects.length > 0 ? (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {projects.map((project) => {
+        {loading ? <p className="py-10 text-center text-sm text-muted">Loading projects…</p> : projects.filter((project) => {
+          const normalized = query.trim().toLowerCase();
+          return !normalized || project.name.toLowerCase().includes(normalized) || project.path.toLowerCase().includes(normalized);
+        }).length > 0 ? (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {projects.filter((project) => {
+              const normalized = query.trim().toLowerCase();
+              return !normalized || project.name.toLowerCase().includes(normalized) || project.path.toLowerCase().includes(normalized);
+            }).map((project) => {
               const selected = cwd?.toLowerCase() === project.path.toLowerCase();
               return <button key={project.path} onClick={() => onOpen(project.path)}
                 className={`group min-h-28 text-left rounded-2xl border p-4 transition-colors ${selected ? "border-accent/60 bg-accent/5" : "border-border/60 bg-surface hover:bg-surface2 hover:border-border"}`}>
@@ -78,7 +91,7 @@ export function WorkspaceProjectsPanel({ cwd, onOpen }: { cwd: string | null; on
               </button>;
             })}
           </div>
-        ) : <div className="rounded-2xl border border-dashed border-border p-10 text-center"><p className="text-sm text-muted">{message}</p><button onClick={() => void chooseFolder()} className="mt-4 text-sm text-accent hover:underline">Choose a folder</button></div>}
+        ) : <div className="rounded-2xl border border-dashed border-border p-10 text-center"><p className="text-sm text-muted">{query.trim() ? "No projects match that search." : message}</p><button onClick={() => void chooseFolder()} className="mt-4 text-sm text-accent hover:underline">Choose a folder</button></div>}
       </div>
     </div>
   );

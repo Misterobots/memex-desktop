@@ -40,6 +40,10 @@ interface AppState {
   setWorkspaceDisplayMode: (experience: ExperienceId, workspaceKey: string | undefined, mode: ChatDisplayMode) => void;
   workspaceRunPreferences: Record<string, WorkspaceRunPreferences>;
   setWorkspaceRunPreferences: (experience: ExperienceId, workspaceKey: string | undefined, preferences: Partial<WorkspaceRunPreferences>) => void;
+  /** Unsent composer drafts keyed by task scope, persisted independently of messages. */
+  workspaceDrafts: Record<string, string>;
+  setWorkspaceDraft: (key: string, draft: string) => void;
+  clearWorkspaceDraft: (key: string) => void;
 
   // UI state
   activeTab: AppTab;
@@ -111,6 +115,13 @@ export const useStore = create<AppState>()(
           ...s.workspaceRunPreferences,
           [key]: { ...defaultRunPreferences, ...s.workspaceRunPreferences[key], ...preferences },
         } };
+      }),
+      workspaceDrafts: {},
+      setWorkspaceDraft: (key, draft) => set((s) => ({ workspaceDrafts: { ...s.workspaceDrafts, [key]: draft } })),
+      clearWorkspaceDraft: (key) => set((s) => {
+        const workspaceDrafts = { ...s.workspaceDrafts };
+        delete workspaceDrafts[key];
+        return { workspaceDrafts };
       }),
       activeTab: "chat",
       shellMode: "chat",
@@ -308,7 +319,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: "memex-desktop",
-      version: 8,
+      version: 9,
       // mode is intentionally NOT persisted — it's a per-session intent, and a
       // sticky "swarm" silently turned greetings into build orchestration.
       // Each launch starts in the default "chat" mode.
@@ -317,6 +328,7 @@ export const useStore = create<AppState>()(
         activeSessionIds: s.activeSessionIds,
         workspaceDisplayModes: s.workspaceDisplayModes,
         workspaceRunPreferences: s.workspaceRunPreferences,
+        workspaceDrafts: s.workspaceDrafts,
         activeTab: s.activeTab,
         shellMode: s.shellMode,
         designSurface: s.designSurface,
@@ -366,6 +378,7 @@ export const useStore = create<AppState>()(
           persisted.uiScale = typeof persisted.uiScale === "number" ? persisted.uiScale : 1;
           persisted.uiDensity = persisted.uiDensity === "compact" ? "compact" : "comfortable";
         }
+        if (persisted && version < 9) persisted.workspaceDrafts = persisted.workspaceDrafts ?? {};
         return persisted;
       },
     }

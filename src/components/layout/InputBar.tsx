@@ -85,6 +85,40 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
   const streaming = currentSessionId ? !!streamingSessions[currentSessionId] : false;
   const stopStream = currentSessionId ? stopStreams[currentSessionId] : undefined;
   const runPreferences = workspaceRunPreferences[sessionScopeKey(experience, workspaceKey)] ?? defaultRunPreferences;
+  const draftKey = `${sessionScopeKey(experience, workspaceKey)}:${currentSessionId ?? "new"}`;
+  const gauntletDraftKey = `${draftKey}:gauntlet-bar`;
+  const draftKeyRef = useRef("");
+  const gauntletDraftKeyRef = useRef("");
+  const skipDraftPersistRef = useRef(true);
+  const skipGauntletDraftPersistRef = useRef(true);
+
+  // Drafts follow the active task rather than the mounted composer. This keeps
+  // a partially written request intact when the user opens the editor, tasks,
+  // terminal, or another project, while keeping separate Code tasks isolated.
+  useEffect(() => {
+    draftKeyRef.current = draftKey;
+    skipDraftPersistRef.current = true;
+    setText(useStore.getState().workspaceDrafts[draftKey] ?? "");
+  }, [draftKey]);
+  useEffect(() => {
+    gauntletDraftKeyRef.current = gauntletDraftKey;
+    skipGauntletDraftPersistRef.current = true;
+    setGauntletBar(useStore.getState().workspaceDrafts[gauntletDraftKey] ?? "");
+  }, [gauntletDraftKey]);
+  useEffect(() => {
+    if (draftKeyRef.current !== draftKey || skipDraftPersistRef.current) {
+      skipDraftPersistRef.current = false;
+      return;
+    }
+    useStore.getState().setWorkspaceDraft(draftKey, text);
+  }, [draftKey, text]);
+  useEffect(() => {
+    if (gauntletDraftKeyRef.current !== gauntletDraftKey || skipGauntletDraftPersistRef.current) {
+      skipGauntletDraftPersistRef.current = false;
+      return;
+    }
+    useStore.getState().setWorkspaceDraft(gauntletDraftKey, gauntletBar);
+  }, [gauntletDraftKey, gauntletBar]);
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -129,7 +163,10 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       setGauntletError("Choose a named, fetchable reference for the quality bar before starting the Gauntlet.");
       return;
     }
+    useStore.getState().clearWorkspaceDraft(draftKey);
+    useStore.getState().clearWorkspaceDraft(gauntletDraftKey);
     setText("");
+    setGauntletBar("");
 
     const session = activeSession(experience, workspaceKey);
     const sessionId = session?.id ?? createSession(experience, workspaceKey);
@@ -300,7 +337,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       },
     });
     setStreaming(sessionId, true, stop);
-  }, [text, streaming, disabledReason, mode, experience, workspaceKey, extraFlags, runPreferences, gauntletBar]);
+  }, [text, streaming, disabledReason, mode, experience, workspaceKey, extraFlags, runPreferences, gauntletBar, draftKey, gauntletDraftKey]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Enter sends; Shift+Enter inserts a newline. Skip while an IME composition

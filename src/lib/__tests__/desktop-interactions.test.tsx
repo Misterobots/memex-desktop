@@ -105,6 +105,16 @@ describe("desktop parity interaction contracts (mocked runtime)", () => {
     expect(streamChat).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps unsent Code drafts isolated when switching projects", async () => {
+    const user = userEvent.setup();
+    const view = render(<InputBar experience="code" workspaceKey="C:/alpha" />);
+    await user.type(screen.getByRole("textbox"), "alpha draft");
+    view.rerender(<InputBar experience="code" workspaceKey="C:/beta" />);
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "");
+    view.rerender(<InputBar experience="code" workspaceKey="C:/alpha" />);
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveProperty("value", "alpha draft"));
+  });
+
   it("switches only scoped sessions without cancelling another thread's stream", async () => {
     const store = useStore.getState();
     const first = store.createSession("code", "C:/alpha");

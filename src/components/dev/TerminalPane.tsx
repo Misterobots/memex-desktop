@@ -29,6 +29,13 @@ export function TerminalPane({ id, cwd, className = "" }: Props) {
   useEffect(() => {
     if (!containerRef.current) return;
 
+    const sessionMarker = `memex.terminal.session:${id}`;
+    let previousSession: string | null = null;
+    try {
+      previousSession = localStorage.getItem(sessionMarker);
+      localStorage.setItem(sessionMarker, "active");
+    } catch { /* storage may be unavailable in browser previews */ }
+
     const term = new Terminal({
       theme: {
         background:  "#111114",
@@ -60,6 +67,12 @@ export function TerminalPane({ id, cwd, className = "" }: Props) {
     term.loadAddon(linkAddon);
     term.open(containerRef.current);
 
+    if (previousSession === "active") {
+      term.write("\x1b[90m[previous terminal session ended when Memex Desktop closed; starting a new shell]\x1b[0m\r\n");
+    } else if (previousSession === "exited") {
+      term.write("\x1b[90m[previous terminal process exited; starting a new shell]\x1b[0m\r\n");
+    }
+
     termRef.current = term;
     fitRef.current  = fitAddon;
 
@@ -71,6 +84,7 @@ export function TerminalPane({ id, cwd, className = "" }: Props) {
       bridge.pty.create(id, cwd).then(() => {
         const offData = bridge.pty.onData(id, (data: string) => term.write(data));
         const offExit = bridge.pty.onExit(id, () => {
+          try { localStorage.setItem(sessionMarker, "exited"); } catch { /* storage unavailable */ }
           term.write("\r\n\x1b[90m[process exited]\x1b[0m\r\n");
         });
         cleanupRef.current.push(offData, offExit);

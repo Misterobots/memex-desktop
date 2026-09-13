@@ -268,6 +268,22 @@ export function streamChat(opts: StreamOptions): () => void {
     const streamId = `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     let status = 0;
     let failureDetail = "";
+    let consumeQueue = Promise.resolve();
+    let streamEnded = false;
+    const finishWithError = (error: Error) => {
+      if (streamEnded) return;
+      streamEnded = true;
+      recordRunEvent("error", { message: error.message });
+      if (runId) bridge.runs?.end(runId, "error");
+      opts.onError(error);
+    };
+    const finishSuccessfully = () => {
+      if (streamEnded) return;
+      streamEnded = true;
+      recordRunEvent("done", { status: "done" });
+      if (runId) bridge.runs?.end(runId, "done");
+      opts.onDone();
+    };
     const cancel = bridge.api.stream(streamId, {
       url: `${getAgentRuntime()}/v1/chat/completions`,
       method: "POST",
@@ -279,24 +295,24 @@ export function streamChat(opts: StreamOptions): () => void {
         status = Number(response?.status ?? 0);
         failureDetail = response?.detail ?? "";
       } else if (event.kind === "chunk") {
-        void consumeChunk(new Uint8Array(event.value as ArrayBufferLike));
+        // Native IPC can deliver the next chunk before the previous async
+        // chunk has finished (for example while an approval is being bridged).
+        // Serialize consumption so activity, tokens, and approvals retain
+        // their wire order and the done event cannot race the final chunk.
+        consumeQueue = consumeQueue.then(() => consumeChunk(new Uint8Array(event.value as ArrayBufferLike)));
       } else if (event.kind === "done") {
-        if (status < 200 || status >= 300) {
-          const detail = failureDetail ? `: ${failureDetail.slice(0, 500)}` : "";
-          opts.onError(new Error(`agent_runtime returned ${status}${detail}`));
-        }
-        else {
-          recordRunEvent("done", { status: "done" });
-          if (runId) bridge.runs?.end(runId, "done");
-          opts.onDone();
-        }
+        void consumeQueue.then(() => {
+          if (status < 200 || status >= 300) {
+            const detail = failureDetail ? `: ${failureDetail.slice(0, 500)}` : "";
+            finishWithError(new Error(`agent_runtime returned ${status}${detail}`));
+          } else finishSuccessfully();
+        }).catch((error) => finishWithError(error instanceof Error ? error : new Error(String(error))));
       } else if (event.kind === "error") {
-        recordRunEvent("error", { message: String(event.value ?? "Stream failed") });
-        if (runId) bridge.runs?.end(runId, "error");
-        opts.onError(new Error(String(event.value ?? "Stream failed")));
+        finishWithError(new Error(String(event.value ?? "Stream failed")));
       }
     });
     return () => {
+      streamEnded = true;
       cancel();
       if (runId) bridge.runs?.end(runId, "cancelled");
       // Stopping a visible Gauntlet must stop its durable coordinator too.

@@ -12,6 +12,15 @@ describe("experience-owned sessions", () => {
     expect(useStore.getState().activeSession("code", "C:/alpha")?.displayMode).toBe("summary");
     expect(useStore.getState().activeSession("code", "C:/beta")?.displayMode).toBe("normal");
   });
+
+  it("stores drafts by task scope and clears only the submitted draft", () => {
+    useStore.getState().setWorkspaceDraft("code:C:/alpha:new", "finish the parser");
+    useStore.getState().setWorkspaceDraft("code:C:/beta:new", "review the tests");
+    useStore.getState().clearWorkspaceDraft("code:C:/alpha:new");
+
+    expect(useStore.getState().workspaceDrafts["code:C:/alpha:new"]).toBeUndefined();
+    expect(useStore.getState().workspaceDrafts["code:C:/beta:new"]).toBe("review the tests");
+  });
   it("keeps run controls independent for each workspace", () => {
     useStore.getState().setWorkspaceRunPreferences("research", undefined, { outputDetail: "high", reasoningSummary: "detailed" });
     useStore.getState().setWorkspaceRunPreferences("code", "C:/alpha", { reasoningEffort: "high" });
@@ -24,6 +33,7 @@ describe("experience-owned sessions", () => {
       activeSessionIds: {},
       workspaceDisplayModes: {},
       workspaceRunPreferences: {},
+      workspaceDrafts: {},
       activeTab: "chat",
       shellMode: "chat",
       designSurface: "product",

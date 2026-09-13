@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Task } from "../../types/memex";
 import type { DevProject } from "../../lib/dev-projects-api";
 import { listDevProjects } from "../../lib/dev-projects-api";
-import { listTasks } from "../../lib/tasks-api";
+import { filterTasks, listTasks, type TaskFilter } from "../../lib/tasks-api";
 import { TaskCard } from "../tasks/TaskCard";
 import { TaskDetailPanel } from "../tasks/TaskDetailPanel";
 import { NewTaskComposer } from "../tasks/NewTaskComposer";
@@ -28,10 +28,13 @@ export function ProjectTasksPane({ cwd }: { cwd: string | null }) {
   const [selected,  setSelected] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [filter, setFilter] = useState<TaskFilter>("all");
 
   const activeProject = cwd
     ? projects.find((p) => cwd === p.path || cwd.startsWith(p.path + "/") || cwd.startsWith(p.path + "\\"))
     : undefined;
+
+  useEffect(() => { setFilter("all"); }, [cwd]);
 
   const load = useCallback(async () => {
     const [projs, allTasks] = await Promise.all([listDevProjects(), listTasks("all")]);
@@ -45,6 +48,7 @@ export function ProjectTasksPane({ cwd }: { cwd: string | null }) {
   const scopedTasks = activeProject
     ? tasks.filter((t) => t.dev_project_id === activeProject.id)
     : [];
+  const visibleTasks = filterTasks(scopedTasks, filter);
 
   // Poll while any scoped task is running.
   const anyRunning = scopedTasks.some((t) => t.status === "running");
@@ -79,11 +83,19 @@ export function ProjectTasksPane({ cwd }: { cwd: string | null }) {
           </div>
         </div>
 
+        <div className="flex flex-wrap gap-1 border-b border-border/40 px-3 py-2" role="group" aria-label="Task filters">
+          {(["all", "active", "attention", "completed"] as TaskFilter[]).map((item) => (
+            <button key={item} type="button" onClick={() => setFilter(item)} aria-pressed={filter === item} className={`rounded-md px-2 py-1 text-[10px] capitalize ${filter === item ? "bg-accent/15 text-accent" : "text-muted hover:bg-surface2 hover:text-text"}`}>
+              {item === "all" ? "All" : item === "attention" ? "Needs attention" : item}
+            </button>
+          ))}
+        </div>
+
         <div className="flex-1 overflow-y-auto">
           {loading && (
             <div className="flex justify-center py-8 text-muted text-sm">Loading…</div>
           )}
-          {!loading && scopedTasks.map((t) => (
+          {!loading && visibleTasks.map((t) => (
             <TaskCard
               key={t.coordination_id}
               task={t}
@@ -91,6 +103,9 @@ export function ProjectTasksPane({ cwd }: { cwd: string | null }) {
               onClick={() => { setSelected(t.coordination_id); setComposerOpen(false); }}
             />
           ))}
+          {!loading && scopedTasks.length > 0 && visibleTasks.length === 0 && (
+            <div className="px-4 py-10 text-center text-xs text-muted">No tasks match this filter.</div>
+          )}
           {!loading && scopedTasks.length === 0 && (
             <div className="px-4 py-10 text-center text-xs text-muted leading-relaxed">
               {!cwd

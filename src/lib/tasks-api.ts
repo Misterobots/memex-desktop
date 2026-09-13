@@ -47,6 +47,16 @@ export async function listTasks(status: "all" | "running" = "all"): Promise<Task
   }
 }
 
+export type TaskFilter = "all" | "active" | "attention" | "completed";
+
+/** Client-side board filters keep the server contract backwards-compatible. */
+export function filterTasks(tasks: Task[], filter: TaskFilter): Task[] {
+  if (filter === "active") return tasks.filter((task) => task.status === "queued" || task.status === "running");
+  if (filter === "attention") return tasks.filter((task) => task.status === "failed" || task.status === "needs_input" || task.approval_state === "pending");
+  if (filter === "completed") return tasks.filter((task) => task.status === "completed" || task.status === "cancelled");
+  return tasks;
+}
+
 export async function getTask(id: string): Promise<{ run: Task; workers: TaskWorker[] } | null> {
   try {
     const r = await apiFetch(`${getAgentRuntime()}/v1/tasks/${encodeURIComponent(id)}`, {

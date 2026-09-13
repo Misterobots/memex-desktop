@@ -10,7 +10,7 @@ import { fetchRemoteSessions } from "./lib/conv-sync";
 
 export default function App() {
   const {
-    setConnections, setCwd,
+    setConnections,
     setCommandPalette, commandPaletteOpen,
   } = useStore();
   const [wizardDone, setWizardDone] = useState<boolean | null>(null); // null = loading
@@ -97,9 +97,9 @@ export default function App() {
         window.dispatchEvent(new CustomEvent("memex:importFile", { detail: path }));
       };
 
-      // Resolve working directory
-      bridge.fs.readDir(".").then(() => {}).catch(() => {});
-      setCwd("");
+      // Keep the persisted project context. DevView validates/recovers the
+      // folder when the user returns to Code; clearing it here discarded the
+      // last project on every desktop restart and broke task/draft restoration.
     }
 
     return () => {

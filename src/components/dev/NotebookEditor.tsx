@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ipc } from "../../lib/ipc";
 import { parseNotebook, serializeNotebook, type NotebookCell, type NotebookDocument } from "../../lib/notebook";
+import { getEditorBuffer, setEditorBuffer } from "../../lib/editorBufferStore";
 
 interface Props {
   path: string;
   onClose: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 function outputText(output: unknown): string {
@@ -22,32 +24,79 @@ function outputText(output: unknown): string {
   return "";
 }
 
-export function NotebookEditor({ path, onClose }: Props) {
+export function NotebookEditor({ path, onClose, onDirtyChange }: Props) {
   const [notebook, setNotebook] = useState<NotebookDocument | null>(null);
   const [original, setOriginal] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [externalChange, setExternalChange] = useState(false);
+  const notebookRef = useRef<NotebookDocument | null>(null);
+  const originalRef = useRef("");
+  const fileStatRef = useRef<{ mtimeMs: number; size: number } | null>(null);
   const filename = path.split(/[/\\]/).pop() ?? path;
   const dirty = notebook !== null && serializeNotebook(notebook) !== original;
 
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+
   useEffect(() => {
-    setNotebook(null);
-    setOriginal("");
     setError("");
-    ipc.readFile(path)
-      .then((raw) => {
-        const parsed = parseNotebook(raw);
-        setNotebook(parsed);
-        setOriginal(serializeNotebook(parsed));
-      })
-      .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
+    setExternalChange(false);
+    fileStatRef.current = null;
+    const cached = getEditorBuffer(path);
+    if (cached) {
+      const parsed = parseNotebook(cached.content);
+      notebookRef.current = parsed;
+      originalRef.current = cached.original;
+      setNotebook(parsed);
+      setOriginal(cached.original);
+      void ipc.stat(path).then((stat) => { fileStatRef.current = stat; }).catch(() => undefined);
+    } else {
+      setNotebook(null);
+      setOriginal("");
+      notebookRef.current = null;
+      ipc.readFile(path)
+        .then((raw) => {
+          const parsed = parseNotebook(raw);
+          const serialized = serializeNotebook(parsed);
+          notebookRef.current = parsed;
+          originalRef.current = serialized;
+          setNotebook(parsed);
+          setOriginal(serialized);
+          setEditorBuffer(path, { content: serialized, original: serialized });
+          void ipc.stat(path).then((stat) => { fileStatRef.current = stat; }).catch(() => undefined);
+        })
+        .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
+    }
+    return () => {
+      if (notebookRef.current) setEditorBuffer(path, { content: serializeNotebook(notebookRef.current), original: originalRef.current });
+    };
   }, [path]);
 
+  useEffect(() => {
+    if (!notebook) return;
+    let alive = true;
+    const check = async () => {
+      try {
+        const stat = await ipc.stat(path);
+        if (!alive || !fileStatRef.current) return;
+        if (stat.mtimeMs !== fileStatRef.current.mtimeMs || stat.size !== fileStatRef.current.size) setExternalChange(true);
+      } catch { /* preserve the local buffer when the file is temporarily unavailable */ }
+    };
+    const timer = window.setInterval(check, 1500);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [path, notebook !== null]);
+
   const updateCell = (index: number, patch: Partial<NotebookCell>) => {
-    setNotebook((current) => current ? {
+    setNotebook((current) => {
+      if (!current) return current;
+      const next = {
       ...current,
       cells: current.cells.map((cell, cellIndex) => cellIndex === index ? { ...cell, ...patch } : cell),
-    } : current);
+      };
+      notebookRef.current = next;
+      setEditorBuffer(path, { content: serializeNotebook(next), original: originalRef.current });
+      return next;
+    });
   };
 
   const save = async () => {
@@ -56,7 +105,11 @@ export function NotebookEditor({ path, onClose }: Props) {
     try {
       const serialized = serializeNotebook(notebook);
       await ipc.writeFile(path, serialized);
+      originalRef.current = serialized;
       setOriginal(serialized);
+      setEditorBuffer(path, { content: serialized, original: serialized });
+      fileStatRef.current = await ipc.stat(path).catch(() => fileStatRef.current);
+      setExternalChange(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -64,11 +117,38 @@ export function NotebookEditor({ path, onClose }: Props) {
     }
   };
 
+  const requestClose = () => {
+    if (dirty && !window.confirm("Discard unsaved changes to this notebook?")) return;
+    onClose();
+  };
+
+  const saveWithConflictGuard = async () => {
+    if (externalChange && !window.confirm("This notebook changed outside Memex. Save and replace the external changes?")) return;
+    await save();
+  };
+
+  const reloadExternal = async () => {
+    try {
+      const raw = await ipc.readFile(path);
+      const parsed = parseNotebook(raw);
+      const serialized = serializeNotebook(parsed);
+      notebookRef.current = parsed;
+      originalRef.current = serialized;
+      setNotebook(parsed);
+      setOriginal(serialized);
+      setEditorBuffer(path, { content: serialized, original: serialized });
+      fileStatRef.current = await ipc.stat(path).catch(() => fileStatRef.current);
+      setExternalChange(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "s") {
         event.preventDefault();
-        void save();
+        void saveWithConflictGuard();
       }
     };
     document.addEventListener("keydown", handler);
@@ -84,8 +164,8 @@ export function NotebookEditor({ path, onClose }: Props) {
           <span className="text-[10px] uppercase tracking-wide text-muted">Notebook</span>
         </div>
         <div className="flex items-center gap-2">
-          {dirty && <button onClick={() => void save()} disabled={saving} className="px-2.5 py-1 text-xs bg-accent text-canvas rounded-md hover:bg-accentdim disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>}
-          <button onClick={onClose} className="text-faint hover:text-text transition-colors text-lg leading-none">×</button>
+          {dirty && <button onClick={() => void saveWithConflictGuard()} disabled={saving} className="px-2.5 py-1 text-xs bg-accent text-canvas rounded-md hover:bg-accentdim disabled:opacity-50">{saving ? "Saving…" : "Save"}</button>}
+          <button onClick={requestClose} aria-label="Close notebook" className="text-faint hover:text-text transition-colors text-lg leading-none">×</button>
         </div>
       </div>
 
@@ -94,7 +174,8 @@ export function NotebookEditor({ path, onClose }: Props) {
       ) : !notebook ? (
         <div className="flex-1 flex items-center justify-center text-faint text-xs">Loading notebook…</div>
       ) : (
-        <div className="flex-1 overflow-auto p-4 space-y-3">
+        <div className="flex min-h-0 flex-1 flex-col overflow-auto p-4 space-y-3">
+          {externalChange && <div role="alert" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-yellow-400/30 bg-yellow-400/10 px-3 py-2 text-xs text-yellow-100"><span className="min-w-0 flex-1">This notebook changed outside Memex. Reload it or keep your local edits; saving will replace the external version.</span><button type="button" onClick={() => void reloadExternal()} className="rounded border border-yellow-300/40 px-2 py-1 text-[11px] text-yellow-100 hover:bg-yellow-300/10">Reload</button></div>}
           {notebook.cells.map((cell, index) => {
             const outputs = Array.isArray(cell.outputs) ? cell.outputs : [];
             return (
