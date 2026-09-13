@@ -34,9 +34,10 @@ Implemented locally in the working tree:
 - C14/C15 foundation: the chronological conversation keeps its jump-to-latest control available after streaming completes, and interrupted or failed assistant turns offer a safe prefilled retry without auto-submitting or duplicating the original request.
 - C05 foundation: the Gauntlet quality-bar draft now persists independently alongside the scoped composer text and clears only after the run is accepted for submission.
 - C17 foundation: AgentDock clearance now accounts for the composer's actual viewport position and refreshes on Code pane/split transitions, preventing the dock from covering the prompt or lower project tools.
+- C17 foundation: compact AgentDock width and height now have bounded resize handles and independent per-workspace persistence; the composer clearance remains the hard lower boundary. Automated geometry/resize checks pass; packaged visual acceptance remains pending.
 - Regression coverage: pane-relative width/clamping, scoped draft storage and project switching.
 
-Validation at this checkpoint: `npm run typecheck`, `npm test` (31 files, 132 tests), `npm run build:renderer`, and `git diff --check` all pass; the focused approval-bridge and AgentDock geometry regressions are included. The renderer build is not an installer and has not replaced the installed executable. True terminal process reattachment after app restart, task archive/unarchive support, live packaged-app dock geometry, live stream/reconnect, and the rest of M1–M6 remain outstanding.
+Validation at this checkpoint: `npm run typecheck`, `npm test` (31 files, 133 tests), `npm run build:renderer`, and `git diff --check` all pass; the focused approval-bridge and AgentDock geometry/resize regressions are included. The renderer build is not an installer and has not replaced the installed executable. True terminal process reattachment after app restart, task archive/unarchive support, live packaged-app dock geometry, live stream/reconnect, and the rest of M1–M6 remain outstanding.
 
 ## Objective and boundaries
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MessageEvent } from "../../types/memex";
-import { composerClearanceForViewport } from "./pioneers-layout";
+import { composerClearanceForViewport, dockHeightForPointer, dockWidthForPointer } from "./pioneers-layout";
 
 export type PioneerState = "pending" | "running" | "completed" | "failed" | "cancelled";
 
@@ -210,6 +210,36 @@ function WorkerTree({ workers, selected, onSelect, parentId, depth = 0 }: {
   </div>)}</>;
 }
 
+function AgentDock({
+  active, activeCount, totalCount, coordinatorDetail, systemDetail, spawnedAgents, subAgents,
+  dockWidth, dockHeight, onWidthResizeStart, onHeightResizeStart, onFullPanel, onHide, onSelect,
+}: {
+  active: boolean;
+  activeCount: number;
+  totalCount: number;
+  coordinatorDetail: string;
+  systemDetail: string;
+  spawnedAgents: PioneerWorker[];
+  subAgents: PioneerWorker[];
+  dockWidth: number;
+  dockHeight: number;
+  onWidthResizeStart: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  onHeightResizeStart: (event: React.PointerEvent<HTMLButtonElement>) => void;
+  onFullPanel: () => void;
+  onHide: () => void;
+  onSelect: (workerId: string) => void;
+}) {
+  return <div aria-label="Agent Dock" style={{ width: dockWidth, height: dockHeight }} className="fixed bottom-[calc(var(--memex-composer-clearance,112px)+0.75rem)] right-3 z-30 max-h-[min(40vh,calc(100vh-var(--memex-composer-clearance,112px)-1.5rem))] max-w-[calc(100vw-1.5rem)] min-h-0 overflow-y-auto rounded-xl border border-border/60 bg-surface/95 p-3 shadow-2xl backdrop-blur">
+    <button type="button" aria-label="Resize Agent Dock width" title="Drag to resize Agent Dock width" onPointerDown={onWidthResizeStart} className="absolute -left-1 top-3 z-20 h-[calc(100%-1.5rem)] w-2 touch-none cursor-ew-resize rounded hover:bg-accent/20 focus:outline-none focus:bg-accent/20" />
+    <button type="button" aria-label="Resize Agent Dock height" title="Drag to resize Agent Dock height" onPointerDown={onHeightResizeStart} className="absolute left-3 -top-1 z-20 h-2 w-[calc(100%-1.5rem)] touch-none cursor-ns-resize rounded hover:bg-accent/20 focus:outline-none focus:bg-accent/20" />
+    <div className="mb-2 flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${active ? "animate-pulse bg-accent" : "bg-emerald-400"}`} /><span className="text-xs font-bold uppercase tracking-widest text-text">AgentDock</span><span className="text-[10px] text-faint">Org view · {activeCount} active{totalCount !== activeCount ? ` · ${totalCount} total` : ""}</span><div className="ml-auto flex items-center gap-2"><button type="button" onClick={onFullPanel} className="rounded border border-accent/40 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-accent hover:bg-accent/10">Full panel</button><button type="button" onClick={onHide} className="text-faint hover:text-text" aria-label="Hide Pioneers">×</button></div></div>
+    <div className="grid grid-cols-2 gap-2"><OrgCard label="Coordinator" detail={coordinatorDetail} accent="#a78bfa" live={active} /><OrgCard label="System" detail={systemDetail} accent="#94a3b8" live={active} /></div>
+    <div className="my-2 h-px bg-border/60" /><div className="mb-1 px-1 text-[9px] font-black uppercase tracking-[0.2em] text-faint">Spawned agents</div>
+    {spawnedAgents.length ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">{spawnedAgents.map((worker) => <button key={worker.worker_id} onClick={() => onSelect(worker.worker_id)} className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-surface2 px-2 py-2 text-left hover:border-accent/50"><Portrait worker={worker} /><span className="min-w-0 flex-1"><span className="block truncate text-[10px] font-bold text-text">{worker.pioneer_name}</span><span className="mt-1 block truncate text-[9px] text-muted">{worker.activities.at(-1)?.text ?? worker.task}</span></span></button>)}</div> : <div className="py-2 text-[10px] text-faint">No agents are actively running.</div>}
+    {subAgents.length > 0 && <><div className="mb-1 mt-2 border-t border-border/60 px-1 pt-2 text-[9px] font-black uppercase tracking-[0.2em] text-faint">Sub-agents</div><div className="grid grid-cols-1 gap-2 pl-3 sm:grid-cols-3">{subAgents.map((worker) => <button key={worker.worker_id} onClick={() => onSelect(worker.worker_id)} className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-surface2 px-2 py-2 text-left hover:border-accent/50"><Portrait worker={worker} /><span className="min-w-0 flex-1"><span className="block truncate text-[10px] font-bold text-text">{worker.pioneer_name}</span><span className="mt-1 block truncate text-[9px] text-muted">{worker.activities.at(-1)?.text ?? worker.task}</span></span></button>)}</div></>}
+  </div>;
+}
+
 export function PioneersView({ events, active, workspaceKey = "global" }: { events: MessageEvent[]; active: boolean; workspaceKey?: string }) {
   const workers = useMemo(() => pioneersFromEvents(events), [events]);
   const [panelOpen, setPanelOpen] = useState(() => {
@@ -223,8 +253,15 @@ export function PioneersView({ events, active, workspaceKey = "global" }: { even
   const [panelWidth, setPanelWidth] = useState(() => {
     try { return Math.min(720, Math.max(330, Number(localStorage.getItem(`memex.layout.pioneersWidth:${workspaceKey}`)) || 460)); } catch { return 460; }
   });
+  const [dockWidth, setDockWidth] = useState(() => {
+    try { return Math.min(720, Math.max(300, Number(localStorage.getItem(`memex.layout.pioneersDockWidth:${workspaceKey}`)) || 560)); } catch { return 560; }
+  });
+  const [dockHeight, setDockHeight] = useState(() => {
+    try { return Math.min(600, Math.max(120, Number(localStorage.getItem(`memex.layout.pioneersDockHeight:${workspaceKey}`)) || 220)); } catch { return 220; }
+  });
   const [resizing, setResizing] = useState(false);
-  const [, setComposerClearance] = useState(112);
+  const [dockResizing, setDockResizing] = useState<"width" | "height" | null>(null);
+  const [composerClearance, setComposerClearance] = useState(112);
   const seenIds = useRef<string[]>([]);
   const currentIds = workers.map((worker) => worker.worker_id);
   useEffect(() => {
@@ -245,6 +282,14 @@ export function PioneersView({ events, active, workspaceKey = "global" }: { even
   }, [workspaceKey]);
   useEffect(() => {
     try {
+      const savedWidth = Number(localStorage.getItem(`memex.layout.pioneersDockWidth:${workspaceKey}`));
+      const savedHeight = Number(localStorage.getItem(`memex.layout.pioneersDockHeight:${workspaceKey}`));
+      if (savedWidth) setDockWidth(Math.min(720, Math.max(300, savedWidth)));
+      if (savedHeight) setDockHeight(Math.min(600, Math.max(120, savedHeight)));
+    } catch { /* storage unavailable */ }
+  }, [workspaceKey]);
+  useEffect(() => {
+    try {
       setPanelOpen(localStorage.getItem(`memex.layout.pioneersPanel:${workspaceKey}`) !== "0");
       setDockMode(localStorage.getItem(`memex.layout.pioneersDockMode:${workspaceKey}`) === "1");
     } catch { setPanelOpen(true); setDockMode(false); }
@@ -252,6 +297,12 @@ export function PioneersView({ events, active, workspaceKey = "global" }: { even
   useEffect(() => {
     try { localStorage.setItem(`memex.layout.pioneersWidth:${workspaceKey}`, String(panelWidth)); } catch { /* storage unavailable */ }
   }, [panelWidth, workspaceKey]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(`memex.layout.pioneersDockWidth:${workspaceKey}`, String(dockWidth));
+      localStorage.setItem(`memex.layout.pioneersDockHeight:${workspaceKey}`, String(dockHeight));
+    } catch { /* storage unavailable */ }
+  }, [dockWidth, dockHeight, workspaceKey]);
   useEffect(() => {
     try {
       localStorage.setItem(`memex.layout.pioneersPanel:${workspaceKey}`, panelOpen ? "1" : "0");
@@ -266,6 +317,17 @@ export function PioneersView({ events, active, workspaceKey = "global" }: { even
     window.addEventListener("pointerup", stop);
     return () => { window.removeEventListener("pointermove", resizePanel); window.removeEventListener("pointerup", stop); };
   }, [resizing]);
+  useEffect(() => {
+    if (!dockResizing) return;
+    const resizeDock = (event: PointerEvent) => {
+      if (dockResizing === "width") setDockWidth(dockWidthForPointer(event.clientX, window.innerWidth));
+      else setDockHeight(dockHeightForPointer(event.clientY, window.innerHeight, composerClearance));
+    };
+    const stop = () => setDockResizing(null);
+    window.addEventListener("pointermove", resizeDock);
+    window.addEventListener("pointerup", stop);
+    return () => { window.removeEventListener("pointermove", resizeDock); window.removeEventListener("pointerup", stop); };
+  }, [dockResizing, composerClearance]);
   useEffect(() => {
     const composer = document.querySelector<HTMLElement>(".memex-composer");
     if (!composer) return;
@@ -308,6 +370,24 @@ export function PioneersView({ events, active, workspaceKey = "global" }: { even
   const coordinatorDetail = latestFor((event) => /coordinator/i.test(String(event.agent_name ?? event.pioneer_name ?? event.data?.agent_name ?? ""))) ?? "Orchestrating the current run";
   const systemDetail = latestFor((event) => /system/i.test(String(event.agent_name ?? event.data?.agent_name ?? "")) || rawType(event) === "status") ?? "Runtime connected";
   if (!visible) return <button onClick={() => setPanelOpen(true)} className="fixed bottom-[calc(var(--memex-composer-clearance,112px)+0.75rem)] right-3 z-30 rounded-full border border-accent/40 bg-surface px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-accent shadow-lg">Show Pioneers · {workers.length}</button>;
+  if (dockMode) return <AgentDock
+    active={active}
+    activeCount={activeCount}
+    totalCount={workers.length}
+    coordinatorDetail={coordinatorDetail}
+    systemDetail={systemDetail}
+    spawnedAgents={spawnedAgents}
+    subAgents={subAgents}
+    dockWidth={dockWidth}
+    dockHeight={dockHeight}
+    onWidthResizeStart={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setDockResizing("width"); }}
+    onHeightResizeStart={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setDockResizing("height"); }}
+    onFullPanel={() => setDockMode(false)}
+    onHide={() => setPanelOpen(false)}
+    onSelect={(workerId) => { setSelected(workerId); setDockMode(false); }}
+  />;
+  // Legacy inline dock branch retained below as a source-compatible fallback;
+  // the dedicated AgentDock component above is the active implementation.
   if (dockMode) return <div aria-label="Agent Dock" className="fixed bottom-[calc(var(--memex-composer-clearance,112px)+0.75rem)] right-3 z-30 max-h-[min(40vh,calc(100vh-var(--memex-composer-clearance,112px)-1.5rem))] w-[min(560px,calc(100vw-1.5rem))] overflow-y-auto rounded-xl border border-border/60 bg-surface/95 p-3 shadow-2xl backdrop-blur"><div className="mb-2 flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${active ? "animate-pulse bg-accent" : "bg-emerald-400"}`} /><span className="text-xs font-bold uppercase tracking-widest text-text">AgentDock</span><span className="text-[10px] text-faint">Org view · {activeCount} active{workers.length !== activeCount ? ` · ${workers.length} total` : ""}</span><div className="ml-auto flex items-center gap-2"><button type="button" onClick={() => setDockMode(false)} className="rounded border border-accent/40 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-accent hover:bg-accent/10">Full panel</button><button type="button" onClick={() => setPanelOpen(false)} className="text-faint hover:text-text" aria-label="Hide Pioneers">×</button></div></div><div className="grid grid-cols-2 gap-2"><OrgCard label="Coordinator" detail={coordinatorDetail} accent="#a78bfa" live={active} /><OrgCard label="System" detail={systemDetail} accent="#94a3b8" live={active} /></div><div className="my-2 h-px bg-border/60" /><div className="mb-1 px-1 text-[9px] font-black uppercase tracking-[0.2em] text-faint">Spawned agents</div>{spawnedAgents.length ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">{spawnedAgents.map((worker) => <button key={worker.worker_id} onClick={() => { setSelected(worker.worker_id); setDockMode(false); }} className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-surface2 px-2 py-2 text-left hover:border-accent/50"><Portrait worker={worker} /><span className="min-w-0 flex-1"><span className="block truncate text-[10px] font-bold text-text">{worker.pioneer_name}</span><span className="mt-1 block truncate text-[9px] text-muted">{worker.activities.at(-1)?.text ?? worker.task}</span></span></button>)}</div> : <div className="py-2 text-[10px] text-faint">No agents are actively running.</div>}{subAgents.length > 0 && <><div className="mb-1 mt-2 border-t border-border/60 px-1 pt-2 text-[9px] font-black uppercase tracking-[0.2em] text-faint">Sub-agents</div><div className="grid grid-cols-1 gap-2 pl-3 sm:grid-cols-3">{subAgents.map((worker) => <button key={worker.worker_id} onClick={() => { setSelected(worker.worker_id); setDockMode(false); }} className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-surface2 px-2 py-2 text-left hover:border-accent/50"><Portrait worker={worker} /><span className="min-w-0 flex-1"><span className="block truncate text-[10px] font-bold text-text">{worker.pioneer_name}</span><span className="mt-1 block truncate text-[9px] text-muted">{worker.activities.at(-1)?.text ?? worker.task}</span></span></button>)}</div></>}</div>;
   return <>
     <aside aria-label="Pioneers" style={{ width: panelWidth }} className={`relative flex h-full max-w-[calc(100vw-360px)] shrink-0 overflow-hidden border-l border-border/60 bg-surface ${resizing ? "select-none" : "transition-[width] duration-300"}`}>
