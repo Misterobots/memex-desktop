@@ -1,8 +1,8 @@
 # Memex Code: comprehensive desktop experience plan
 
 Date: 2026-09-12
-Status: Approved and in progress. Partial implementation is committed in `3f7fdbf`; subsequent dock/layout, recovery, and accessibility commits produced local installer 0.1.87. Full milestone and installed acceptance remain incomplete.
-Baseline: source commit `ce1574e`; the current local installer artifact is version `0.1.87`.
+Status: Approved and in progress. Partial implementation is committed in `3f7fdbf`; subsequent dock/layout, recovery, accessibility, and hierarchy commits produced local installer 0.1.88. Full milestone and installed acceptance remain incomplete.
+Baseline: source commit `ce1574e`; the current local installer artifact is version `0.1.88`.
 
 Revision 2: expanded from the initial layout/QoL audit into the complete Code-mode experience backlog. The Q01–Q16 findings remain the evidence register, not the limit of scope. The workstreams and master delivery order below govern the comprehensive plan. All proposed additions require implementation approval; their inclusion is not a claim that they are missing or broken in every existing route.
 
@@ -40,9 +40,9 @@ Implemented locally in the working tree:
 - C07/C14 foundation: conversation AgentWorkTrace now preserves reported parent worker IDs and renders sub-agent work nested beneath its parent with cycle protection; source coverage includes a nested-worker fixture.
 - Regression coverage: pane-relative width/clamping, scoped draft storage and project switching.
 
-Validation at this checkpoint: `npm run typecheck`, `npm test` (31 files, 137 tests), `npm run build:renderer`, and `git diff --check` all pass; the focused approval-bridge, AgentDock geometry/resize, command-palette keyboard, and task-board recovery regressions are included. The 0.1.87 renderer/package artifact is built but has not replaced the installed executable. True terminal process reattachment after app restart, task archive/unarchive support, live packaged-app dock geometry, live stream/reconnect, and the rest of M1–M6 remain outstanding.
+Validation at this checkpoint: `npm run typecheck`, `npm test` (31 files, 138 tests), `npm run build:renderer`, and `git diff --check` all pass; the focused approval-bridge, AgentDock geometry/resize, command-palette keyboard, task-board recovery, and nested-worker regressions are included. The 0.1.88 renderer/package artifact is built but has not replaced the installed executable. True terminal process reattachment after app restart, task archive/unarchive support, live packaged-app dock geometry, live stream/reconnect, and the rest of M1–M6 remain outstanding.
 
-Packaged evidence (not installed acceptance): commit `059d1b4`, Windows x64 NSIS installer `release/Memex Desktop Setup 0.1.87.exe`, SHA-256 `1860E0E40497AACB0DEBDD9DD691BC87DCDB2DDE5A6371653D5333B55282433B`. Installed visual/functional checks have not been performed in this checkpoint.
+Packaged evidence (not installed acceptance): current Windows x64 NSIS installer `release/Memex Desktop Setup 0.1.88.exe`, SHA-256 `5475E74E9E0918D603E75F992B386CF73F5AF98F1A0EC8475DC1212B86F3D10C`, generated from the 0.1.88 source. Installed visual/functional checks have not been performed in this checkpoint.
 
 ## Objective and boundaries
 
@@ -410,7 +410,7 @@ Follow `AGENTS.md`. This ledger supersedes earlier conversational claims that nu
 | M3 | Partial | Pending | History/filter/agent/stream changes exist; verify identity, hierarchy, chronology, drilldown and six-agent fixtures; do not infer missing backend events solely from screenshots |
 | M4 | Partial | Pending | Editor/terminal foundations exist; qualify work-product journey, native save, review and process preservation |
 | M5 | Partial | Pending | Command-palette keyboard semantics and task-board recovery are covered in source tests; complete accessibility, recovery, scaling and cross-surface qualification remains |
-| M6 | Local installer 0.1.87 generated | Pending | Packaging is recorded; full installed acceptance and release qualification have not passed |
+| M6 | Local installer 0.1.88 generated | Pending | Packaging is recorded; full installed acceptance and release qualification have not passed |
 
 For each item being worked, append or link an evidence record with:
 
