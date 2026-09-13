@@ -35,6 +35,8 @@ Implemented locally in the working tree:
 - C05 foundation: the Gauntlet quality-bar draft now persists independently alongside the scoped composer text and clears only after the run is accepted for submission.
 - C17 foundation: AgentDock clearance now accounts for the composer's actual viewport position and refreshes on Code pane/split transitions, preventing the dock from covering the prompt or lower project tools.
 - C17 foundation: compact AgentDock width and height now have bounded resize handles and independent per-workspace persistence; the composer clearance remains the hard lower boundary. Automated geometry/resize checks pass; packaged visual acceptance remains pending.
+- C14 foundation: the Code Tasks pane now distinguishes a valid empty board from an unavailable project/task request and offers an explicit retry without discarding previously loaded data. Detailed API results preserve status while compatibility list helpers remain unchanged; packaged acceptance remains pending.
+- C18 foundation: the command palette now exposes an active accessible option with Arrow/Home/End navigation, Enter execution, and dialog/listbox semantics.
 - Regression coverage: pane-relative width/clamping, scoped draft storage and project switching.
 
 Validation at this checkpoint: `npm run typecheck`, `npm test` (31 files, 133 tests), `npm run build:renderer`, and `git diff --check` all pass; the focused approval-bridge and AgentDock geometry/resize regressions are included. The renderer build is not an installer and has not replaced the installed executable. True terminal process reattachment after app restart, task archive/unarchive support, live packaged-app dock geometry, live stream/reconnect, and the rest of M1–M6 remain outstanding.
@@ -404,7 +406,7 @@ Follow `AGENTS.md`. This ledger supersedes earlier conversational claims that nu
 | M2 | Partial | Failed / incomplete | `3f7fdbf`, `f76d3e3`; user reports unacceptable dock/stream layout after packaging; verify reserved layout space against reference and full geometry matrix |
 | M3 | Partial | Pending | History/filter/agent/stream changes exist; verify identity, hierarchy, chronology, drilldown and six-agent fixtures; do not infer missing backend events solely from screenshots |
 | M4 | Partial | Pending | Editor/terminal foundations exist; qualify work-product journey, native save, review and process preservation |
-| M5 | Pending | Pending | Complete accessibility, recovery, scaling and cross-surface regression qualification after dependencies |
+| M5 | Partial | Pending | Command-palette keyboard semantics and task-board recovery are covered in source tests; complete accessibility, recovery, scaling and cross-surface qualification remains |
 | M6 | Local installer 0.1.86 generated | Pending | Packaging is recorded; full installed acceptance and release qualification have not passed |
 
 For each item being worked, append or link an evidence record with:

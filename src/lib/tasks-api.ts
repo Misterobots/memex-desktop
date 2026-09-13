@@ -9,6 +9,7 @@ import type { Task, TaskWorker } from "../types/memex";
 
 export type TaskUpdate = Partial<Pick<Task, "title" | "scope" | "branch">> & { prompt?: string };
 export interface TaskMutationResult { ok: boolean; status: number; error?: string; }
+export interface TaskListResult { tasks: Task[]; ok: boolean; status: number; }
 
 export function normalizeTask(value: unknown): Task | null {
   if (!value || typeof value !== "object") return null;
@@ -34,17 +35,22 @@ export function normalizeTaskList(value: unknown): Task[] {
   return entries.map(normalizeTask).filter((task): task is Task => task !== null);
 }
 
-export async function listTasks(status: "all" | "running" = "all"): Promise<Task[]> {
+export async function listTasksDetailed(status: "all" | "running" = "all"): Promise<TaskListResult> {
   try {
     const r = await apiFetch(`${getAgentRuntime()}/v1/tasks?status=${status}`, {
       signal: AbortSignal.timeout(8000),
     });
-    if (!r.ok) return [];
+    if (!r.ok) return { tasks: [], ok: false, status: r.status };
     const data = await r.json();
-    return normalizeTaskList(data);
+    return { tasks: normalizeTaskList(data), ok: true, status: r.status };
   } catch {
-    return [];
+    return { tasks: [], ok: false, status: 0 };
   }
+}
+
+/** Backwards-compatible list helper for consumers that intentionally treat an unavailable board as empty. */
+export async function listTasks(status: "all" | "running" = "all"): Promise<Task[]> {
+  return (await listTasksDetailed(status)).tasks;
 }
 
 export type TaskFilter = "all" | "active" | "attention" | "completed";

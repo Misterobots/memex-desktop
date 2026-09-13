@@ -20,17 +20,24 @@ export interface DevProject {
   created_at: string;
 }
 
-export async function listDevProjects(): Promise<DevProject[]> {
+export interface DevProjectListResult { projects: DevProject[]; ok: boolean; status: number; }
+
+export async function listDevProjectsDetailed(): Promise<DevProjectListResult> {
   try {
     const r = await apiFetch(`${getAgentRuntime()}/v1/dev/projects`, {
       signal: AbortSignal.timeout(8000),
     });
-    if (!r.ok) return [];
+    if (!r.ok) return { projects: [], ok: false, status: r.status };
     const data = await r.json();
-    return Array.isArray(data?.projects) ? data.projects : [];
+    return { projects: Array.isArray(data?.projects) ? data.projects : [], ok: true, status: r.status };
   } catch {
-    return [];
+    return { projects: [], ok: false, status: 0 };
   }
+}
+
+/** Backwards-compatible list helper for consumers that intentionally treat an unavailable board as empty. */
+export async function listDevProjects(): Promise<DevProject[]> {
+  return (await listDevProjectsDetailed()).projects;
 }
 
 export async function createDevProject(body: {

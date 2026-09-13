@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Task } from "../../types/memex";
 import type { DevProject } from "../../lib/dev-projects-api";
-import { listDevProjects } from "../../lib/dev-projects-api";
-import { filterTasks, listTasks, type TaskFilter } from "../../lib/tasks-api";
+import { listDevProjectsDetailed } from "../../lib/dev-projects-api";
+import { filterTasks, listTasksDetailed, type TaskFilter } from "../../lib/tasks-api";
 import { TaskCard } from "../tasks/TaskCard";
 import { TaskDetailPanel } from "../tasks/TaskDetailPanel";
 import { NewTaskComposer } from "../tasks/NewTaskComposer";
@@ -29,6 +29,7 @@ export function ProjectTasksPane({ cwd }: { cwd: string | null }) {
   const [composerOpen, setComposerOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [filter, setFilter] = useState<TaskFilter>("all");
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const activeProject = cwd
     ? projects.find((p) => cwd === p.path || cwd.startsWith(p.path + "/") || cwd.startsWith(p.path + "\\"))
@@ -37,9 +38,16 @@ export function ProjectTasksPane({ cwd }: { cwd: string | null }) {
   useEffect(() => { setFilter("all"); }, [cwd]);
 
   const load = useCallback(async () => {
-    const [projs, allTasks] = await Promise.all([listDevProjects(), listTasks("all")]);
-    setProjects(projs);
-    setTasks(allTasks);
+    setLoading(true);
+    const [projectsResult, tasksResult] = await Promise.all([listDevProjectsDetailed(), listTasksDetailed("all")]);
+    if (!projectsResult.ok || !tasksResult.ok) {
+      setLoadError("Could not load the Code task board. Check the runtime connection and retry.");
+      setLoading(false);
+      return;
+    }
+    setProjects(projectsResult.projects);
+    setTasks(tasksResult.tasks);
+    setLoadError(null);
     setLoading(false);
   }, []);
 
@@ -92,10 +100,16 @@ export function ProjectTasksPane({ cwd }: { cwd: string | null }) {
         </div>
 
         <div className="flex-1 overflow-y-auto">
+          {!loading && loadError && (
+            <div className="m-3 rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-3 text-xs text-red-200" role="alert">
+              <p>{loadError}</p>
+              <button type="button" onClick={load} className="mt-2 rounded-md border border-red-300/30 px-2 py-1 text-red-100 hover:bg-red-300/10">Retry</button>
+            </div>
+          )}
           {loading && (
             <div className="flex justify-center py-8 text-muted text-sm">Loading…</div>
           )}
-          {!loading && visibleTasks.map((t) => (
+          {!loading && !loadError && visibleTasks.map((t) => (
             <TaskCard
               key={t.coordination_id}
               task={t}
@@ -103,10 +117,10 @@ export function ProjectTasksPane({ cwd }: { cwd: string | null }) {
               onClick={() => { setSelected(t.coordination_id); setComposerOpen(false); }}
             />
           ))}
-          {!loading && scopedTasks.length > 0 && visibleTasks.length === 0 && (
+          {!loading && !loadError && scopedTasks.length > 0 && visibleTasks.length === 0 && (
             <div className="px-4 py-10 text-center text-xs text-muted">No tasks match this filter.</div>
           )}
-          {!loading && scopedTasks.length === 0 && (
+          {!loading && !loadError && scopedTasks.length === 0 && (
             <div className="px-4 py-10 text-center text-xs text-muted leading-relaxed">
               {!cwd
                 ? "Open a folder to see its tasks."
