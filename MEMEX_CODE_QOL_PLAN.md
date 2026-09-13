@@ -1,7 +1,7 @@
 # Memex Code: comprehensive desktop experience plan
 
 Date: 2026-09-12
-Status: In progress. M0 baseline is complete; M1–M3 foundations are implemented locally and not packaged or released.
+Status: Approved and in progress. Partial implementation is committed in `3f7fdbf`; version bump `56f43d9` and dock adjustment `f76d3e3` produced local installer 0.1.85. Full milestone and installed acceptance remain incomplete.
 Baseline: source commit `ce1574e`; installed executable reports version `0.1.83`.
 
 Revision 2: expanded from the initial layout/QoL audit into the complete Code-mode experience backlog. The Q01–Q16 findings remain the evidence register, not the limit of scope. The workstreams and master delivery order below govern the comprehensive plan. All proposed additions require implementation approval; their inclusion is not a claim that they are missing or broken in every existing route.
@@ -36,7 +36,7 @@ Implemented locally in the working tree:
 - C17 foundation: AgentDock clearance now accounts for the composer's actual viewport position and refreshes on Code pane/split transitions, preventing the dock from covering the prompt or lower project tools.
 - Regression coverage: pane-relative width/clamping, scoped draft storage and project switching.
 
-Validation at this checkpoint: `npm run typecheck`, `npm test` (30 files, 129 tests), `npm run build:renderer`, and `git diff --check` all pass; the focused approval-bridge regression is included. The renderer build is not an installer and has not replaced the installed executable. True terminal process reattachment after app restart, task archive/unarchive support, live packaged-app dock geometry, live stream/reconnect, and the rest of M1–M6 remain outstanding.
+Validation at this checkpoint: `npm run typecheck`, `npm test` (31 files, 132 tests), `npm run build:renderer`, and `git diff --check` all pass; the focused approval-bridge and AgentDock geometry regressions are included. The renderer build is not an installer and has not replaced the installed executable. True terminal process reattachment after app restart, task archive/unarchive support, live packaged-app dock geometry, live stream/reconnect, and the rest of M1–M6 remain outstanding.
 
 ## Objective and boundaries
 
@@ -390,4 +390,31 @@ Required automated layers: pure layout/state tests; component lifecycle and keyb
 
 The installed live review so far covers navigation, project selection, connection indication and resizing. It did not start inference, exercise active Pioneers, open/close a running terminal process, edit a user file, test approvals, restart the app, or complete a full display matrix. Those areas have explicit planned checks above; source findings are not mislabeled as live results.
 
-Implementation is paused here for plan review. No one-off cosmetic patches or training/Mission Control changes should start ahead of this agreed sequence.
+The user approved implementation and requested continued execution with milestone updates. Continue the agreed sequence without requesting approval again for already authorized work. Training/Mission Control work remains separate.
+
+## Acceptance ledger and continuation contract
+
+Follow `AGENTS.md`. This ledger supersedes earlier conversational claims that numbered small patches were completed milestones. The delivery milestones remain M0–M6. Historical test results above are evidence of automated checks only.
+
+| Milestone | Implementation | Acceptance verification | Evidence / next required action |
+| --- | --- | --- | --- |
+| M0 | Baseline and plan recorded; approved | Partial baseline only | Existing source inventory and limited installed review above; missing native capability checks remain explicit |
+| M1 | Partial | Pending | `3f7fdbf`; reported 129 automated tests do not close lifecycle, recovery, draft and work-loss journeys; reproduce each required journey |
+| M2 | Partial | Failed / incomplete | `3f7fdbf`, `f76d3e3`; user reports unacceptable dock/stream layout after packaging; verify reserved layout space against reference and full geometry matrix |
+| M3 | Partial | Pending | History/filter/agent/stream changes exist; verify identity, hierarchy, chronology, drilldown and six-agent fixtures; do not infer missing backend events solely from screenshots |
+| M4 | Partial | Pending | Editor/terminal foundations exist; qualify work-product journey, native save, review and process preservation |
+| M5 | Pending | Pending | Complete accessibility, recovery, scaling and cross-surface regression qualification after dependencies |
+| M6 | Local installer 0.1.85 generated | Pending | Packaging is recorded; full installed acceptance and release qualification have not passed |
+
+For each item being worked, append or link an evidence record with:
+
+- Original criterion ID and expected user behavior.
+- Implementation status: pending, partial, or implemented.
+- Verification status: pending, passed, failed, blocked, or stale; include each required check and its actual result.
+- Tested commit/diff, app version and environment. For packaged checks: artifact SHA-256 and verified executable/bundle identity.
+- Evidence paths and commands, distinguishing automated, browser, packaged and installed checks.
+- Outstanding criteria, dependencies, blocker if any, and concrete next action.
+
+Do not mark a milestone accepted until its exit gate and all mandatory item checks pass. User-approved deferrals must be explicit. Preserve historical evidence but mark it stale when affected code changes.
+
+Current handoff: the Code-mode UI plan is unfinished. Next work is to reproduce and resolve the reported dock/stream layout against the original reference, with measurable non-overlap and desktop visual evidence, then continue the remaining milestone criteria. Native UI access failed during the earlier investigation; those attempts did not supply visual verification. No additional installer should be described as resolving this issue without that verification.

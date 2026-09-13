@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MessageEvent } from "../../types/memex";
+import { composerClearanceForViewport } from "./pioneers-layout";
 
 export type PioneerState = "pending" | "running" | "completed" | "failed" | "cancelled";
 
@@ -274,7 +275,7 @@ export function PioneersView({ events, active, workspaceKey = "global" }: { even
       // terminal/browser split opens, and height-only clearance lets the dock
       // overlap that lower pane or the prompt.
       const rect = composer.getBoundingClientRect();
-      const clearance = Math.max(112, Math.ceil(window.innerHeight - rect.top) + 12);
+      const clearance = composerClearanceForViewport(window.innerHeight, rect.top);
       setComposerClearance(clearance);
       document.documentElement.style.setProperty("--memex-composer-clearance", `${clearance}px`);
     };
