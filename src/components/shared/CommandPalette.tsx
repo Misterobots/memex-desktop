@@ -12,9 +12,16 @@ export function CommandPalette() {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
   const { setCommandPalette, setActiveTab, createSession, toggleSidebar } = useStore();
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => {
+    returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    inputRef.current?.focus();
+    return () => {
+      if (returnFocusRef.current && document.contains(returnFocusRef.current)) returnFocusRef.current.focus();
+    };
+  }, []);
 
   const close = () => setCommandPalette(false);
 

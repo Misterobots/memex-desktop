@@ -172,6 +172,21 @@ describe("desktop parity interaction contracts (mocked runtime)", () => {
     expect(useStore.getState().commandPaletteOpen).toBe(false);
   });
 
+  it("returns focus to the palette opener when dismissed", async () => {
+    const opener = document.createElement("button");
+    opener.setAttribute("aria-label", "Open commands");
+    document.body.appendChild(opener);
+    opener.focus();
+    useStore.setState({ commandPaletteOpen: true });
+    function PaletteHarness() {
+      return useStore((state) => state.commandPaletteOpen) ? <CommandPalette /> : null;
+    }
+    render(<PaletteHarness />);
+    await userEvent.setup().keyboard("{Escape}");
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
+  });
+
   it("switches generated HTML between preview/source and expands its pane", async () => {
     const user = userEvent.setup();
     render(<MessageOutputs events={[{ type: "artifact", content: "", data: { type: "design_artifact", content: { filename: "test.html", html: "<h1>Preview test</h1>" } } }]} />);

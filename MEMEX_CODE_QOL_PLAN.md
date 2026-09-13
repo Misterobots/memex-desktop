@@ -36,7 +36,7 @@ Implemented locally in the working tree:
 - C17 foundation: AgentDock clearance now accounts for the composer's actual viewport position and refreshes on Code pane/split transitions, preventing the dock from covering the prompt or lower project tools.
 - C17 foundation: compact AgentDock width and height now have bounded resize handles and independent per-workspace persistence; the composer clearance remains the hard lower boundary. Automated geometry/resize checks pass; packaged visual acceptance remains pending.
 - C14 foundation: the Code Tasks pane now distinguishes a valid empty board from an unavailable project/task request and offers an explicit retry without discarding previously loaded data. Detailed API results preserve status while compatibility list helpers remain unchanged; packaged acceptance remains pending.
-- C18 foundation: the command palette now exposes an active accessible option with Arrow/Home/End navigation, Enter execution, and dialog/listbox semantics.
+- C18 foundation: the command palette now exposes an active accessible option with Arrow/Home/End navigation, Enter execution, dialog/listbox semantics, and focus return on dismissal.
 - Regression coverage: pane-relative width/clamping, scoped draft storage and project switching.
 
 Validation at this checkpoint: `npm run typecheck`, `npm test` (31 files, 133 tests), `npm run build:renderer`, and `git diff --check` all pass; the focused approval-bridge and AgentDock geometry/resize regressions are included. The renderer build is not an installer and has not replaced the installed executable. True terminal process reattachment after app restart, task archive/unarchive support, live packaged-app dock geometry, live stream/reconnect, and the rest of M1–M6 remain outstanding.
