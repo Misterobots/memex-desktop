@@ -38,7 +38,7 @@ These instructions apply to Codex agents working in this repository, including L
 
 ## Agent flow routing
 
-- Bulk, generative, or sweep-style work routes through the five flows in `.claude/skills/`: `flow-blockout`, `flow-batch-edit`, `flow-audit`, `flow-scaffold`, `flow-variants`. Read `.claude/skills/agent-flows/SKILL.md` first — it carries the selection gate and the disambiguation rules.
+- Bulk, generative, or sweep-style work routes through the five flows in `.agents/skills/`: `flow-blockout`, `flow-batch-edit`, `flow-audit`, `flow-scaffold`, `flow-variants`. Read `.agents/skills/agent-flows/SKILL.md` first — it carries the selection gate and the disambiguation rules. `.agents/skills` is the canonical, vendor-neutral copy; `.claude/skills` is an uncommitted mirror kept for tools that read only their own directory, so edits belong in `.agents/skills`.
 - Route only when the target set is enumerable by a rule, the operation is identical per item, and success is verifiable without visual judgment. Otherwise handle the request directly; a flow applied to a judgment task hides the judgment rather than making it.
 - Flows are skill definitions, not a runtime feature. The suggested Memex mode in each skill is composer guidance over existing `MemexMode` values; the agent runtime has no flow concept and no new mode flags were introduced.
 - Mutating flows (`flow-batch-edit`, `flow-variants`) state their rollback before the first write. `flow-audit` never writes; if a sweep starts fixing what it found, it has become a batch edit and takes that flow's discipline.

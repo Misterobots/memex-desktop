@@ -3,14 +3,17 @@ import { describe, expect, it } from "vitest";
 import { mergeSkillsByPrecedence, parseSkillFrontmatter, skillScanRoots } from "../skills";
 import type { SkillEntry } from "../../types/memex";
 
-const files = import.meta.glob("../../../.claude/skills/*/SKILL.md", {
+// `.agents/skills` is the tracked, canonical location. The `.claude/skills` mirror
+// exists on disk for vendor tools that only read their own directory, but it is not
+// committed, so a fresh clone has nothing there to glob.
+const files = import.meta.glob("../../../.agents/skills/*/SKILL.md", {
   eager: true, query: "?raw", import: "default",
 }) as Record<string, string>;
 
 describe("agent flow skills are registry-visible", () => {
   it("is scanned by the project root the registry uses", () => {
     expect(skillScanRoots("C:/repo", "C:/home")).toEqual(
-      expect.arrayContaining([{ path: "C:/repo/.claude/skills", scope: "project" }]),
+      expect.arrayContaining([{ path: "C:/repo/.agents/skills", scope: "project" }]),
     );
   });
 
