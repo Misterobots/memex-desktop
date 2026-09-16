@@ -35,3 +35,10 @@ These instructions apply to Codex agents working in this repository, including L
 - If a tool is unavailable after discovery, report that briefly and continue with available capabilities within scope; do not imply it ran.
 - If a Memex result begins with `[MEMEX QUESTION`, relay the question verbatim and stop for the answer. Reinvoke swarm with the original prompt unchanged and the answer parameter.
 - For an explicit `/graphify` request, read and follow the available graphify skill first.
+
+## Agent flow routing
+
+- Bulk, generative, or sweep-style work routes through the five flows in `.claude/skills/`: `flow-blockout`, `flow-batch-edit`, `flow-audit`, `flow-scaffold`, `flow-variants`. Read `.claude/skills/agent-flows/SKILL.md` first — it carries the selection gate and the disambiguation rules.
+- Route only when the target set is enumerable by a rule, the operation is identical per item, and success is verifiable without visual judgment. Otherwise handle the request directly; a flow applied to a judgment task hides the judgment rather than making it.
+- Flows are skill definitions, not a runtime feature. The suggested Memex mode in each skill is composer guidance over existing `MemexMode` values; the agent runtime has no flow concept and no new mode flags were introduced.
+- Mutating flows (`flow-batch-edit`, `flow-variants`) state their rollback before the first write. `flow-audit` never writes; if a sweep starts fixing what it found, it has become a batch edit and takes that flow's discipline.
