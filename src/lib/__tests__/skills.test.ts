@@ -26,4 +26,38 @@ describe("markdown skill discovery", () => {
       { path: "C:/Users/memex/.codex/skills", scope: "user" },
     ]));
   });
+
+  it("discovers the vendor-neutral .agents convention at both scopes", () => {
+    expect(skillScanRoots("C:/repo", "C:/Users/memex")).toEqual(expect.arrayContaining([
+      { path: "C:/repo/.agents/skills", scope: "project" },
+      { path: "C:/Users/memex/.agents/skills", scope: "user" },
+    ]));
+  });
+
+  it("prefers .agents over the vendor mirrors within the same scope", () => {
+    const result = mergeSkillsByPrecedence([
+      entry("flow-audit", "project", "C:/repo/.codex/skills/flow-audit/SKILL.md"),
+      entry("flow-audit", "project", "C:/repo/.claude/skills/flow-audit/SKILL.md"),
+      entry("flow-audit", "project", "C:/repo/.agents/skills/flow-audit/SKILL.md"),
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0].sourcePath).toBe("C:/repo/.agents/skills/flow-audit/SKILL.md");
+  });
+
+  it("still lets a project vendor mirror beat a user-scope .agents skill", () => {
+    const result = mergeSkillsByPrecedence([
+      entry("flow-audit", "user", "C:/home/.agents/skills/flow-audit/SKILL.md"),
+      entry("flow-audit", "project", "C:/repo/.claude/skills/flow-audit/SKILL.md"),
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0].scope).toBe("project");
+  });
+
+  it("ranks unrecognised skill directories last", () => {
+    const result = mergeSkillsByPrecedence([
+      entry("flow-audit", "project", "C:/repo/vendor/skills/flow-audit/SKILL.md"),
+      entry("flow-audit", "project", "C:/repo/.codex/skills/flow-audit/SKILL.md"),
+    ]);
+    expect(result[0].sourcePath).toBe("C:/repo/.codex/skills/flow-audit/SKILL.md");
+  });
 });

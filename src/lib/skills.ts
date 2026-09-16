@@ -4,16 +4,29 @@ export type SkillScope = "project" | "user";
 
 export type SkillScanRoot = { path: string; scope: SkillScope };
 
-/** Supported local conventions for Claude and Codex skills. */
+/** Supported local conventions: the vendor-neutral `.agents` layout plus Claude and Codex. */
 export function skillScanRoots(cwd: string, home: string): SkillScanRoot[] {
   return [
+    { path: `${cwd}/.agents/skills`, scope: "project" },
     { path: `${cwd}/.claude/skills`, scope: "project" },
     { path: `${cwd}/.claude`, scope: "project" },
     { path: `${cwd}/.codex/skills`, scope: "project" },
+    { path: `${home}/.agents/skills`, scope: "user" },
     { path: `${home}/.claude/skills`, scope: "user" },
     { path: `${home}/.claude`, scope: "user" },
     { path: `${home}/.codex/skills`, scope: "user" },
   ];
+}
+
+// `.agents` is the canonical, vendor-neutral location; the vendor directories are
+// mirrors of it. Precedence is declared here rather than left to path ordering:
+// the scanner re-sorts roots alphabetically, so declaration order in
+// `skillScanRoots` does not survive to the point where duplicates are resolved.
+const ROOT_PRECEDENCE = ["/.agents/", "/.claude/", "/.codex/"];
+
+function rootRank(sourcePath: string): number {
+  const index = ROOT_PRECEDENCE.findIndex((marker) => sourcePath.includes(marker));
+  return index < 0 ? ROOT_PRECEDENCE.length : index;
 }
 
 export function parseSkillFrontmatter(md: string): { name?: string; version?: string; description?: string } {
@@ -34,11 +47,14 @@ function scopeRank(scope: SkillScope | undefined): number {
   return scope === "project" ? 0 : 1;
 }
 
-/** Deterministically resolves duplicate skill names: project overrides user. */
+/** Deterministically resolves duplicate skill names: project overrides user, then `.agents`
+ *  overrides the vendor mirrors. Without the root rank a stale mirror could outrank the copy
+ *  someone actually edited, and nothing in the UI would show the difference. */
 export function mergeSkillsByPrecedence(entries: SkillEntry[]): SkillEntry[] {
   const sorted = [...entries].sort((a, b) =>
     scopeRank(a.scope) - scopeRank(b.scope)
     || a.name.trim().toLowerCase().localeCompare(b.name.trim().toLowerCase())
+    || rootRank(a.sourcePath) - rootRank(b.sourcePath)
     || a.sourcePath.localeCompare(b.sourcePath),
   );
   const selected = new Map<string, SkillEntry>();
