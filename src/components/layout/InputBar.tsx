@@ -653,7 +653,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
               onKeyDown={handleKeyDown}
               placeholder={disabledReason ?? placeholder ?? (streaming ? "Streaming… (Esc to stop)" : "Message Memex…")}
               rows={1}
-              className="w-full bg-transparent px-1 text-text text-[15px] resize-none focus:outline-none placeholder-faint min-h-[24px] leading-relaxed"
+              className="flex-1 min-w-0 bg-transparent px-1 text-text text-[15px] resize-none focus:outline-none placeholder-faint min-h-[24px] leading-relaxed"
             />
           </div>
           <div className="flex items-center justify-between mt-1.5">
