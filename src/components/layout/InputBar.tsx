@@ -43,6 +43,158 @@ function syncSessionById(sessionId: string): void {
   if (session) pushSession(session);
 }
 
+export interface SlashCommand {
+  cmd: string;
+  label: string;
+  category: "Flow" | "Workflow" | "Utility";
+  description: string;
+  targetMode?: MemexMode;
+}
+
+export const SLASH_COMMANDS: SlashCommand[] = [
+  // Agent Flows
+  {
+    cmd: "/flow-blockout",
+    label: "Blockout Flow",
+    category: "Flow",
+    description: "Rough, rapid first-pass draft of nonexistent structure (schemas, folder layouts, configs). Output is judged/refined by human.",
+    targetMode: "plan",
+  },
+  {
+    cmd: "/flow-batch-edit",
+    label: "Batch Edit Flow",
+    category: "Flow",
+    description: "Apply one mechanical change across N existing files/records matching a predicate. Always states rollback before first write.",
+    targetMode: "chat",
+  },
+  {
+    cmd: "/flow-audit",
+    label: "Audit Flow",
+    category: "Flow",
+    description: "Read-only sweep checking a large set against explicit rules (dead links, broken exports, policy violations). Never mutates.",
+    targetMode: "swarm",
+  },
+  {
+    cmd: "/flow-scaffold",
+    label: "Scaffold Flow",
+    category: "Flow",
+    description: "Generate boilerplate skeleton for one new unit (component, service, route, module) with structure in place but logic empty.",
+    targetMode: "swarm",
+  },
+  {
+    cmd: "/flow-variants",
+    label: "Variants Flow",
+    category: "Flow",
+    description: "Generate N named derivatives from one parent template plus a parameter table. Pattern is identical, only values change.",
+    targetMode: "chat",
+  },
+  {
+    cmd: "/agent-flows",
+    label: "Agent Flows Guide",
+    category: "Flow",
+    description: "Routing guide and 3-part selection gate (enumerable, mechanical, verifiable) for picking the right agent flow.",
+    targetMode: "chat",
+  },
+
+  // Memex Workflows
+  {
+    cmd: "/build",
+    label: "Collective Build",
+    category: "Workflow",
+    description: "Multi-agent swarm coordination to plan, write, and verify code across files.",
+    targetMode: "swarm",
+  },
+  {
+    cmd: "/swarm",
+    label: "Swarm Mode",
+    category: "Workflow",
+    description: "Alias for Collective build: coordinate specialists to execute project tasks.",
+    targetMode: "swarm",
+  },
+  {
+    cmd: "/plan",
+    label: "Plan Mode",
+    category: "Workflow",
+    description: "Explicit planning and exploration phase with ultraplan before modifying files.",
+    targetMode: "plan",
+  },
+  {
+    cmd: "/workshop",
+    label: "Product Workshop",
+    category: "Workflow",
+    description: "Two-phase discovery: interactive grill-me questions → Product Brief → pipeline actions.",
+    targetMode: "workshop",
+  },
+  {
+    cmd: "/grill",
+    label: "Grill Me",
+    category: "Workflow",
+    description: "Deep discovery interview to align on requirements and eliminate ambiguity.",
+    targetMode: "workshop",
+  },
+  {
+    cmd: "/design",
+    label: "Design Studio",
+    category: "Workflow",
+    description: "Generate self-contained UI/HTML mockups and Open Design projects.",
+    targetMode: "design",
+  },
+  {
+    cmd: "/research",
+    label: "Deep Research",
+    category: "Workflow",
+    description: "Deep web and documentation research with perspective synthesis.",
+    targetMode: "research",
+  },
+  {
+    cmd: "/think",
+    label: "Extended Thinking",
+    category: "Workflow",
+    description: "Extended step-by-step reasoning for difficult problems before responding.",
+    targetMode: "think",
+  },
+  {
+    cmd: "/gauntlet",
+    label: "Pioneer Gauntlet",
+    category: "Workflow",
+    description: "Pioneer builders and critics iterate against an explicit quality bar.",
+    targetMode: "gauntlet",
+  },
+  {
+    cmd: "/cad",
+    label: "CAD Modeling",
+    category: "Workflow",
+    description: "Generate OpenSCAD 3D models with 2D preview renders and STL export.",
+    targetMode: "chat",
+  },
+
+  // Utilities
+  {
+    cmd: "/compact",
+    label: "Compact Context",
+    category: "Utility",
+    description: "Summarize earlier conversation turns to reclaim token budget.",
+  },
+  {
+    cmd: "/clear",
+    label: "Clear Thread",
+    category: "Utility",
+    description: "Clear active conversation messages and reset thread state.",
+  },
+  {
+    cmd: "/model",
+    label: "Model Info / Switch",
+    category: "Utility",
+    description: "Show active model and context window or switch model.",
+  },
+  {
+    cmd: "/help",
+    label: "Help",
+    category: "Utility",
+    description: "List all available slash commands, workflows, and shortcuts.",
+  },
+];
+
 interface InputBarProps {
   /** Extra request flags merged into every send (e.g. { dev_mode: true }). */
   extraFlags?: Record<string, boolean>;
@@ -339,7 +491,52 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
     setStreaming(sessionId, true, stop);
   }, [text, streaming, disabledReason, mode, experience, workspaceKey, extraFlags, runPreferences, gauntletBar, draftKey, gauntletDraftKey]);
 
+  const [slashIndex, setSlashIndex] = useState(0);
+  const [slashDismissed, setSlashDismissed] = useState(false);
+
+  const isSlash = text.startsWith("/") && !text.trimStart().includes(" ") && !slashDismissed;
+  const slashQuery = isSlash ? text.trimStart().slice(1).toLowerCase() : "";
+  const slashMatches = isSlash
+    ? SLASH_COMMANDS.filter((c) => c.cmd.slice(1).toLowerCase().startsWith(slashQuery) || c.label.toLowerCase().includes(slashQuery))
+    : [];
+
+  useEffect(() => {
+    setSlashIndex(0);
+  }, [slashQuery]);
+
+  const selectSlashCommand = useCallback((cmd: SlashCommand) => {
+    setText(cmd.cmd + " ");
+    if (cmd.targetMode && availableModes.includes(cmd.targetMode)) {
+      setMode(cmd.targetMode);
+    }
+    setSlashDismissed(true);
+    textareaRef.current?.focus();
+  }, [availableModes, setMode]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (isSlash && slashMatches.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSlashIndex((i) => (i + 1) % slashMatches.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSlashIndex((i) => (i - 1 + slashMatches.length) % slashMatches.length);
+        return;
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault();
+        selectSlashCommand(slashMatches[slashIndex]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setSlashDismissed(true);
+        return;
+      }
+    }
+
     // Enter sends; Shift+Enter inserts a newline. Skip while an IME composition
     // is active so Enter can confirm candidates instead of sending.
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -360,7 +557,51 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
   return (
     <div className="memex-composer px-6 pb-5 pt-2 flex-shrink-0">
       <div className="max-w-conversation mx-auto">
-        <div className="bg-surface border border-border rounded-2xl px-3 pt-3 pb-2 focus-within:border-accent/50 transition-colors shadow-lg shadow-black/10">
+        <div className="bg-surface border border-border rounded-2xl px-3 pt-3 pb-2 focus-within:border-accent/50 transition-colors shadow-lg shadow-black/10 relative">
+          {isSlash && slashMatches.length > 0 && (
+            <div
+              className="absolute bottom-full mb-2 left-0 right-0 max-h-72 overflow-y-auto rounded-xl border border-border/80 bg-surface shadow-2xl z-50 py-1 divide-y divide-border/20 backdrop-blur-md"
+              role="listbox"
+              aria-label="Slash commands"
+            >
+              {slashMatches.map((cmd, idx) => (
+                <button
+                  key={cmd.cmd}
+                  type="button"
+                  role="option"
+                  aria-selected={idx === slashIndex}
+                  onMouseEnter={() => setSlashIndex(idx)}
+                  onClick={() => selectSlashCommand(cmd)}
+                  className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-start gap-2.5 group ${
+                    idx === slashIndex ? "bg-accent/15 text-text" : "text-text/85 hover:bg-surface2/60"
+                  }`}
+                  title={cmd.description}
+                >
+                  <span className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-semibold text-accent">{cmd.cmd}</span>
+                      <span className="font-medium text-text/90">{cmd.label}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                        cmd.category === "Flow"
+                          ? "bg-purple-500/15 text-purple-400 border border-purple-500/30"
+                          : cmd.category === "Workflow"
+                          ? "bg-accent/15 text-accent border border-accent/30"
+                          : "bg-surface2 text-muted border border-border/50"
+                      }`}>
+                        {cmd.category}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-muted leading-relaxed line-clamp-2 group-hover:text-text/80">
+                      {cmd.description}
+                    </p>
+                  </span>
+                  <span className="text-[10px] font-mono text-muted/60 px-1.5 py-0.5 rounded bg-surface2/80 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    Tab ↹
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
           {mode === "gauntlet" && <label className="mb-2 block px-2 text-xs text-muted">Quality bar
             <input aria-label="Gauntlet quality bar" value={gauntletBar} onChange={(event) => { setGauntletBar(event.target.value); setGauntletError(""); }} placeholder="A named, fetchable reference — URL, product, repo, or publication" className="mt-1 w-full rounded-md border border-border/60 bg-canvas px-2 py-1.5 text-xs text-text placeholder-faint focus:outline-none focus:border-accent" />
             {gauntletError && <span role="alert" className="mt-1 block text-xs text-yellow">{gauntletError}</span>}
@@ -369,7 +610,12 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
             ref={textareaRef}
             value={text}
             disabled={!!disabledReason}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              if (!e.target.value.startsWith("/")) {
+                setSlashDismissed(false);
+              }
+            }}
             onKeyDown={handleKeyDown}
             placeholder={disabledReason ?? placeholder ?? (streaming ? "Streaming… (Esc to stop)" : "Message Memex…")}
             rows={1}

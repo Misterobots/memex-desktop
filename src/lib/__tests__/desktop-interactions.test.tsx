@@ -242,4 +242,21 @@ describe("desktop parity interaction contracts (mocked runtime)", () => {
     await userEvent.setup().click(await screen.findByRole("button", { name: "Resume" }));
     await waitFor(() => expect(resumeTrigger).toHaveBeenCalledWith("qa"));
   });
+
+  it("shows slash command menu with tooltips and autocompletes agent flows", async () => {
+    const user = userEvent.setup();
+    render(<InputBar />);
+    const input = screen.getByRole("textbox");
+    await user.type(input, "/flow");
+    expect(screen.getByRole("listbox", { name: "Slash commands" })).toBeTruthy();
+    expect(screen.getByText("/flow-blockout")).toBeTruthy();
+    expect(screen.getByText("Blockout Flow")).toBeTruthy();
+    expect(screen.getByText(/Rough, rapid first-pass draft/)).toBeTruthy();
+    const blockoutButton = screen.getByRole("option", { name: /Blockout Flow/i });
+    expect(blockoutButton.getAttribute("title")).toContain("Rough, rapid first-pass draft");
+
+    await user.keyboard("{Enter}");
+    expect(input).toHaveProperty("value", "/flow-blockout ");
+    expect(screen.queryByRole("listbox", { name: "Slash commands" })).toBeNull();
+  });
 });

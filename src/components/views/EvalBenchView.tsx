@@ -15,8 +15,8 @@ const EMPTY: Omit<EvalCase, "id" | "createdAt"> = {
   name:          "",
   input:         "",
   mode:          "chat",
-  model:         "qwen3.6:27b",
-  models:        ["qwen3.6:27b"],
+  model:         "qwen3.8:27b",
+  models:        ["qwen3.8:27b"],
   expectedNotes: "",
   rubric:        "",
   workspaceRoot: "",
@@ -255,7 +255,7 @@ export function EvalBenchView() {
                 <TextInput
                   value={editing.model ?? ""}
                   onChange={(model) => setEditing({ ...editing, model, models: [model, ...(editing.models ?? []).slice(1)] })}
-                  placeholder="qwen3.6:27b"
+                  placeholder="qwen3.8:27b"
                   mono
                 />
               </Field>

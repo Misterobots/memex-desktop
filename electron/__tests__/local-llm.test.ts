@@ -9,6 +9,9 @@ describe("local LLM setup", () => {
   it("recommends a capable model for a 16 GB local GPU", () => {
     expect(recommendLocalModels([{ name: "RTX", vramGb: 16 }], 32)[0]?.model).toBe("qwen3:14b");
   });
+  it("recommends qwen3.8 for multi-GPU setups with 24 GB+ total VRAM", () => {
+    expect(recommendLocalModels([{ name: "RTX A", vramGb: 16 }, { name: "RTX B", vramGb: 16 }], 32)[0]?.model).toBe("qwen3.8:27b");
+  });
   it("recommends a small model when local hardware is constrained", () => {
     expect(recommendLocalModels([], 16)[0]?.model).toBe("gemma4:e4b");
   });

@@ -24,6 +24,11 @@ export const LOCAL_SERVICE_DEFAULTS = {
 
 export function recommendLocalModels(gpus: LocalGpu[], systemRamGb: number): LocalModelRecommendation[] {
   const vramGb = Math.max(0, ...gpus.map((gpu) => gpu.vramGb));
+  const totalVram = gpus.reduce((sum, gpu) => sum + gpu.vramGb, 0);
+  if (totalVram >= 24) return [
+    { model: "qwen3.8:27b", label: "Best quality", reason: "Full 27B reasoning model for setups with 24 GB+ total VRAM across GPUs." },
+    { model: "qwen3:14b", label: "Faster alternative", reason: "Strong general model that leaves headroom for concurrent image and coding tools." },
+  ];
   if (vramGb >= 16) return [
     { model: "qwen3:14b", label: "Best local balance", reason: "Fits a 16 GB GPU well and is strong for general work and coding." },
     { model: "qwen3:8b", label: "Faster option", reason: "Leaves more VRAM headroom for image tools and concurrent desktop work." },
