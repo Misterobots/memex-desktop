@@ -52,7 +52,7 @@ export function WorktreePanel({ repoPath, onSelect }: { repoPath: string; onSele
   };
 
   return (
-    <div className="absolute right-3 top-10 z-40 w-80 rounded-xl border border-border/60 bg-canvas p-3 shadow-2xl">
+    <div className="w-full flex flex-col gap-3 text-sm text-text">
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-medium text-text">Isolated worktrees</span>
         <button onClick={() => void load()} className="text-[10px] text-muted hover:text-text">Refresh</button>

@@ -17,9 +17,10 @@ import { WorktreePanel } from "../dev/WorktreePanel";
 import { WorkspaceProjectsPanel } from "../dev/WorkspaceProjectsPanel";
 import { CodeUtilityMenu } from "../dev/CodeUtilityMenu";
 import { PioneersView } from "../swarm/PioneersView";
+import { ReviewPanel } from "../dev/ReviewPanel";
 
 type PrimaryPane = "projects" | "chat" | "editor" | "tasks" | "print";
-type BottomPane  = "terminal" | "browser" | "none";
+type SidePane = "files" | "terminal" | "browser" | "worktrees" | "pioneers" | "review";
 
 export function DevView() {
   const { cwd, setCwd, sidebarOpen, toggleSidebar, activeSession, setActiveTab, streamingSessions } = useStore();
@@ -28,13 +29,11 @@ export function DevView() {
   const folderName = cwd ? cwd.split(/[/\\]/).filter(Boolean).pop() : null;
 
   const [primary, setPrimary]       = useState<PrimaryPane>(cwd ? "chat" : "projects");
-  const [bottomPane, setBottomPane] = useState<BottomPane>("none");
+  const [sidePane, setSidePane]     = useState<SidePane>("files");
+  const [sideMenuOpen, setSideMenuOpen] = useState(false);
   const [terminalOpened, setTerminalOpened] = useState(false);
   const [openFile, setOpenFile]     = useState<string | null>(null);
-  const [worktreesOpen, setWorktreesOpen] = useState(false);
   const [editorDirty, setEditorDirty] = useState(false);
-  const [bottomHeight, setBottomHeight] = useState(40);
-  const [resizing, setResizing] = useState(false);
   const [explorerWidth, setExplorerWidth] = useState(() => {
     try { return Math.min(420, Math.max(180, Number(localStorage.getItem("memex.layout.explorerWidth:unselected")) || 240)); } catch { return 240; }
   });
@@ -42,8 +41,32 @@ export function DevView() {
   const explorerRef = useRef<HTMLElement>(null);
   const explorerScopeRef = useRef(cwd || "unselected");
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const sideMenuRef = useRef<HTMLDivElement>(null);
 
   const termId = `term-${session?.id ?? `project-${cwd || "unselected"}`}`;
+
+  useEffect(() => {
+    if (!sideMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!sideMenuRef.current?.contains(e.target as Node)) setSideMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [sideMenuOpen]);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const cmd = isMac ? e.metaKey : e.ctrlKey;
+      if (cmd && e.key === "`") { e.preventDefault(); if (!sidebarOpen) toggleSidebar(); setSidePane("terminal"); setTerminalOpened(true); }
+      if (cmd && e.key.toLowerCase() === "t") { e.preventDefault(); if (!sidebarOpen) toggleSidebar(); setSidePane("browser"); }
+      if (cmd && e.key.toLowerCase() === "p") { e.preventDefault(); if (!sidebarOpen) toggleSidebar(); setSidePane("files"); }
+      if (cmd && e.shiftKey && e.key.toLowerCase() === "g") { e.preventDefault(); if (!sidebarOpen) toggleSidebar(); setSidePane("review"); }
+      if (cmd && e.altKey && e.key.toLowerCase() === "s") { e.preventDefault(); if (!sidebarOpen) toggleSidebar(); setSidePane("pioneers"); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [sidebarOpen, toggleSidebar]);
 
   const confirmNavigation = useCallback(() => {
     if (!editorDirty) return true;
@@ -71,50 +94,21 @@ export function DevView() {
     setCwd(path);
     setPrimary("chat");
   }, [confirmNavigation, setCwd]);
-
-  const toggleTerminal = () => {
-    setTerminalOpened(true);
-    setBottomPane((p) => (p === "terminal" ? "none" : "terminal"));
-  };
-  const toggleBrowser = () =>
-    setBottomPane((p) => (p === "browser" ? "none" : "browser"));
   const stopTerminal = () => {
     // Hiding/switching the terminal preserves its PTY. This is the explicit
     // user action that terminates the process and clears the retained mount.
     void desktop()?.pty.kill(termId);
     setTerminalOpened(false);
-    setBottomPane((pane) => pane === "terminal" ? "none" : pane);
+    setSidePane((pane) => pane === "terminal" ? "files" : pane);
   };
-  useEffect(() => {
-    if (!resizing) return;
-    const resize = (event: PointerEvent) => {
-      const bounds = workspaceRef.current?.getBoundingClientRect();
-      if (!bounds) return;
-      const next = ((bounds.bottom - event.clientY) / bounds.height) * 100;
-      setBottomHeight(Math.round(Math.min(70, Math.max(25, next))));
-    };
-    const stop = () => setResizing(false);
-    window.addEventListener("pointermove", resize);
-    window.addEventListener("pointerup", stop);
-    return () => {
-      window.removeEventListener("pointermove", resize);
-      window.removeEventListener("pointerup", stop);
-    };
-  }, [resizing]);
 
-  // The composer moves when the primary or bottom project pane changes even
+  // The composer moves when the primary or side pane changes even
   // though its own height may stay the same. Let the floating AgentDock
   // recompute its viewport-safe clearance immediately after those layout
   // transitions.
   useEffect(() => {
     window.dispatchEvent(new Event("memex:layout-change"));
-  }, [primary, bottomPane, bottomHeight]);
-  useEffect(() => {
-    try { const saved = Number(localStorage.getItem(`memex.layout.bottomHeight:${cwd || "unselected"}`)); if (saved) setBottomHeight(Math.min(70, Math.max(25, saved))); } catch { /* storage unavailable */ }
-  }, [cwd]);
-  useEffect(() => {
-    try { localStorage.setItem(`memex.layout.bottomHeight:${cwd || "unselected"}`, String(bottomHeight)); } catch { /* storage unavailable */ }
-  }, [bottomHeight, cwd]);
+  }, [primary, sidePane]);
   useEffect(() => {
     const scope = cwd || "unselected";
     if (explorerScopeRef.current !== scope) {
@@ -171,48 +165,13 @@ export function DevView() {
           <div className="flex items-center gap-1 flex-shrink-0 relative pl-2">
             <CodeUtilityMenu onProjects={() => changePrimary("projects")} onNavigate={(tab) => { if (confirmNavigation()) setActiveTab(tab); }} />
             <WorkspaceSafetyBadge />
-          {cwd && <button
-            onClick={() => setWorktreesOpen((open) => !open)}
-            className={`px-2.5 py-1 text-xs rounded-md transition-colors ${worktreesOpen ? "text-accent bg-accent/10" : "text-faint hover:text-text"}`}
-            title="Create and switch isolated Git worktrees"
-          >Worktrees</button>}
-          <button
-            onClick={toggleTerminal}
-            className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-colors ${
-              bottomPane === "terminal" ? "text-accent bg-accent/10" : "text-faint hover:text-text"
-            }`}
-            title="Toggle terminal"
-          >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <rect x="1.5" y="2" width="13" height="12" rx="1.5" />
-              <path d="M4 6l3 2-3 2M8 10h4" />
-            </svg>
-            Terminal
-          </button>
-          <button
-            onClick={toggleBrowser}
-            disabled={!cwd}
-            className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-              bottomPane === "browser" ? "text-accent bg-accent/10" : "text-faint hover:text-text"
-            }`}
-            title={cwd ? "Toggle project browser" : "Open a project folder to use Browser"}
-          >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <circle cx="8" cy="8" r="5.5" />
-              <path d="M2.5 8h11M8 2.5a8.5 8.5 0 010 11M8 2.5a8.5 8.5 0 000 11" />
-            </svg>
-            Browser
-          </button>
           </div>
         </div>
 
-        {worktreesOpen && cwd && <WorktreePanel repoPath={cwd} onSelect={(path) => { changeProject(path); setWorktreesOpen(false); }} />}
-
         {/* Pane area */}
-        <div ref={workspaceRef} className={`flex flex-col flex-1 min-h-0 ${resizing ? "select-none cursor-row-resize" : ""}`}>
+        <div ref={workspaceRef} className="flex flex-col flex-1 min-h-0 relative">
           {/* Primary pane */}
-          <div className={`flex flex-col flex-1 min-h-0 ${bottomPane !== "none" ? "border-b border-border/60" : ""}`}
-               style={{ height: bottomPane !== "none" ? `${100 - bottomHeight}%` : "100%" }}>
+          <div className="flex flex-col flex-1 min-h-0 h-full">
             {primary === "projects" ? (
               <WorkspaceProjectsPanel cwd={cwd} onOpen={openProject} />
             ) : primary === "print" ? (
@@ -261,60 +220,9 @@ export function DevView() {
               </div>
             )}
           </div>
-
-          {/* Project tools live alongside the work, rather than as app-wide
-              destinations: terminal, browser, files, and task review all
-              describe the same open project. */}
-          {bottomPane !== "none" && (
-            <div style={{ height: `${bottomHeight}%` }} className="flex flex-col min-h-0">
-              <div className="flex items-center px-3 h-8 bg-surface border-b border-border/60 flex-shrink-0">
-                <button
-                  role="separator"
-                  aria-label="Resize project tool pane"
-                  aria-orientation="horizontal"
-                  aria-valuemin={25}
-                  aria-valuemax={70}
-                  aria-valuenow={bottomHeight}
-                  onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setResizing(true); }}
-                  onKeyDown={(event) => {
-                    if (event.key === "ArrowUp") { event.preventDefault(); setBottomHeight((value) => Math.min(70, value + 5)); }
-                    if (event.key === "ArrowDown") { event.preventDefault(); setBottomHeight((value) => Math.max(25, value - 5)); }
-                    if (event.key === "Home") { event.preventDefault(); setBottomHeight(25); }
-                    if (event.key === "End") { event.preventDefault(); setBottomHeight(70); }
-                  }}
-                  className="h-5 w-4 -ml-2 mr-1 touch-none cursor-row-resize rounded hover:bg-accent/20 focus:outline-none focus:bg-accent/20"
-                  title="Drag to resize project tools"
-                />
-                <span className="text-xs text-faint font-medium">{bottomPane === "terminal" ? "Terminal" : `Browser · ${folderName ?? "Project"}`}</span>
-                <div className="flex-1" />
-                {bottomPane === "terminal" && <button
-                  type="button"
-                  onClick={stopTerminal}
-                  className="mr-2 rounded px-2 py-1 text-[10px] font-medium text-red-300 hover:bg-red-400/10 hover:text-red-200"
-                  title="Terminate the terminal process"
-                >Stop process</button>}
-                <button
-                  onClick={() => setBottomPane("none")}
-                  aria-label={`Hide ${bottomPane}`}
-                  title={`Hide ${bottomPane}`}
-                  className="text-faint hover:text-text transition-colors"
-                >
-                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M2 2l12 12M14 2L2 14" />
-                  </svg>
-                </button>
-              </div>
-              {bottomPane === "terminal" ? (
-                <TerminalPane id={termId} cwd={cwd || undefined} className="flex-1 min-h-0" />
-              ) : (
-                <BrowserView />
-              )}
-            </div>
-          )}
-          {/* Keep an opened terminal mounted while another bottom tool is
-              visible (or the split is hidden). Terminal visibility is a layout
-              choice; unmounting here would terminate the user's PTY. */}
-          {terminalOpened && bottomPane !== "terminal" && (
+          {/* Keep an opened terminal mounted while it is not active.
+              Terminal visibility is a layout choice; unmounting here would terminate the user's PTY. */}
+          {terminalOpened && sidePane !== "terminal" && (
             <div className="pointer-events-none absolute h-px w-px overflow-hidden opacity-0" aria-hidden="true">
               <TerminalPane id={termId} cwd={cwd || undefined} />
             </div>
@@ -322,40 +230,132 @@ export function DevView() {
         </div>
       </div>
       
-      {/* File explorer */}
+      {/* File explorer / Side panel */}
       {sidebarOpen && (
         <aside ref={explorerRef} style={{ width: explorerWidth }} className="relative flex-shrink-0 border-l border-border/60 bg-surface flex flex-col">
-          <div className="flex items-center justify-between px-3 h-9 border-b border-border/60">
-            <span className="text-xs text-faint font-medium truncate">
-              {folderName ?? "Explorer"}
-            </span>
-            <button
-              onClick={() => ipc.openFolder().then((p) => p && changeProject(p))}
-              className="text-faint hover:text-accent transition-colors flex-shrink-0"
-              title="Open folder"
-            >
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M1.75 1A1.75 1.75 0 000 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0016 13.25V5.75A1.75 1.75 0 0014.25 4H8.5L6.75 2.25A1.75 1.75 0 005.56 1.75H1.75z" />
-              </svg>
-            </button>
-          </div>
-          {cwd && (
-            <div className="border-b border-border/60 max-h-[42%] overflow-y-auto">
-              <SessionList experience="code" workspaceKey={cwd} newLabel="New agent thread" />
+          <div className="flex items-center justify-between px-3 h-9 border-b border-border/60 bg-surface flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 text-xs text-text font-medium bg-surface2 px-2.5 py-1 rounded-md border border-border/40">
+                <span className="capitalize">{sidePane === "files" ? (folderName ?? "Explorer") : sidePane}</span>
+                <button
+                  onClick={() => toggleSidebar()}
+                  className="ml-1 text-faint hover:text-text"
+                  title="Close side panel"
+                >
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M4.28 3.22a.75.75 0 00-1.06 1.06L6.94 8l-3.72 3.72a.75.75 0 101.06 1.06L8 9.06l3.72 3.72a.75.75 0 101.06-1.06L9.06 8l3.72-3.72a.75.75 0 00-1.06-1.06L8 6.94 4.28 3.22z"/></svg>
+                </button>
+              </div>
+              <div className="relative" ref={sideMenuRef}>
+                <button
+                  onClick={() => setSideMenuOpen(!sideMenuOpen)}
+                  className="text-faint hover:text-text transition-colors p-1 rounded-md hover:bg-surface2"
+                  title="Open view..."
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 3v10M3 8h10"/></svg>
+                </button>
+                {sideMenuOpen && (
+                  <div className="absolute top-full left-0 mt-1 w-48 rounded-lg border border-border/60 bg-surface/95 shadow-xl z-50 py-1 text-xs text-text backdrop-blur-md">
+                    <button onClick={() => { setSidePane("review"); setSideMenuOpen(false); }} className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-surface2 transition-colors">
+                      <span className="flex items-center gap-2"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 2a6 6 0 100 12A6 6 0 008 2zM8 5v3l2 2"/></svg> Review</span>
+                      <span className="text-faint">Ctrl+Shift+G</span>
+                    </button>
+                    <button onClick={() => { setSidePane("terminal"); setSideMenuOpen(false); setTerminalOpened(true); }} className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-surface2 transition-colors">
+                      <span className="flex items-center gap-2"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 4l4 4-4 4M8 12h5"/></svg> Terminal</span>
+                      <span className="text-faint">Ctrl+`</span>
+                    </button>
+                    <button onClick={() => { setSidePane("browser"); setSideMenuOpen(false); }} className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-surface2 transition-colors">
+                      <span className="flex items-center gap-2"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5"/><path d="M3 8h10M8 3v10"/></svg> Browser</span>
+                      <span className="text-faint">Ctrl+T</span>
+                    </button>
+                    <button onClick={() => { setSidePane("files"); setSideMenuOpen(false); }} className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-surface2 transition-colors">
+                      <span className="flex items-center gap-2"><svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12a1 1 0 011 1v8a1 1 0 01-1 1H2a1 1 0 01-1-1V4a1 1 0 011-1zm1 1v8h3V4H3zm4 8h7V4H7v8z"/></svg> Files</span>
+                      <span className="text-faint">Ctrl+P</span>
+                    </button>
+                    <button onClick={() => { setSidePane("worktrees"); setSideMenuOpen(false); }} className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-surface2 transition-colors">
+                      <span className="flex items-center gap-2"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 3v10M12 3v10M4 8h8"/></svg> Worktrees</span>
+                    </button>
+                    <button onClick={() => { setSidePane("pioneers"); setSideMenuOpen(false); }} className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-surface2 transition-colors">
+                      <span className="flex items-center gap-2"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="5" r="2"/><path d="M4 14c0-2.2 2-4 4-4s4 1.8 4 4"/></svg> Pioneers</span>
+                      <span className="text-faint">Ctrl+Alt+S</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
-          )}
-          <div className="flex-1 overflow-y-auto py-1 min-h-0">
-            {cwd ? (
-              <FileTree root={cwd} onFileClick={openFileFromTree} />
-            ) : (
-              <div className="px-3 py-6 text-center">
-                <p className="text-faint text-xs mb-3">Open a folder to start</p>
+            <div className="flex items-center gap-2">
+              {sidePane === "terminal" && (
+                <button
+                  type="button"
+                  onClick={stopTerminal}
+                  className="rounded px-2 py-1 text-[10px] font-medium text-red-300 hover:bg-red-400/10 hover:text-red-200"
+                  title="Terminate the terminal process"
+                >Stop process</button>
+              )}
+              {sidePane === "files" && (
                 <button
                   onClick={() => ipc.openFolder().then((p) => p && changeProject(p))}
-                  className="px-3 py-1.5 text-xs text-accent border border-accent/40 rounded-lg hover:bg-accent/10 transition-colors"
+                  className="text-faint hover:text-accent transition-colors flex-shrink-0"
+                  title="Open folder"
                 >
-                  Open folder
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M1.75 1A1.75 1.75 0 000 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0016 13.25V5.75A1.75 1.75 0 0014.25 4H8.5L6.75 2.25A1.75 1.75 0 005.56 1.75H1.75z" />
+                  </svg>
                 </button>
+              )}
+            </div>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto flex flex-col min-h-0 relative">
+            {sidePane === "files" && (
+              <>
+                {cwd && (
+                  <div className="border-b border-border/60 max-h-[42%] overflow-y-auto">
+                    <SessionList experience="code" workspaceKey={cwd} newLabel="New agent thread" />
+                  </div>
+                )}
+                <div className="flex-1 overflow-y-auto py-1 min-h-0">
+                  {cwd ? (
+                    <FileTree root={cwd} onFileClick={openFileFromTree} />
+                  ) : (
+                    <div className="px-3 py-6 text-center">
+                      <p className="text-faint text-xs mb-3">Open a folder to start</p>
+                      <button
+                        onClick={() => ipc.openFolder().then((p) => p && changeProject(p))}
+                        className="px-3 py-1.5 text-xs text-accent border border-accent/40 rounded-lg hover:bg-accent/10 transition-colors"
+                      >
+                        Open folder
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+            
+            {sidePane === "terminal" && (
+              <TerminalPane id={termId} cwd={cwd || undefined} className="flex-1 min-h-0 h-full" />
+            )}
+            
+            {sidePane === "browser" && (
+              <BrowserView />
+            )}
+            
+            {sidePane === "worktrees" && cwd && (
+              <div className="flex-1 min-h-0 h-full overflow-y-auto relative p-3">
+                <WorktreePanel repoPath={cwd} onSelect={(path) => { changeProject(path); }} />
+              </div>
+            )}
+            
+            {sidePane === "review" && (
+              <ReviewPanel />
+            )}
+
+            {sidePane === "pioneers" && session && (
+              <div className="flex-1 h-full min-h-0 overflow-hidden relative">
+                <PioneersView
+                  events={session.messages.flatMap((message) => message.events)}
+                  active={Boolean(streamingSessions[session.id])}
+                  workspaceKey={cwd || "unselected"}
+                />
               </div>
             )}
           </div>
@@ -380,11 +380,7 @@ export function DevView() {
         </aside>
       )}
 
-      {session && <PioneersView
-        events={session.messages.flatMap((message) => message.events)}
-        active={Boolean(streamingSessions[session.id])}
-        workspaceKey={cwd || "unselected"}
-      />}
+      {/* PioneersView moved to side panel */}
     </div>
   );
 }
