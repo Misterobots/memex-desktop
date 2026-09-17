@@ -23,7 +23,7 @@ type PrimaryPane = "projects" | "chat" | "editor" | "tasks" | "print";
 type BottomPane  = "terminal" | "browser" | "none";
 
 export function DevView() {
-  const { cwd, setCwd, sidebarOpen, activeSession, setActiveTab, streamingSessions } = useStore();
+  const { cwd, setCwd, sidebarOpen, toggleSidebar, activeSession, setActiveTab, streamingSessions } = useStore();
   const session    = activeSession("code", cwd);
   const empty      = !session || session.messages.length === 0;
   const folderName = cwd ? cwd.split(/[/\\]/).filter(Boolean).pop() : null;
@@ -149,82 +149,31 @@ export function DevView() {
 
   return (
     <div className="flex flex-1 min-h-0">
-      {/* File explorer */}
-      {sidebarOpen && (
-        <aside ref={explorerRef} style={{ width: explorerWidth }} className="relative flex-shrink-0 border-r border-border/60 bg-surface flex flex-col">
-          <div className="flex items-center justify-between px-3 h-9 border-b border-border/60">
-            <span className="text-xs text-faint font-medium truncate">
-              {folderName ?? "Explorer"}
-            </span>
-            <button
-              onClick={() => ipc.openFolder().then((p) => p && changeProject(p))}
-              className="text-faint hover:text-accent transition-colors flex-shrink-0"
-              title="Open folder"
-            >
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M1.75 1A1.75 1.75 0 000 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0016 13.25V5.75A1.75 1.75 0 0014.25 4H8.5L6.75 2.25A1.75 1.75 0 005.56 1.75H1.75z" />
-              </svg>
-            </button>
-          </div>
-          {cwd && (
-            <div className="border-b border-border/60 max-h-[42%] overflow-y-auto">
-              <SessionList experience="code" workspaceKey={cwd} newLabel="New agent thread" />
-            </div>
-          )}
-          <div className="flex-1 overflow-y-auto py-1 min-h-0">
-            {cwd ? (
-              <FileTree root={cwd} onFileClick={openFileFromTree} />
-            ) : (
-              <div className="px-3 py-6 text-center">
-                <p className="text-faint text-xs mb-3">Open a folder to start</p>
-                <button
-                  onClick={() => ipc.openFolder().then((p) => p && changeProject(p))}
-                  className="px-3 py-1.5 text-xs text-accent border border-accent/40 rounded-lg hover:bg-accent/10 transition-colors"
-                >
-                  Open folder
-                </button>
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            aria-label="Resize explorer panel"
-            title="Drag to resize explorer"
-            onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setResizingExplorer(true); }}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowLeft") { event.preventDefault(); setExplorerWidth((value) => Math.max(180, value - 16)); }
-              if (event.key === "ArrowRight") { event.preventDefault(); setExplorerWidth((value) => Math.min(420, value + 16)); }
-              if (event.key === "Home") { event.preventDefault(); setExplorerWidth(180); }
-              if (event.key === "End") { event.preventDefault(); setExplorerWidth(420); }
-            }}
-            role="separator"
-            aria-orientation="vertical"
-            aria-valuemin={180}
-            aria-valuemax={420}
-            aria-valuenow={explorerWidth}
-            className="absolute -right-1 top-0 z-10 h-full w-2 touch-none cursor-col-resize hover:bg-accent/20 focus:outline-none focus:bg-accent/20"
-          />
-        </aside>
-      )}
+      {/* File explorer moved to the right */}
 
       {/* Main workspace */}
       <div className="relative flex flex-col flex-1 min-w-0">
         {/* Top toolbar */}
-        <div className="flex min-w-0 flex-nowrap items-center gap-1 overflow-x-auto px-3 h-9 border-b border-border/60 bg-surface flex-shrink-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {(["projects", "chat", "editor", "tasks", "print"] as PrimaryPane[]).map((p) => (
-            <button
-              key={p}
-              onClick={() => changePrimary(p)}
-              className={`shrink-0 px-2.5 py-1 text-xs rounded-md transition-colors capitalize ${
-                primary === p ? "bg-surface2 text-text" : "text-faint hover:text-text"
-              }`}
-            >
-              {p === "projects" ? "Projects" : p === "editor" ? (openFile ? openFile.split(/[/\\]/).pop() : "Editor") : p === "tasks" ? "Tasks" : p === "print" ? "Print" : "Agent"}
+        <div className="flex items-center px-3 h-9 border-b border-border/60 bg-surface flex-shrink-0">
+          <div className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex-1">
+            <button onClick={() => toggleSidebar()} className="shrink-0 p-1 mr-1 text-faint hover:text-text rounded-md transition-colors hover:bg-surface2" title="Toggle File Tree">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12a1 1 0 011 1v8a1 1 0 01-1 1H2a1 1 0 01-1-1V4a1 1 0 011-1zm1 1v8h3V4H3zm4 8h7V4H7v8z"/></svg>
             </button>
-          ))}
-          <div className="flex-1" />
-          <CodeUtilityMenu onProjects={() => changePrimary("projects")} onNavigate={(tab) => { if (confirmNavigation()) setActiveTab(tab); }} />
-          <WorkspaceSafetyBadge />
+            {(["projects", "chat", "editor", "tasks", "print"] as PrimaryPane[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => changePrimary(p)}
+                className={`shrink-0 px-2.5 py-1 text-xs rounded-md transition-colors capitalize ${
+                  primary === p ? "bg-surface2 text-text" : "text-faint hover:text-text"
+                }`}
+              >
+                {p === "projects" ? "Projects" : p === "editor" ? (openFile ? openFile.split(/[/\\]/).pop() : "Editor") : p === "tasks" ? "Tasks" : p === "print" ? "Print" : "Workspace"}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0 relative pl-2">
+            <CodeUtilityMenu onProjects={() => changePrimary("projects")} onNavigate={(tab) => { if (confirmNavigation()) setActiveTab(tab); }} />
+            <WorkspaceSafetyBadge />
           {cwd && <button
             onClick={() => setWorktreesOpen((open) => !open)}
             className={`px-2.5 py-1 text-xs rounded-md transition-colors ${worktreesOpen ? "text-accent bg-accent/10" : "text-faint hover:text-text"}`}
@@ -257,6 +206,7 @@ export function DevView() {
             </svg>
             Browser
           </button>
+          </div>
         </div>
 
         {worktreesOpen && cwd && <WorktreePanel repoPath={cwd} onSelect={(path) => { changeProject(path); setWorktreesOpen(false); }} />}
@@ -294,6 +244,13 @@ export function DevView() {
                   </div>
                 ) : (
                   <ConversationPane experience="code" workspaceKey={cwd} />
+                )}
+                {/* Floating Activity Status */}
+                {session?.id && streamingSessions[session.id] && (
+                  <div className="absolute bottom-[80px] left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-surface/90 backdrop-blur border border-accent/40 text-text px-4 py-1.5 rounded-full shadow-lg pointer-events-none">
+                    <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-accent">Working</span>
+                  </div>
                 )}
                 <InputBar
                   experience="code"
@@ -367,6 +324,65 @@ export function DevView() {
           )}
         </div>
       </div>
+      
+      {/* File explorer */}
+      {sidebarOpen && (
+        <aside ref={explorerRef} style={{ width: explorerWidth }} className="relative flex-shrink-0 border-l border-border/60 bg-surface flex flex-col">
+          <div className="flex items-center justify-between px-3 h-9 border-b border-border/60">
+            <span className="text-xs text-faint font-medium truncate">
+              {folderName ?? "Explorer"}
+            </span>
+            <button
+              onClick={() => ipc.openFolder().then((p) => p && changeProject(p))}
+              className="text-faint hover:text-accent transition-colors flex-shrink-0"
+              title="Open folder"
+            >
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M1.75 1A1.75 1.75 0 000 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0016 13.25V5.75A1.75 1.75 0 0014.25 4H8.5L6.75 2.25A1.75 1.75 0 005.56 1.75H1.75z" />
+              </svg>
+            </button>
+          </div>
+          {cwd && (
+            <div className="border-b border-border/60 max-h-[42%] overflow-y-auto">
+              <SessionList experience="code" workspaceKey={cwd} newLabel="New agent thread" />
+            </div>
+          )}
+          <div className="flex-1 overflow-y-auto py-1 min-h-0">
+            {cwd ? (
+              <FileTree root={cwd} onFileClick={openFileFromTree} />
+            ) : (
+              <div className="px-3 py-6 text-center">
+                <p className="text-faint text-xs mb-3">Open a folder to start</p>
+                <button
+                  onClick={() => ipc.openFolder().then((p) => p && changeProject(p))}
+                  className="px-3 py-1.5 text-xs text-accent border border-accent/40 rounded-lg hover:bg-accent/10 transition-colors"
+                >
+                  Open folder
+                </button>
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            aria-label="Resize explorer panel"
+            title="Drag to resize explorer"
+            onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setResizingExplorer(true); }}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowLeft") { event.preventDefault(); setExplorerWidth((value) => Math.max(180, value - 16)); }
+              if (event.key === "ArrowRight") { event.preventDefault(); setExplorerWidth((value) => Math.min(420, value + 16)); }
+              if (event.key === "Home") { event.preventDefault(); setExplorerWidth(180); }
+              if (event.key === "End") { event.preventDefault(); setExplorerWidth(420); }
+            }}
+            role="separator"
+            aria-orientation="vertical"
+            aria-valuemin={180}
+            aria-valuemax={420}
+            aria-valuenow={explorerWidth}
+            className="absolute -left-1 top-0 z-10 h-full w-2 touch-none cursor-col-resize hover:bg-accent/20 focus:outline-none focus:bg-accent/20"
+          />
+        </aside>
+      )}
+
       {session && <PioneersView
         events={session.messages.flatMap((message) => message.events)}
         active={Boolean(streamingSessions[session.id])}

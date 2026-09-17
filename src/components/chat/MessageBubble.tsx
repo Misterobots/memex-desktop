@@ -97,12 +97,13 @@ export function responseTimeline(events: import("../../types/memex").MessageEven
   return entries;
 }
 
-function ResponseTimeline({ events, active, waiting, verbose, fallback }: {
+function ResponseTimeline({ events, active, waiting, verbose, fallback, hideActivity }: {
   events: import("../../types/memex").MessageEvent[];
   active: boolean;
   waiting: boolean;
   verbose: boolean;
   fallback: string;
+  hideActivity?: boolean;
 }) {
   const entries = responseTimeline(events, verbose);
   const hasActivity = entries.some((entry) => entry.kind === "activity");
@@ -111,14 +112,14 @@ function ResponseTimeline({ events, active, waiting, verbose, fallback }: {
     const activity = entries.find((entry): entry is Extract<TimelineEntry, { kind: "activity" }> => entry.kind === "activity");
     return <>
       {fallback || waiting ? <div className={waiting ? "cursor-blink" : ""}><MessageContent content={fallback} /></div> : null}
-      {activity && <LiveActivity events={activity.events} active={active} waiting={waiting} verbose={verbose} />}
+      {!hideActivity && activity && <LiveActivity events={activity.events} active={active} waiting={waiting} verbose={verbose} />}
     </>;
   }
   return <div className="space-y-2.5">
-    {hasActivity && <WorkTraceHeader events={events} active={active} expanded={activityOpen} onToggle={() => setActivityOpen((open) => !open)} />}
+    {!hideActivity && hasActivity && <WorkTraceHeader events={events} active={active} expanded={activityOpen} onToggle={() => setActivityOpen((open) => !open)} />}
     {entries.map((entry, index) => entry.kind === "response"
       ? <MessageContent key={`response-${index}`} content={entry.content} />
-      : activityOpen && <LiveActivity key={`activity-${index}`} events={entry.events} active={active} waiting={waiting} verbose={verbose} hideHeader />)}
+      : (!hideActivity && activityOpen) && <LiveActivity key={`activity-${index}`} events={entry.events} active={active} waiting={waiting} verbose={verbose} hideHeader />)}
   </div>;
 }
 
@@ -144,7 +145,18 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
 
   if (isUser) {
     return (
-      <div className="flex justify-end fade-up">
+      <div className="flex justify-end fade-up group">
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity pr-2">
+          <button className="p-1.5 text-faint hover:text-text rounded-md hover:bg-surface2 transition-colors" onClick={() => navigator.clipboard.writeText(message.content)} title="Copy">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+          </button>
+          <button className="p-1.5 text-faint hover:text-text rounded-md hover:bg-surface2 transition-colors" onClick={() => window.dispatchEvent(new CustomEvent("chat:prefill", { detail: message.content }))} title="Edit">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+          </button>
+          <button className="p-1.5 text-faint hover:text-text rounded-md hover:bg-surface2 transition-colors" onClick={() => window.dispatchEvent(new CustomEvent("chat:prefill", { detail: message.content }))} title="Resubmit">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.92-12.28l5.07 5.07"></path></svg>
+          </button>
+        </div>
         <div className="bg-userbubble rounded-2xl rounded-tr-md px-4 py-2.5 max-w-[85%] text-text text-sm whitespace-pre-wrap">
           {message.content}
         </div>
@@ -161,10 +173,6 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
       </div>
 
       <div className="flex-1 min-w-0 space-y-2.5">
-        {clarification?.clarification && sessionId && (
-          <SteeringCard card={clarification.clarification} messageId={message.id} sessionId={sessionId} experience={experience} workspaceKey={workspaceKey} gauntletHandoffId={gauntletHandoffId} />
-        )}
-
         {errors.map((event, index) => <p key={index} role="alert" className="text-sm text-red-400">{event.content}</p>)}
         {disconnected && <p role="status" className="text-sm text-amber-300">No completed response was received in this view. The connection may have been interrupted; the runtime may still be working. Any received output is preserved below.</p>}
         {!isActive && !stopped && retryPrompt?.trim() && (disconnected || errors.length > 0) && (
@@ -178,7 +186,7 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
         )}
         {!isActive && events.some((event) => event.data?.type === "cancelled") && <p role="status" className="text-sm text-muted">Stopped. Any partial output is preserved below.</p>}
         {(message.content || isWaiting || events.length > 0) && (
-          <ResponseTimeline events={events} active={isActive} waiting={isWaiting} verbose={showThoughts} fallback={message.content} />
+          <ResponseTimeline events={events} active={isActive} waiting={isWaiting} verbose={showThoughts} fallback={message.content} hideActivity={showActivity} />
         )}
         {showActivity && <AgentWorkTrace events={events} active={isActive} />}
 
@@ -195,6 +203,11 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
         {!isActive && message.mode === "design" && /design ready/i.test(message.content) && outputs.length === 0 && (
           <p role="alert" className="text-sm text-amber-300">The run reported a ready design but delivered no preview. Ask for the HTML output again.</p>
         )}
+
+        {clarification?.clarification && sessionId && (
+          <SteeringCard card={clarification.clarification} messageId={message.id} sessionId={sessionId} experience={experience} workspaceKey={workspaceKey} gauntletHandoffId={gauntletHandoffId} />
+        )}
+
         {/* Run inspector button — only shown when run is attached and not mid-stream */}
         {message.runId && !isActive && (
           <div className="pt-0.5">

@@ -220,10 +220,12 @@ interface InputBarProps {
 export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder, experience = "chat", workspaceKey, disabledReason, prefillText, modeOptions, defaultMode }: InputBarProps) {
   const [text, setText] = useState("");
   const [modeOpen, setModeOpen] = useState(false);
+  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [gauntletBar, setGauntletBar] = useState("");
   const [gauntletError, setGauntletError] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modeRef = useRef<HTMLDivElement>(null);
+  const plusMenuRef = useRef<HTMLDivElement>(null);
   const {
     mode: globalMode, setMode, createSession,
     addMessage, appendEvent, updateMessageContent, updateMessageRunId, setMessageUsage,
@@ -301,10 +303,21 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
 
   useEffect(() => {
     if (!modeOpen) return;
-    const h = (e: MouseEvent) => { if (!modeRef.current?.contains(e.target as Node)) setModeOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
+    const handler = (e: MouseEvent) => {
+      if (!modeRef.current?.contains(e.target as Node)) setModeOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, [modeOpen]);
+
+  useEffect(() => {
+    if (!plusMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!plusMenuRef.current?.contains(e.target as Node)) setPlusMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [plusMenuOpen]);
 
   const submit = useCallback(async () => {
     const content = text.trim();
@@ -606,21 +619,43 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
             <input aria-label="Gauntlet quality bar" value={gauntletBar} onChange={(event) => { setGauntletBar(event.target.value); setGauntletError(""); }} placeholder="A named, fetchable reference — URL, product, repo, or publication" className="mt-1 w-full rounded-md border border-border/60 bg-canvas px-2 py-1.5 text-xs text-text placeholder-faint focus:outline-none focus:border-accent" />
             {gauntletError && <span role="alert" className="mt-1 block text-xs text-yellow">{gauntletError}</span>}
           </label>}
-          <textarea
-            ref={textareaRef}
-            value={text}
-            disabled={!!disabledReason}
-            onChange={(e) => {
-              setText(e.target.value);
-              if (!e.target.value.startsWith("/")) {
-                setSlashDismissed(false);
-              }
-            }}
-            onKeyDown={handleKeyDown}
-            placeholder={disabledReason ?? placeholder ?? (streaming ? "Streaming… (Esc to stop)" : "Message Memex…")}
-            rows={1}
-            className="w-full bg-transparent px-2 text-text text-[15px] resize-none focus:outline-none placeholder-faint min-h-[24px] leading-relaxed"
-          />
+          <div className="flex items-start gap-2">
+            <div className="relative" ref={plusMenuRef}>
+              <button 
+                className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface2 text-faint hover:text-text hover:bg-surface2/80 transition-colors"
+                title="Attach"
+                onClick={() => setPlusMenuOpen(!plusMenuOpen)}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"></path></svg>
+              </button>
+              {plusMenuOpen && (
+                <div className="absolute bottom-full left-0 mb-2 w-52 rounded-xl border border-border bg-surface/95 shadow-2xl z-50 p-2 text-sm text-text flex flex-col gap-0.5 backdrop-blur-md">
+                  <div className="px-2 py-1 text-[10px] font-bold tracking-widest text-muted uppercase">Add</div>
+                  <button onClick={() => { setPlusMenuOpen(false); }} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-xs font-medium hover:bg-surface2/60 transition-colors text-text/90 hover:text-text"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-faint"><path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8.4l-6.6-6.6z"></path><path d="M14 2v7h7"></path></svg>Attach File/Folder</button>
+                  <div className="h-px bg-border/40 my-1 mx-2" />
+                  <div className="px-2 py-1 text-[10px] font-bold tracking-widest text-muted uppercase">Tools</div>
+                  <button onClick={() => { setPlusMenuOpen(false); setText("/sites "); textareaRef.current?.focus(); }} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-xs font-medium hover:bg-surface2/60 transition-colors text-text/90 hover:text-text"><span className="text-sm">🌐</span>Sites</button>
+                  <button onClick={() => { setPlusMenuOpen(false); setText("/apps "); textareaRef.current?.focus(); }} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-xs font-medium hover:bg-surface2/60 transition-colors text-text/90 hover:text-text"><span className="text-sm">📱</span>Apps</button>
+                  <button onClick={() => { setPlusMenuOpen(false); setText("/plugins "); textareaRef.current?.focus(); }} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-xs font-medium hover:bg-surface2/60 transition-colors text-text/90 hover:text-text"><span className="text-sm">🔌</span>Plugins</button>
+                </div>
+              )}
+            </div>
+            <textarea
+              ref={textareaRef}
+              value={text}
+              disabled={!!disabledReason}
+              onChange={(e) => {
+                setText(e.target.value);
+                if (!e.target.value.startsWith("/")) {
+                  setSlashDismissed(false);
+                }
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder={disabledReason ?? placeholder ?? (streaming ? "Streaming… (Esc to stop)" : "Message Memex…")}
+              rows={1}
+              className="w-full bg-transparent px-1 text-text text-[15px] resize-none focus:outline-none placeholder-faint min-h-[24px] leading-relaxed"
+            />
+          </div>
           <div className="flex items-center justify-between mt-1.5">
             {/* Mode selector + model picker */}
             <div className="flex items-center gap-1">
