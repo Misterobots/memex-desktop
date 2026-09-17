@@ -17,7 +17,6 @@ import { WorktreePanel } from "../dev/WorktreePanel";
 import { WorkspaceProjectsPanel } from "../dev/WorkspaceProjectsPanel";
 import { CodeUtilityMenu } from "../dev/CodeUtilityMenu";
 import { PioneersView } from "../swarm/PioneersView";
-import { explorerWidthForPointer } from "./dev-layout";
 
 type PrimaryPane = "projects" | "chat" | "editor" | "tasks" | "print";
 type BottomPane  = "terminal" | "browser" | "none";
@@ -135,10 +134,8 @@ export function DevView() {
     const resize = (event: PointerEvent) => {
       const bounds = explorerRef.current?.getBoundingClientRect();
       if (!bounds) return;
-      // The explorer is nested after the app navigation. Use its own left edge
-      // instead of viewport X so resizing does not jump when the app sidebar is
-      // visible, hidden, or rendered at a different scale.
-      setExplorerWidth(explorerWidthForPointer(event.clientX, bounds.left, window.innerWidth));
+      const newWidth = bounds.right - event.clientX;
+      setExplorerWidth(Math.round(Math.min(420, Math.max(180, newWidth))));
     };
     const stop = () => setResizingExplorer(false);
     window.addEventListener("pointermove", resize);
@@ -368,8 +365,8 @@ export function DevView() {
             title="Drag to resize explorer"
             onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setResizingExplorer(true); }}
             onKeyDown={(event) => {
-              if (event.key === "ArrowLeft") { event.preventDefault(); setExplorerWidth((value) => Math.max(180, value - 16)); }
-              if (event.key === "ArrowRight") { event.preventDefault(); setExplorerWidth((value) => Math.min(420, value + 16)); }
+              if (event.key === "ArrowLeft") { event.preventDefault(); setExplorerWidth((value) => Math.min(420, value + 16)); }
+              if (event.key === "ArrowRight") { event.preventDefault(); setExplorerWidth((value) => Math.max(180, value - 16)); }
               if (event.key === "Home") { event.preventDefault(); setExplorerWidth(180); }
               if (event.key === "End") { event.preventDefault(); setExplorerWidth(420); }
             }}
