@@ -7,7 +7,7 @@ import { SteeringCard } from "./SteeringCard";
 import { MessageOutputs } from "./MessageOutputs";
 import { MessageContent } from "./MessageContent";
 import { GauntletHandoffCard } from "./GauntletHandoffCard";
-import { AgentWorkTrace } from "./AgentWorkTrace";
+import { AgentWorkTrace, agentWorkFromEvents } from "./AgentWorkTrace";
 import { UnrealEngineSetup } from "../setup/UnrealEngineSetup";
 import { needsUnrealSetup } from "../../lib/capability-recovery";
 import { activityEvents, errorEvents, isActivityEvent, outputsFromEvents } from "../../lib/workspace-outputs";
@@ -186,7 +186,7 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
         )}
         {!isActive && events.some((event) => event.data?.type === "cancelled") && <p role="status" className="text-sm text-muted">Stopped. Any partial output is preserved below.</p>}
         {(message.content || isWaiting || events.length > 0) && (
-          <ResponseTimeline events={events} active={isActive} waiting={isWaiting} verbose={showThoughts} fallback={message.content} hideActivity={showActivity} />
+          <ResponseTimeline events={events} active={isActive} waiting={isWaiting} verbose={showThoughts} fallback={message.content} hideActivity={!showActivity || agentWorkFromEvents(events).length > 0} />
         )}
         {showActivity && <AgentWorkTrace events={events} active={isActive} />}
 

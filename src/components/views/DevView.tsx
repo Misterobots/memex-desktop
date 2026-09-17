@@ -208,6 +208,7 @@ export function DevView() {
                     <span className="text-[10px] font-bold uppercase tracking-widest text-accent">Working</span>
                   </div>
                 )}
+
                 <InputBar
                   experience="code"
                   workspaceKey={cwd}
