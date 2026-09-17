@@ -161,32 +161,18 @@ export function DevView() {
             ))}
           </div>
           <div className="flex items-center gap-1 flex-shrink-0 relative pl-2">
-            {/* Side Panel Tool Toggles */}
+            {/* Side Panel Toggle */}
             <div className="flex items-center gap-0.5 mr-2 border-r border-border/60 pr-2">
-              {[
-                { id: "files", icon: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 3h4l2 2h6v8H2V3z"/></svg>, title: "Files (Ctrl+P)" },
-                { id: "terminal", icon: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 4l4 4-4 4M8 12h5"/></svg>, title: "Terminal (Ctrl+`)" },
-                { id: "browser", icon: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2.5 0 3.5 3 3.5 6s-1 6-3.5 6-3.5-3-3.5-6 1-6 3.5-6z"/></svg>, title: "Browser (Ctrl+T)" },
-                { id: "worktrees", icon: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 12V4a2 2 0 012-2h4M4 8h6M10 8l-2-2m2 2l-2 2"/></svg>, title: "Worktrees" },
-                { id: "pioneers", icon: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M11 6a3 3 0 11-6 0 3 3 0 016 0zM4 14c0-2.5 2-4 4-4s4 1.5 4 4"/></svg>, title: "Pioneers (Ctrl+Alt+S)" },
-                { id: "review", icon: <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 2a6 6 0 100 12A6 6 0 008 2zM8 5v3l2 2"/></svg>, title: "Review (Ctrl+Shift+G)" }
-              ].map((tool) => (
-                <button
-                  key={tool.id}
-                  onClick={() => {
-                    if (rightSidebarOpen && sidePane === tool.id) {
-                      setRightSidebarOpen(false);
-                    } else {
-                      if (!rightSidebarOpen) setRightSidebarOpen(true);
-                      setSidePane(tool.id as SidePane);
-                    }
-                  }}
-                  className={`p-1.5 rounded-md transition-colors ${rightSidebarOpen && sidePane === tool.id ? "text-accent bg-accent/10" : "text-faint hover:text-text hover:bg-surface2"}`}
-                  title={tool.title}
-                >
-                  {tool.icon}
-                </button>
-              ))}
+              <button
+                onClick={() => setRightSidebarOpen(!rightSidebarOpen)}
+                className={`p-1.5 rounded-md transition-colors ${rightSidebarOpen ? "text-accent bg-accent/10" : "text-faint hover:text-text hover:bg-surface2"}`}
+                title="Toggle Side Panel"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <rect x="2" y="3" width="12" height="10" rx="1.5" />
+                  <path d="M10 3v10" />
+                </svg>
+              </button>
             </div>
             <CodeUtilityMenu onProjects={() => changePrimary("projects")} onNavigate={(tab) => { if (confirmNavigation()) setActiveTab(tab); }} />
             <WorkspaceSafetyBadge />
