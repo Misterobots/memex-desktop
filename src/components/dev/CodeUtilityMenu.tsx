@@ -1,19 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 
 type Props = {
-  onProjects: () => void;
   onNavigate: (tab: "pulls" | "schedules" | "sites" | "skills") => void;
 };
 
 const actions = [
-  { id: "projects", label: "Projects", detail: "Browse workspace projects" },
   { id: "pulls", label: "Pull requests", detail: "Review tasks and open a PR" },
   { id: "schedules", label: "Scheduled", detail: "Manage recurring work" },
   { id: "sites", label: "Sites & design", detail: "Design an app or site" },
   { id: "plugins", label: "Skills & plugins", detail: "Manage available extensions" },
 ] as const;
 
-export function CodeUtilityMenu({ onProjects, onNavigate }: Props) {
+export function CodeUtilityMenu({ onNavigate }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -26,8 +24,7 @@ export function CodeUtilityMenu({ onProjects, onNavigate }: Props) {
 
   const select = (id: typeof actions[number]["id"]) => {
     setOpen(false);
-    if (id === "projects") onProjects();
-    else if (id === "pulls") onNavigate("pulls");
+    if (id === "pulls") onNavigate("pulls");
     else if (id === "schedules") onNavigate("schedules");
     else if (id === "sites") onNavigate("sites");
     else onNavigate("skills");

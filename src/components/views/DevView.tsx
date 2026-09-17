@@ -14,21 +14,20 @@ import { desktop } from "../../lib/desktop";
 import { SessionList } from "../sidebar/SessionList";
 import { PrintWorkflowPanel } from "../dev/PrintWorkflowPanel";
 import { WorktreePanel } from "../dev/WorktreePanel";
-import { WorkspaceProjectsPanel } from "../dev/WorkspaceProjectsPanel";
 import { CodeUtilityMenu } from "../dev/CodeUtilityMenu";
 import { PioneersView } from "../swarm/PioneersView";
 import { ReviewPanel } from "../dev/ReviewPanel";
 
-type PrimaryPane = "projects" | "chat" | "editor" | "tasks" | "print";
+type PrimaryPane = "chat" | "editor" | "tasks" | "print";
 type SidePane = "files" | "terminal" | "browser" | "worktrees" | "pioneers" | "review";
 
 export function DevView() {
   const { cwd, setCwd, activeSession, setActiveTab, streamingSessions } = useStore();
-  const session    = activeSession("code", cwd);
+  const session    = activeSession("code", cwd || undefined);
   const empty      = !session || session.messages.length === 0;
   const folderName = cwd ? cwd.split(/[/\\]/).filter(Boolean).pop() : null;
 
-  const [primary, setPrimary]       = useState<PrimaryPane>(cwd ? "chat" : "projects");
+  const [primary, setPrimary]       = useState<PrimaryPane>("chat");
   const [sidePane, setSidePane]     = useState<SidePane>("files");
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
@@ -89,12 +88,6 @@ export function DevView() {
       setPrimary("editor");
     }
   }, [confirmNavigation, openFile]);
-  const openProject = useCallback((path: string) => {
-    if (!confirmNavigation()) return;
-    setEditorDirty(false);
-    setCwd(path);
-    setPrimary("chat");
-  }, [confirmNavigation, setCwd]);
   const stopTerminal = () => {
     // Hiding/switching the terminal preserves its PTY. This is the explicit
     // user action that terminates the process and clears the retained mount.
@@ -156,7 +149,7 @@ export function DevView() {
                   primary === p ? "bg-surface2 text-text" : "text-faint hover:text-text"
                 }`}
               >
-                {p === "projects" ? "Projects" : p === "editor" ? (openFile ? openFile.split(/[/\\]/).pop() : "Editor") : p === "tasks" ? "Tasks" : p === "print" ? "Print" : "Workspace"}
+                {p === "editor" ? (openFile ? openFile.split(/[/\\]/).pop() : "Editor") : p === "tasks" ? "Tasks" : p === "print" ? "Print" : "Workspace"}
               </button>
             ))}
           </div>
@@ -174,7 +167,7 @@ export function DevView() {
                 </svg>
               </button>
             </div>
-            <CodeUtilityMenu onProjects={() => changePrimary("projects")} onNavigate={(tab) => { if (confirmNavigation()) setActiveTab(tab); }} />
+            <CodeUtilityMenu onNavigate={(tab) => { if (confirmNavigation()) setActiveTab(tab); }} />
             <WorkspaceSafetyBadge />
           </div>
         </div>
@@ -183,9 +176,7 @@ export function DevView() {
         <div ref={workspaceRef} className="flex flex-col flex-1 min-h-0 relative">
           {/* Primary pane */}
           <div className="flex flex-col flex-1 min-h-0 h-full">
-            {primary === "projects" ? (
-              <WorkspaceProjectsPanel cwd={cwd} onOpen={openProject} />
-            ) : primary === "print" ? (
+            {primary === "print" ? (
               <PrintWorkflowPanel />
             ) : primary === "tasks" ? (
               <ProjectTasksPane cwd={cwd} />
@@ -220,7 +211,7 @@ export function DevView() {
                     </div>
                   </div>
                 ) : (
-                  <ConversationPane experience="code" workspaceKey={cwd} />
+                  <ConversationPane experience="code" workspaceKey={cwd || undefined} />
                 )}
                 {/* Floating Activity Status */}
                 {session?.id && streamingSessions[session.id] && (
@@ -232,7 +223,7 @@ export function DevView() {
 
                 <InputBar
                   experience="code"
-                  workspaceKey={cwd}
+                  workspaceKey={cwd || undefined}
                   modeOptions={CODE_MODES}
                   defaultMode="swarm"
                   extraFlags={{ dev_mode: true }}

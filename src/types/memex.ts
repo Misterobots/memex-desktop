@@ -203,6 +203,7 @@ export interface Session {
   updatedAt?: number;   // last activity — used for cross-device sync ordering
   messages: ChatMessage[];
   displayMode?: ChatDisplayMode;
+  pinned?: boolean;
 }
 
 export interface ConnectionStatus {

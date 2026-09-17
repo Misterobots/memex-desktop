@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { useStore } from "../../lib/store";
 import { StatusBar } from "./StatusBar";
-import { TabBar } from "./TabBar";
+import { UnifiedSidebar } from "./UnifiedSidebar";
 import { ChatView } from "../views/ChatView";
 import { GoalsView } from "../views/GoalsView";
 import { ResearchView } from "../views/ResearchView";
@@ -59,7 +59,7 @@ function AppShellInner() {
       >
         <StatusBar />
         <div className="flex flex-1 min-h-0">
-          <TabBar />
+          <UnifiedSidebar />
           <div className="flex min-w-0 flex-1">
             {activeTab === "chat"      && <ChatView />}
             {activeTab === "research"  && <ResearchView />}

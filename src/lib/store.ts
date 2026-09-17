@@ -50,7 +50,7 @@ interface AppState {
   shellMode: AppShellMode;
   designSurface: "product" | "sites";
   mode: MemexMode;
-  cwd: string;
+  cwd: string | null;
   sidebarOpen: boolean;
   commandPaletteOpen: boolean;
   /** Global UI chrome scale. Kept separate from generated artifact sizing. */
@@ -82,7 +82,7 @@ interface AppState {
   setShellMode: (mode: AppShellMode) => void;
   setDesignSurface: (surface: "product" | "sites") => void;
   setMode: (mode: MemexMode) => void;
-  setCwd: (cwd: string) => void;
+  setCwd: (cwd: string | null) => void;
   toggleSidebar: () => void;
   setUiScale: (scale: number) => void;
   setUiDensity: (density: "comfortable" | "compact") => void;
