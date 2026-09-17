@@ -117,9 +117,66 @@ export class WorktreeManager {
     return { removed: true, branchDeleted, branch: record.branch };
   }
 
-  list(repoPath?: string): WorktreeRecord[] {
+  async list(repoPath?: string): Promise<WorktreeRecord[]> {
     const root = repoPath ? normalize(repoPath) : undefined;
-    return this.records.filter((record) => !root || record.repoPath === root);
+    let memexRecords = this.records.filter((record) => !root || record.repoPath.toLowerCase() === root.toLowerCase());
+
+    if (!root) return memexRecords;
+
+    try {
+      const out = await this.git(root, ["worktree", "list", "--porcelain"]);
+      const blocks = out.stdout.trim().split("\n\n");
+      const gitRecords: WorktreeRecord[] = [];
+      const activePaths = new Set<string>();
+      let recordsChanged = false;
+
+      for (const block of blocks) {
+        const lines = block.split("\n");
+        let wtPath = "";
+        let head = "";
+        let branch = "";
+        for (const line of lines) {
+          if (line.startsWith("worktree ")) wtPath = line.substring(9).trim();
+          if (line.startsWith("HEAD ")) head = line.substring(5).trim();
+          if (line.startsWith("branch ")) branch = line.substring(7).trim();
+        }
+        if (!wtPath) continue;
+        activePaths.add(normalize(wtPath).toLowerCase());
+        
+        const isMain = normalize(wtPath).toLowerCase() === root.toLowerCase();
+        if (isMain) continue;
+
+        const existing = memexRecords.find(r => normalize(r.path).toLowerCase() === normalize(wtPath).toLowerCase());
+        if (existing) {
+          gitRecords.push(existing);
+        } else {
+          let branchName = branch;
+          if (branchName.startsWith("refs/heads/")) branchName = branchName.substring(11);
+          const newRecord = {
+            id: randomUUID(),
+            repoPath: root,
+            path: wtPath,
+            branch: branchName || head,
+            baseRef: "external",
+            createdAt: new Date().toISOString()
+          };
+          this.records.push(newRecord);
+          recordsChanged = true;
+          gitRecords.push(newRecord);
+        }
+      }
+      
+      const beforeCount = this.records.length;
+      this.records = this.records.filter(r => 
+        r.repoPath.toLowerCase() !== root.toLowerCase() || activePaths.has(normalize(r.path).toLowerCase())
+      );
+      if (this.records.length !== beforeCount) recordsChanged = true;
+
+      if (recordsChanged) this.persist();
+      return gitRecords;
+    } catch (e) {
+      return memexRecords;
+    }
   }
 
   private async git(cwd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {

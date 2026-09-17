@@ -159,7 +159,7 @@ export function DevView() {
             <button onClick={() => toggleSidebar()} className="shrink-0 p-1 mr-1 text-faint hover:text-text rounded-md transition-colors hover:bg-surface2" title="Toggle File Tree">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12a1 1 0 011 1v8a1 1 0 01-1 1H2a1 1 0 01-1-1V4a1 1 0 011-1zm1 1v8h3V4H3zm4 8h7V4H7v8z"/></svg>
             </button>
-            {(["projects", "chat", "editor", "tasks", "print"] as PrimaryPane[]).map((p) => (
+            {(["chat", "editor", "tasks", "print"] as PrimaryPane[]).map((p) => (
               <button
                 key={p}
                 onClick={() => changePrimary(p)}
