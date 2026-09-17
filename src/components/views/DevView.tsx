@@ -23,7 +23,7 @@ type PrimaryPane = "projects" | "chat" | "editor" | "tasks" | "print";
 type SidePane = "files" | "terminal" | "browser" | "worktrees" | "pioneers" | "review";
 
 export function DevView() {
-  const { cwd, setCwd, sidebarOpen, toggleSidebar, activeSession, setActiveTab, streamingSessions } = useStore();
+  const { cwd, setCwd, activeSession, setActiveTab, streamingSessions } = useStore();
   const session    = activeSession("code", cwd);
   const empty      = !session || session.messages.length === 0;
   const folderName = cwd ? cwd.split(/[/\\]/).filter(Boolean).pop() : null;
@@ -31,6 +31,7 @@ export function DevView() {
   const [primary, setPrimary]       = useState<PrimaryPane>(cwd ? "chat" : "projects");
   const [sidePane, setSidePane]     = useState<SidePane>("files");
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(true);
   const [terminalOpened, setTerminalOpened] = useState(false);
   const [openFile, setOpenFile]     = useState<string | null>(null);
   const [editorDirty, setEditorDirty] = useState(false);
@@ -58,15 +59,15 @@ export function DevView() {
     const handler = (e: KeyboardEvent) => {
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const cmd = isMac ? e.metaKey : e.ctrlKey;
-      if (cmd && e.key === "`") { e.preventDefault(); if (!sidebarOpen) toggleSidebar(); setSidePane("terminal"); setTerminalOpened(true); }
-      if (cmd && e.key.toLowerCase() === "t") { e.preventDefault(); if (!sidebarOpen) toggleSidebar(); setSidePane("browser"); }
-      if (cmd && e.key.toLowerCase() === "p") { e.preventDefault(); if (!sidebarOpen) toggleSidebar(); setSidePane("files"); }
-      if (cmd && e.shiftKey && e.key.toLowerCase() === "g") { e.preventDefault(); if (!sidebarOpen) toggleSidebar(); setSidePane("review"); }
-      if (cmd && e.altKey && e.key.toLowerCase() === "s") { e.preventDefault(); if (!sidebarOpen) toggleSidebar(); setSidePane("pioneers"); }
+      if (cmd && e.key === "`") { e.preventDefault(); if (!rightSidebarOpen) setRightSidebarOpen(true); setSidePane("terminal"); setTerminalOpened(true); }
+      if (cmd && e.key.toLowerCase() === "t") { e.preventDefault(); if (!rightSidebarOpen) setRightSidebarOpen(true); setSidePane("browser"); }
+      if (cmd && e.key.toLowerCase() === "p") { e.preventDefault(); if (!rightSidebarOpen) setRightSidebarOpen(true); setSidePane("files"); }
+      if (cmd && e.shiftKey && e.key.toLowerCase() === "g") { e.preventDefault(); if (!rightSidebarOpen) setRightSidebarOpen(true); setSidePane("review"); }
+      if (cmd && e.altKey && e.key.toLowerCase() === "s") { e.preventDefault(); if (!rightSidebarOpen) setRightSidebarOpen(true); setSidePane("pioneers"); }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [sidebarOpen, toggleSidebar]);
+  }, [rightSidebarOpen]);
 
   const confirmNavigation = useCallback(() => {
     if (!editorDirty) return true;
@@ -147,9 +148,6 @@ export function DevView() {
         {/* Top toolbar */}
         <div className="flex items-center px-3 h-9 border-b border-border/60 bg-surface flex-shrink-0">
           <div className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex-1">
-            <button onClick={() => toggleSidebar()} className="shrink-0 p-1 mr-1 text-faint hover:text-text rounded-md transition-colors hover:bg-surface2" title="Toggle File Tree">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12a1 1 0 011 1v8a1 1 0 01-1 1H2a1 1 0 01-1-1V4a1 1 0 011-1zm1 1v8h3V4H3zm4 8h7V4H7v8z"/></svg>
-            </button>
             {(["chat", "editor", "tasks", "print"] as PrimaryPane[]).map((p) => (
               <button
                 key={p}
@@ -176,14 +174,14 @@ export function DevView() {
                 <button
                   key={tool.id}
                   onClick={() => {
-                    if (sidebarOpen && sidePane === tool.id) {
-                      toggleSidebar();
+                    if (rightSidebarOpen && sidePane === tool.id) {
+                      setRightSidebarOpen(false);
                     } else {
-                      if (!sidebarOpen) toggleSidebar();
+                      if (!rightSidebarOpen) setRightSidebarOpen(true);
                       setSidePane(tool.id as SidePane);
                     }
                   }}
-                  className={`p-1.5 rounded-md transition-colors ${sidebarOpen && sidePane === tool.id ? "text-accent bg-accent/10" : "text-faint hover:text-text hover:bg-surface2"}`}
+                  className={`p-1.5 rounded-md transition-colors ${rightSidebarOpen && sidePane === tool.id ? "text-accent bg-accent/10" : "text-faint hover:text-text hover:bg-surface2"}`}
                   title={tool.title}
                 >
                   {tool.icon}
@@ -269,14 +267,14 @@ export function DevView() {
       </div>
       
       {/* File explorer / Side panel */}
-      {sidebarOpen && (
+      {rightSidebarOpen && (
         <aside ref={explorerRef} style={{ width: explorerWidth }} className="relative flex-shrink-0 border-l border-border/60 bg-surface flex flex-col">
           <div className="flex items-center justify-between px-3 h-9 border-b border-border/60 bg-surface flex-shrink-0">
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1 text-xs text-text font-medium bg-surface2 px-2.5 py-1 rounded-md border border-border/40">
                 <span className="capitalize">{sidePane === "files" ? (folderName ?? "Explorer") : sidePane}</span>
                 <button
-                  onClick={() => toggleSidebar()}
+                  onClick={() => setRightSidebarOpen(false)}
                   className="ml-1 text-faint hover:text-text"
                   title="Close side panel"
                 >
