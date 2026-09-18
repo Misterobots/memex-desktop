@@ -229,7 +229,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
   const {
     mode: globalMode, setMode, createSession,
     addMessage, appendEvent, updateMessageContent, updateMessageRunId, setMessageUsage,
-    setStreaming, streamingSessions, stopStreams, activeSession, selectedModel, workspaceRunPreferences,
+    setStreaming, streamingSessions, stopStreams, activeSession, selectedModel, workspaceRunPreferences, cwd
   } = useStore();
 
   const availableModes = modeOptions ?? CHAT_MODES;
@@ -432,6 +432,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       modeFlags: { ...MODE_FLAGS[mode], ...extraFlags, ...(runPreferences.reasoningEffort === "high" ? { ultrathink_mode: true } : {}) },
       sessionId,
       workspaceKey,
+      currentProjectId: cwd ?? undefined,
       runMeta: { profile: "default" },
       onRunStarted: (runId) => {
         updateMessageRunId(sessionId, assistantId, runId);

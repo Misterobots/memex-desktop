@@ -141,12 +141,10 @@ export function activityPresentation(event: MessageEvent, detailed = false): Act
     // this way. Other thought events remain summarized so this surface never
     // becomes an accidental display of private scratchpad.
     if (data.safe_summary === true) return { tone: "intent", title: body, actor };
-    if (detailed) {
-      const detail = activityDetail(body, "thought");
-      return { tone: "intent", title: body, detail: detail !== body ? detail : undefined, actor };
-    }
+    
+    // Always show the actual reasoning stream, even in normal mode, per user feedback.
     const detail = activityDetail(body, "thought");
-    return { tone: "intent", title: actor ? `${actor} is assessing the task` : "Thinking", detail, actor };
+    return { tone: "intent", title: body, detail: detail !== body ? detail : undefined, actor };
   }
   const failed = rawType === "error" || eventType === "error" || /^error:/i.test(body) || /\b(failed|blocked|unavailable|denied)\b/i.test(body);
   if (failed) return { tone: "issue", title: "Attention needed", detail: body.replace(/^error:\s*/i, ""), actor };

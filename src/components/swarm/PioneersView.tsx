@@ -240,7 +240,17 @@ function AgentDock({
   </div>;
 }
 
-export function PioneersView({ events, active, workspaceKey = "global" }: { events: MessageEvent[]; active: boolean; workspaceKey?: string }) {
+export function PioneersView({
+  events,
+  active,
+  workspaceKey = "global",
+  embedded = false,
+}: {
+  events: MessageEvent[];
+  active: boolean;
+  workspaceKey?: string;
+  embedded?: boolean;
+}) {
   const workers = useMemo(() => pioneersFromEvents(events), [events]);
   const [panelOpen, setPanelOpen] = useState(() => {
     try { return localStorage.getItem(`memex.layout.pioneersPanel:${workspaceKey}`) !== "0"; } catch { return true; }
@@ -353,12 +363,25 @@ export function PioneersView({ events, active, workspaceKey = "global" }: { even
       document.documentElement.style.removeProperty("--memex-composer-clearance");
     };
   }, [workspaceKey, events.length]);
-  if (!workers.length) return null;
+
+  if (!workers.length) {
+    if (embedded) {
+      return (
+        <div className="flex flex-1 flex-col items-center justify-center p-8 text-center text-xs text-muted">
+          <p className="font-medium text-text">No active pioneers</p>
+          <p className="mt-1 text-[11px] text-faint">When a swarm task runs, pioneer hierarchy and live activity appear here.</p>
+        </div>
+      );
+    }
+    return null;
+  }
+
   const arrival = workers[arrivalIndex] ?? null;
   const selectedWorker = selected ? workers.find((worker) => worker.worker_id === selected) : null;
   const phase = workers.map((worker) => Number(worker.phase) || 1).sort((a, b) => b - a)[0]?.toString() ?? "1";
   const activeCount = workers.filter((worker) => worker.state === "running").length;
-  const visible = panelOpen;
+  const visible = embedded || panelOpen;
+
   // Keep every active worker reachable. The dock is scrollable and should not
   // silently hide a fourth builder or a nested critic from the user.
   const liveWorkers = workers.filter((worker) => worker.state === "running");
@@ -369,33 +392,125 @@ export function PioneersView({ events, active, workspaceKey = "global" }: { even
   const latestFor = (predicate: (event: MessageEvent) => boolean) => [...events].reverse().find((event) => predicate(event) && event.content?.trim())?.content.trim();
   const coordinatorDetail = latestFor((event) => /coordinator/i.test(String(event.agent_name ?? event.pioneer_name ?? event.data?.agent_name ?? ""))) ?? "Orchestrating the current run";
   const systemDetail = latestFor((event) => /system/i.test(String(event.agent_name ?? event.data?.agent_name ?? "")) || rawType(event) === "status") ?? "Runtime connected";
-  if (!visible) return <button onClick={() => setPanelOpen(true)} className="fixed bottom-[calc(var(--memex-composer-clearance,112px)+0.75rem)] right-3 z-30 rounded-full border border-accent/40 bg-surface px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-accent shadow-lg">Show Pioneers · {workers.length}</button>;
-  if (dockMode) return <AgentDock
-    active={active}
-    activeCount={activeCount}
-    totalCount={workers.length}
-    coordinatorDetail={coordinatorDetail}
-    systemDetail={systemDetail}
-    spawnedAgents={spawnedAgents}
-    subAgents={subAgents}
-    dockWidth={dockWidth}
-    dockHeight={dockHeight}
-    onWidthResizeStart={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setDockResizing("width"); }}
-    onHeightResizeStart={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setDockResizing("height"); }}
-    onFullPanel={() => setDockMode(false)}
-    onHide={() => setPanelOpen(false)}
-    onSelect={(workerId) => { setSelected(workerId); setDockMode(false); }}
-  />;
-  // Legacy inline dock branch retained below as a source-compatible fallback;
-  // the dedicated AgentDock component above is the active implementation.
-  if (dockMode) return <div aria-label="Agent Dock" className="fixed bottom-[calc(var(--memex-composer-clearance,112px)+0.75rem)] right-3 z-30 max-h-[min(40vh,calc(100vh-var(--memex-composer-clearance,112px)-1.5rem))] w-[min(560px,calc(100vw-1.5rem))] overflow-y-auto rounded-xl border border-border/60 bg-surface/95 p-3 shadow-2xl backdrop-blur"><div className="mb-2 flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${active ? "animate-pulse bg-accent" : "bg-emerald-400"}`} /><span className="text-xs font-bold uppercase tracking-widest text-text">AgentDock</span><span className="text-[10px] text-faint">Org view · {activeCount} active{workers.length !== activeCount ? ` · ${workers.length} total` : ""}</span><div className="ml-auto flex items-center gap-2"><button type="button" onClick={() => setDockMode(false)} className="rounded border border-accent/40 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-accent hover:bg-accent/10">Full panel</button><button type="button" onClick={() => setPanelOpen(false)} className="text-faint hover:text-text" aria-label="Hide Pioneers">×</button></div></div><div className="grid grid-cols-2 gap-2"><OrgCard label="Coordinator" detail={coordinatorDetail} accent="#a78bfa" live={active} /><OrgCard label="System" detail={systemDetail} accent="#94a3b8" live={active} /></div><div className="my-2 h-px bg-border/60" /><div className="mb-1 px-1 text-[9px] font-black uppercase tracking-[0.2em] text-faint">Spawned agents</div>{spawnedAgents.length ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">{spawnedAgents.map((worker) => <button key={worker.worker_id} onClick={() => { setSelected(worker.worker_id); setDockMode(false); }} className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-surface2 px-2 py-2 text-left hover:border-accent/50"><Portrait worker={worker} /><span className="min-w-0 flex-1"><span className="block truncate text-[10px] font-bold text-text">{worker.pioneer_name}</span><span className="mt-1 block truncate text-[9px] text-muted">{worker.activities.at(-1)?.text ?? worker.task}</span></span></button>)}</div> : <div className="py-2 text-[10px] text-faint">No agents are actively running.</div>}{subAgents.length > 0 && <><div className="mb-1 mt-2 border-t border-border/60 px-1 pt-2 text-[9px] font-black uppercase tracking-[0.2em] text-faint">Sub-agents</div><div className="grid grid-cols-1 gap-2 pl-3 sm:grid-cols-3">{subAgents.map((worker) => <button key={worker.worker_id} onClick={() => { setSelected(worker.worker_id); setDockMode(false); }} className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-surface2 px-2 py-2 text-left hover:border-accent/50"><Portrait worker={worker} /><span className="min-w-0 flex-1"><span className="block truncate text-[10px] font-bold text-text">{worker.pioneer_name}</span><span className="mt-1 block truncate text-[9px] text-muted">{worker.activities.at(-1)?.text ?? worker.task}</span></span></button>)}</div></>}</div>;
-  return <>
-    <aside aria-label="Pioneers" style={{ width: panelWidth }} className={`relative flex h-full max-w-[calc(100vw-360px)] shrink-0 overflow-hidden border-l border-border/60 bg-surface ${resizing ? "select-none" : "transition-[width] duration-300"}`}>
-      <button type="button" aria-label="Resize Pioneers panel" title="Drag to resize Pioneers" onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setResizing(true); }} className="absolute -left-1 top-0 z-20 h-full w-2 touch-none cursor-col-resize hover:bg-accent/20 focus:outline-none focus:bg-accent/20" />
-      <div className="flex h-full min-w-0 w-full flex-col"><header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border/60 px-4 py-3"><span className={`h-2 w-2 rounded-full ${active ? "animate-pulse bg-accent" : "bg-emerald-400"}`} /><span className="text-xs font-bold uppercase tracking-widest text-text">Pioneers</span><span className="min-w-0 truncate text-[10px] text-faint">{phaseLabel(phase, workers)}</span><span className="ml-auto text-[10px] text-faint">{activeCount} active · {workers.length} total</span><button type="button" onClick={() => setDockMode(true)} className="rounded border border-accent/40 bg-accent/10 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-accent hover:bg-accent/20">Agent Dock</button><button type="button" onClick={() => setPanelOpen(false)} className="ml-1 text-faint hover:text-text" aria-label="Hide Pioneers panel">×</button></header>
-        {arrival && arrivalIndex < workers.length && active && <div className="h-[250px] shrink-0 border-b border-border/60"><LanyardCard worker={arrival} onDone={() => setArrivalIndex((index) => Math.min(index + 1, workers.length))} /></div>}
-        <div id="pioneers-tree" className="relative flex min-h-0 flex-1"><div className={`min-w-0 overflow-y-auto ${selectedWorker ? "w-[52%]" : "w-full"}`}><div className="grid grid-cols-2 gap-2 border-b border-border/60 p-3"><OrgCard label="Coordinator" detail={coordinatorDetail} accent="#a78bfa" live={active} /><OrgCard label="System" detail={systemDetail} accent="#94a3b8" live={active} /></div><div className="border-b border-border/60 px-4 py-2 text-[9px] font-black uppercase tracking-[0.25em] text-faint">Rost · Pioneer hierarchy</div>{queuedWorkers.length > 0 && <div className="border-b border-border/60 px-4 py-2 text-[9px] font-bold uppercase tracking-widest text-faint">Queued · {queuedWorkers.length}</div>}<WorkerTree workers={[...queuedWorkers, ...liveWorkers]} selected={selected} onSelect={(id) => setSelected(selected === id ? null : id)} />{finishedWorkers.length > 0 && <details className="border-b border-border/60"><summary className="cursor-pointer list-none px-4 py-2 text-[9px] font-bold uppercase tracking-widest text-faint hover:text-text">Completed / failed · {finishedWorkers.length}</summary><WorkerTree workers={finishedWorkers} selected={selected} onSelect={(id) => setSelected(selected === id ? null : id)} /></details>}</div>{selectedWorker && <div className="w-[48%] min-w-0"><Detail worker={selectedWorker} onClose={() => setSelected(null)} /></div>}</div>
+
+  if (!visible && !embedded) {
+    return (
+      <button
+        onClick={() => setPanelOpen(true)}
+        className="fixed bottom-[calc(var(--memex-composer-clearance,112px)+0.75rem)] right-3 z-30 rounded-full border border-accent/40 bg-surface px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-accent shadow-lg"
+      >
+        Show Pioneers · {workers.length}
+      </button>
+    );
+  }
+
+  if (dockMode) {
+    const dockEl = (
+      <AgentDock
+        active={active}
+        activeCount={activeCount}
+        totalCount={workers.length}
+        coordinatorDetail={coordinatorDetail}
+        systemDetail={systemDetail}
+        spawnedAgents={spawnedAgents}
+        subAgents={subAgents}
+        dockWidth={dockWidth}
+        dockHeight={dockHeight}
+        onWidthResizeStart={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setDockResizing("width"); }}
+        onHeightResizeStart={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setDockResizing("height"); }}
+        onFullPanel={() => setDockMode(false)}
+        onHide={() => { setDockMode(false); if (!embedded) setPanelOpen(false); }}
+        onSelect={(workerId) => { setSelected(workerId); setDockMode(false); }}
+      />
+    );
+    if (embedded) {
+      return (
+        <div className="flex flex-1 flex-col items-center justify-center p-6 text-center text-xs text-muted">
+          <span>Pioneers docked in floating window.</span>
+          <button onClick={() => setDockMode(false)} className="mt-3 px-3 py-1.5 rounded-md bg-surface2 border border-border/60 hover:bg-surface3 text-accent transition-colors">
+            Restore to Side Panel
+          </button>
+          {dockEl}
+        </div>
+      );
+    }
+    return dockEl;
+  }
+
+  const content = (
+    <>
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border/60 px-3 py-2 bg-surface2/30">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={`h-2 w-2 shrink-0 rounded-full ${active ? "animate-pulse bg-accent" : "bg-emerald-400"}`} />
+          <span className="text-xs font-bold uppercase tracking-widest text-text">Pioneers</span>
+          <span className="truncate text-[10px] text-faint">{phaseLabel(phase, workers)}</span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[10px] text-faint">{activeCount} active · {workers.length} total</span>
+          <button type="button" onClick={() => setDockMode(true)} className="rounded border border-accent/40 bg-accent/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-accent hover:bg-accent/20">
+            Agent Dock
+          </button>
+          {!embedded && (
+            <button type="button" onClick={() => setPanelOpen(false)} className="ml-1 text-faint hover:text-text" aria-label="Hide Pioneers panel">×</button>
+          )}
+        </div>
       </div>
+      {arrival && arrivalIndex < workers.length && active && (
+        <div className="h-[220px] shrink-0 border-b border-border/60">
+          <LanyardCard worker={arrival} onDone={() => setArrivalIndex((index) => Math.min(index + 1, workers.length))} />
+        </div>
+      )}
+      <div id="pioneers-tree" className="relative flex min-h-0 flex-1 overflow-hidden">
+        <div className={`min-w-0 overflow-y-auto ${selectedWorker ? "w-[52%]" : "w-full"}`}>
+          <div className="grid grid-cols-2 gap-2 border-b border-border/60 p-2.5">
+            <OrgCard label="Coordinator" detail={coordinatorDetail} accent="#a78bfa" live={active} />
+            <OrgCard label="System" detail={systemDetail} accent="#94a3b8" live={active} />
+          </div>
+          <div className="border-b border-border/60 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.25em] text-faint">
+            Rost · Pioneer hierarchy
+          </div>
+          {queuedWorkers.length > 0 && (
+            <div className="border-b border-border/60 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest text-faint">
+              Queued · {queuedWorkers.length}
+            </div>
+          )}
+          <WorkerTree workers={[...queuedWorkers, ...liveWorkers]} selected={selected} onSelect={(id) => setSelected(selected === id ? null : id)} />
+          {finishedWorkers.length > 0 && (
+            <details className="border-b border-border/60">
+              <summary className="cursor-pointer list-none px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest text-faint hover:text-text">
+                Completed / failed · {finishedWorkers.length}
+              </summary>
+              <WorkerTree workers={finishedWorkers} selected={selected} onSelect={(id) => setSelected(selected === id ? null : id)} />
+            </details>
+          )}
+        </div>
+        {selectedWorker && (
+          <div className="w-[48%] min-w-0 overflow-y-auto">
+            <Detail worker={selectedWorker} onClose={() => setSelected(null)} />
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  if (embedded) {
+    return <div className="flex h-full min-w-0 w-full flex-col overflow-hidden">{content}</div>;
+  }
+
+  return (
+    <aside
+      aria-label="Pioneers"
+      style={{ width: panelWidth }}
+      className={`relative flex h-full max-w-[calc(100vw-360px)] shrink-0 overflow-hidden border-l border-border/60 bg-surface ${resizing ? "select-none" : "transition-[width] duration-300"}`}
+    >
+      <button
+        type="button"
+        aria-label="Resize Pioneers panel"
+        title="Drag to resize Pioneers"
+        onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setResizing(true); }}
+        className="absolute -left-1 top-0 z-20 h-full w-2 touch-none cursor-col-resize hover:bg-accent/20 focus:outline-none focus:bg-accent/20"
+      />
+      <div className="flex h-full min-w-0 w-full flex-col">{content}</div>
     </aside>
-  </>;
+  );
 }

@@ -100,7 +100,7 @@ describe("workspace output delivery", () => {
   });
   it("presents intent, commands, and progress as distinct user-readable channels", () => {
     expect(activityPresentation({ type: "thought", content: "Checking the project requirements", agent_name: "Coordinator" })).toMatchObject({
-      tone: "intent", title: "Coordinator is assessing the task", detail: "Considering response",
+      tone: "intent", title: "Checking the project requirements", detail: "Considering response",
     });
     expect(activityPresentation({ type: "tool_call_start", content: "run_command started.", data: { type: "tool_start", tool_name: "run_command", tool_input: { command: "npm test" } } })).toMatchObject({
       tone: "tool", title: "Running run_command", command: "npm test",
@@ -111,27 +111,25 @@ describe("workspace output delivery", () => {
     expect(activityPresentation({ type: "status", content: "Coordinator updated the worker plan.", data: { type: "swarm_task_list" } })).toMatchObject({
       tone: "progress", title: "Coordinator updated the worker plan.",
     });
-    const markup = renderToStaticMarkup(<MessageBubble displayMode="thought" message={{ ...message, content: "", events: [
+    const markup = renderToStaticMarkup(<MessageBubble isActive={true} displayMode="thought" message={{ ...message, content: "", events: [
       { type: "thought", content: "Checking the project requirements", agent_name: "Coordinator" },
       { type: "tool_call_start", content: "run_command started.", data: { type: "tool_start", tool_name: "run_command", tool_input: { command: "npm test" } } },
       { type: "status", content: "Coordinator updated the worker plan.", data: { type: "swarm_task_list" } },
     ] }} />);
-    expect(markup).toContain("Thinking");
-    expect(markup).toContain("Ran run_command");
-    expect(markup).toContain("Running run_command");
-    expect(markup).toContain("Activity: Coordinator updated the worker plan.");
-    expect(markup).toContain("text-pink-100");
+    // AgentWorkTrace shows the coordinator's live activity inline.
+    expect(markup).toContain("Coordinator");
+    expect(markup).toContain("Checking the project requirements");
     expect(markup).not.toContain("border-pink-400/60");
   });
-  it("shows runtime-marked execution summaries while keeping unmarked thought private", () => {
+  it("shows actual reasoning stream even for unmarked thoughts", () => {
     expect(activityPresentation({ type: "thought", content: "I’m reviewing the selected workspace before making changes.", data: { type: "thought", safe_summary: true } })).toMatchObject({
       tone: "intent", title: "I’m reviewing the selected workspace before making changes.",
     });
     expect(activityPresentation({ type: "thought", content: "private scratchpad text" })).toMatchObject({
-      tone: "intent", title: "Thinking", detail: "Considering response",
+      tone: "intent", title: "private scratchpad text", detail: "Considering response",
     });
     expect(activityPresentation({ type: "thought", content: "private scratchpad text" }, true)).toMatchObject({
-      tone: "intent", title: "private scratchpad text",
+      tone: "intent", title: "private scratchpad text", detail: "Considering response",
     });
   });
   it.each<ChatDisplayMode>(["summary", "normal", "thought"])("keeps real media and cancellation visible in %s", (displayMode) => {

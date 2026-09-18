@@ -48,4 +48,29 @@ describe("Pioneers Theatre event adapter", () => {
     ]);
     expect(workers.map((worker) => worker.pioneer_name)).toEqual(["Shannon"]);
   });
+
+  it("renders placeholder in embedded mode when no workers exist", async () => {
+    const React = await import("react");
+    const { PioneersView } = await import("./PioneersView");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const markup = renderToStaticMarkup(
+      React.createElement(PioneersView, { events: [], active: false, embedded: true })
+    );
+    expect(markup).toContain("No active pioneers");
+  });
+
+  it("renders embedded container without aside tag when embedded is true", async () => {
+    const React = await import("react");
+    const { PioneersView } = await import("./PioneersView");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const events = [
+      event("swarm_worker_created", { worker_id: "w-1", role: "researcher", pioneer_name: "Shannon", task: "Inspect code" }, "Started"),
+    ];
+    const markup = renderToStaticMarkup(
+      React.createElement(PioneersView, { events, active: true, embedded: true })
+    );
+    expect(markup).toContain("Pioneers");
+    expect(markup).toContain("Shannon");
+    expect(markup).not.toContain("<aside");
+  });
 });

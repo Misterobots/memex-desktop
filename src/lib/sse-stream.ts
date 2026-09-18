@@ -59,6 +59,8 @@ export interface StreamOptions {
   alreadySteered?: boolean;
   /** Resume a server-side DevHarness checkpoint after explicit tool replay. */
   devResume?: boolean;
+  currentProjectId?: string;
+  activeFile?: string;
   /** If provided, a RunRecord will be opened and closed around the stream. */
   runMeta?: { profile: string };
   /** Called as soon as the run record is created, with its ID. */
@@ -153,9 +155,17 @@ export function streamChat(opts: StreamOptions): () => void {
     });
   }
 
+  const enhancedMessages = [...opts.messages];
+  if (opts.currentProjectId) {
+    const ctx = `You are an AI coding assistant working in the project directory: ${opts.currentProjectId}\nUse this absolute path as the workspace root for any file operations.`;
+    const sysIdx = enhancedMessages.findIndex(m => m.role === "system");
+    if (sysIdx >= 0) enhancedMessages[sysIdx] = { ...enhancedMessages[sysIdx], content: `${enhancedMessages[sysIdx].content}\n\n${ctx}` };
+    else enhancedMessages.unshift({ role: "system", content: ctx });
+  }
+
   const body = JSON.stringify({
     model: opts.model || "swarm",
-    messages: opts.messages,
+    messages: enhancedMessages,
     stream: true,
     ...(opts.skill ? { skill: opts.skill } : {}),
     session_id: opts.sessionId ?? "default_session",
@@ -165,6 +175,8 @@ export function streamChat(opts: StreamOptions): () => void {
     already_steered: opts.alreadySteered ?? false,
     dev_resume: opts.devResume ?? false,
     workspace_key: opts.workspaceKey ?? opts.sessionId ?? "default-workspace",
+    ...(opts.currentProjectId ? { current_project_id: opts.currentProjectId } : {}),
+    ...(opts.activeFile ? { active_file: opts.activeFile } : {}),
     ...(opts.style ? { style: opts.style } : {}),
     ...(opts.gauntletBar ? { gauntlet_bar: opts.gauntletBar } : {}),
     ...(opts.gauntletHandoff ? { gauntlet_handoff: opts.gauntletHandoff } : {}),

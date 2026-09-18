@@ -24,7 +24,7 @@ export function SteeringCard({ card, sessionId, experience = "chat", workspaceKe
   const [submitted, setSubmitted] = useState<string | null>(null);
   const {
     addMessage, appendEvent,
-    updateMessageContent, setStreaming, activeSession,
+    updateMessageContent, setStreaming, activeSession, cwd,
   } = useStore();
 
   const options = card.options ?? [];
@@ -79,6 +79,7 @@ export function SteeringCard({ card, sessionId, experience = "chat", workspaceKe
       modeFlags: { ...MODE_FLAGS[mode], ...(packet ? { gauntlet_mode: true, swarm_mode: true, dev_mode: true } : {}) },
       sessionId: targetSessionId,
       workspaceKey,
+      currentProjectId: cwd ?? undefined,
       onEvent: (e) => {
         appendEvent(targetSessionId, assistantId, e as MessageEvent);
         if (e.type === "message" || e.type === "response") {

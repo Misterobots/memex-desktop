@@ -56,12 +56,17 @@ export function agentWorkFromEvents(events: MessageEvent[]): AgentWork[] {
     agents.set(id, work);
   };
 
+  let hasRealWorkers = false;
   for (const event of events) {
     const data = record(event.data);
     const rawType = String(data.type ?? event.type);
     if (rawType === "swarm_task_list") {
       const workers = Array.isArray(data.workers) ? data.workers : Array.isArray(data.tasks) ? data.tasks : [];
-      workers.forEach((worker) => upsert(record(worker)));
+      workers.forEach((worker) => {
+        const wid = workerId(record(worker));
+        if (wid && wid !== "coordinator") hasRealWorkers = true;
+        upsert(record(worker));
+      });
       continue;
     }
     const workerUpdate = rawType === "swarm_worker_created"
@@ -71,8 +76,18 @@ export function agentWorkFromEvents(events: MessageEvent[]): AgentWork[] {
       || event.type === "tool_call_result"
       || Boolean(data.worker_id);
     if (workerUpdate) {
-      upsert({ ...data, pioneer_name: event.pioneer_name ?? data.pioneer_name, agent_name: event.agent_name ?? data.agent_name }, event);
+      const id = workerId(data) ?? workerId(event as unknown as Record<string, unknown>);
+      if (id && id !== "coordinator") {
+        hasRealWorkers = true;
+        upsert({ ...data, pioneer_name: event.pioneer_name ?? data.pioneer_name, agent_name: event.agent_name ?? data.agent_name }, event);
+      } else if (!id && (event.type === "thought" || event.type === "tool_call_start" || event.type === "tool_call_result")) {
+        upsert({ ...data, id: "coordinator", name: "Coordinator", role: "orchestrator" }, event);
+      }
     }
+  }
+  
+  if (!hasRealWorkers) {
+    agents.delete("coordinator");
   }
   return [...agents.values()];
 }

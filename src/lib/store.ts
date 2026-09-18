@@ -64,6 +64,11 @@ interface AppState {
   connections: ConnectionStatus;
   selectedModel: string;
 
+  // Right Side Panel state
+  sidePanelTabs: Array<{ id: string, type: "editor"|"terminal"|"browser"|"files"|"review"|"chat"|"pioneers"|"worktrees", title: string, path?: string }>;
+  activeSideTabId: string | null;
+  sidePanelOpen: boolean;
+
   // Actions — sessions
   createSession: (experience?: ExperienceId, workspaceKey?: string) => string;
   setActiveSession: (id: string, experience?: ExperienceId) => void;
@@ -88,6 +93,11 @@ interface AppState {
   setUiDensity: (density: "comfortable" | "compact") => void;
   setCommandPalette: (open: boolean) => void;
   setStreaming: (sessionId: string, streaming: boolean, stop?: () => void) => void;
+  
+  // Actions - Side Panel
+  setSidePanelTabs: (tabs: Array<{ id: string, type: "editor"|"terminal"|"browser"|"files"|"review"|"chat"|"pioneers"|"worktrees", title: string, path?: string }>) => void;
+  setActiveSideTabId: (id: string | null) => void;
+  setSidePanelOpen: (open: boolean) => void;
 
   // Actions — connection
   setConnections: (c: Partial<ConnectionStatus>) => void;
@@ -132,6 +142,11 @@ export const useStore = create<AppState>()(
       commandPaletteOpen: false,
       uiScale: 1,
       uiDensity: "comfortable",
+      
+      sidePanelTabs: [],
+      activeSideTabId: null,
+      sidePanelOpen: false,
+
       streamingSessions: {},
       stopStreams: {},
       connections: {
@@ -303,6 +318,11 @@ export const useStore = create<AppState>()(
         streamingSessions: { ...s.streamingSessions, [sessionId]: streaming },
         stopStreams: { ...s.stopStreams, [sessionId]: streaming ? stop : undefined },
       })),
+
+      setSidePanelTabs: (tabs) => set({ sidePanelTabs: tabs }),
+      setActiveSideTabId: (id) => set({ activeSideTabId: id, sidePanelOpen: true }),
+      setSidePanelOpen: (open) => set({ sidePanelOpen: open }),
+
       setConnections:    (c)                 => set((s) => ({ connections: { ...s.connections, ...c } })),
       setSelectedModel:  (model)             => set({ selectedModel: model }),
 
