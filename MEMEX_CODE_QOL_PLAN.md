@@ -25,12 +25,16 @@ Acceptance ledger — implementation and verification remain separate columns:
 
 | Item | Implemented | Automated verification | Packaged build | Installed acceptance |
 | --- | --- | --- | --- | --- |
-| Code mode sends `dev_mode` and no orchestrator flag | yes | `collective-contract.test.ts` (flags and request body), `desktop-interactions.test.tsx` (composer default) | **not performed** | **not performed** |
-| Collective carries both orchestration flags, including from Code | yes | the same two files | **not performed** | **not performed** |
-| Code picker is no longer two entries | yes | `desktop-interactions.test.tsx` picker case | **not performed** | **not performed** |
-| Unoffered slash command states itself | yes | `desktop-interactions.test.tsx` `/research`-in-Code case | **not performed** | **not performed** |
-| Scheduled Collective carries `research_mode` | yes | `desktop-interactions.test.tsx` schedule cases | **not performed** | **not performed** |
-| Runtime gate yields to a coordinator request | yes | 3 source-level pytest cases; the 8 behavioural cases **skip** here because `prometheus_client` and `agno` are not installed on this machine | **not performed** — the edited tree is not the one mounted by `agent_runtime` | **not performed** |
+| Code mode sends `dev_mode` and no orchestrator flag | yes | `collective-contract.test.ts` (flags and request body), `desktop-interactions.test.tsx` (composer default) | `0.1.108` bundle probed | **not performed** |
+| Collective carries both orchestration flags, including from Code | yes | the same two files | `0.1.108` bundle probed | **not performed** |
+| Code picker is no longer two entries | yes | `desktop-interactions.test.tsx` picker case | `0.1.108` bundle probed | **not performed** |
+| Unoffered slash command states itself | yes | `desktop-interactions.test.tsx` `/research`-in-Code case | `0.1.108` bundle probed | **not performed** |
+| Scheduled Collective carries `research_mode` | yes | `desktop-interactions.test.tsx` schedule cases | `0.1.108` bundle probed | **not performed** |
+| Runtime gate yields to a coordinator request | yes | 3 source-level pytest cases; the 8 behavioural cases **skip** here because `prometheus_client` and `agno` are not installed on this machine | **n/a** — the edited tree is not the one mounted by `agent_runtime`, and it is not part of this installer | **not performed** |
+
+**Packaged build (2026-09-22).** Installer `release/Memex Desktop Setup 0.1.108.exe`, 84,196,149 bytes, SHA-256 `d48b57500587d81def59f15cb0c941d0cdb7b2c30aa9fb1e9123f02aa9e6676b`, produced at commit `fc812af` by `npm run package` (typecheck → vite build → electron-builder; electron 31.7.7, win32/x64, `node-pty` rebuilt). `release/latest.yml` declares `version: 0.1.108` with SHA-512 `ovaJ6PXdEKFJ1zv7ooR4+Q6iebXAISCal5I7YxryxrW66M7b+hISuwL8wOLPrbWY7dIjWjQKd43BvzbHEOSKww=`, which matches the hash recomputed from the file on disk. Content probes against the bundled `app.asar` (14,807,741 bytes) found the shipped flag contract in minified form — `code:{dev_mode:!0}`, `swarm_mode:!0,research_mode:!0`, `research:{research_mode:!0}`, `gauntlet:{swarm_mode:!0,gauntlet_mode:!0}` — plus the `["code","swarm","gauntlet","plan","think"]` picker array, both new picker descriptions, both slash-notice strings, and the "Code with Memex" heading. `npm test` was green (172/172) at `2b27f7e`; the two commits since then changed only documents and the version string.
+
+**That is a build-and-bundle check, not installed acceptance.** The installer has not been run, the app has not been launched from it, and no Code or Collective turn has been observed end to end in a packaged window. A hash that matches the manifest proves which bytes shipped, not what the running application does.
 
 Validation at this checkpoint: `npm run typecheck` clean; `npm test` 37 files / 172 tests pass; `python -m pytest tests/test_dev_harness_routing.py` 3 passed, 8 skipped; `python -m py_compile agents/main.py` clean. One pre-existing test-hygiene defect was found while adding coverage and fixed: `desktop-interactions.test.tsx` never reset `workspaceDrafts` between cases, so an unsent draft leaked forward — the draft-isolation case only passed while no earlier case left a draft behind.
 
