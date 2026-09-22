@@ -51,10 +51,11 @@ function NewTriggerForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
     if (!name.trim() || !prompt.trim()) { setError("Name and prompt are required"); return; }
     setError("");
     setSaving(true);
+    const task_config = { prompt, swarm_mode: swarmMode, research_mode: swarmMode };
     const body =
-      type === "cron"     ? { name, trigger_type: type, task_config: { prompt, swarm_mode: swarmMode }, cron: { hour: +hour, minute: +minute } } :
-      type === "interval" ? { name, trigger_type: type, task_config: { prompt, swarm_mode: swarmMode }, interval_seconds: +intervalSeconds } :
-                             { name, trigger_type: type, task_config: { prompt, swarm_mode: swarmMode }, delay_seconds: +delaySeconds };
+      type === "cron"     ? { name, trigger_type: type, task_config, cron: { hour: +hour, minute: +minute } } :
+      type === "interval" ? { name, trigger_type: type, task_config, interval_seconds: +intervalSeconds } :
+                             { name, trigger_type: type, task_config, delay_seconds: +delaySeconds };
     const result = await createTrigger(body);
     setSaving(false);
     if (result.trigger) {

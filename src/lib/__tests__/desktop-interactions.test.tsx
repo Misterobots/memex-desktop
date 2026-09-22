@@ -24,7 +24,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   delete window.memex;
   localStorage.clear();
-  useStore.setState({ sessions: [], activeSessionIds: {}, workspaceDisplayModes: {}, workspaceRunPreferences: {}, streamingSessions: {}, stopStreams: {}, activeTab: "chat", mode: "chat", selectedModel: "qwen3:14b" });
+  useStore.setState({ sessions: [], activeSessionIds: {}, workspaceDisplayModes: {}, workspaceRunPreferences: {}, workspaceDrafts: {}, streamingSessions: {}, stopStreams: {}, activeTab: "chat", mode: "chat", selectedModel: "qwen3:14b" });
   stop = vi.fn<() => void>();
   vi.mocked(streamChat).mockReturnValue(stop);
   vi.mocked(listTriggers).mockResolvedValue({ status: 200, triggers: [] });
@@ -41,7 +41,7 @@ describe("desktop parity interaction contracts (mocked runtime)", () => {
     await user.selectOptions(screen.getByRole("combobox", { name: "Reasoning effort" }), "high");
     await user.type(screen.getByRole("textbox"), "Build a local example{enter}");
     const request = vi.mocked(streamChat).mock.calls[0][0];
-    expect(request).toMatchObject({ mode: "swarm", style: "explanatory", modeFlags: { swarm_mode: true, ultrathink_mode: true }, workspaceKey: "C:/alpha" });
+    expect(request).toMatchObject({ mode: "swarm", style: "explanatory", modeFlags: { swarm_mode: true, research_mode: true, ultrathink_mode: true }, workspaceKey: "C:/alpha" });
     const session = useStore.getState().activeSession("code", "C:/alpha")!;
     expect(session.displayMode).toBe("thought");
     expect(session.messages[0].mode).toBe("swarm");
@@ -64,6 +64,44 @@ describe("desktop parity interaction contracts (mocked runtime)", () => {
     expect(vi.mocked(streamChat).mock.calls[0][0]).toMatchObject({
       mode: "gauntlet", gauntletBar: "Stripe's pricing page", modeFlags: { swarm_mode: true, gauntlet_mode: true },
     });
+  });
+
+  it("defaults the Code composer to a standard Code turn that asks for no orchestrator", async () => {
+    const user = userEvent.setup();
+    render(<InputBar experience="code" workspaceKey="C:/alpha" modeOptions={CODE_MODES} defaultMode="code" extraFlags={{ dev_mode: true }} />);
+    expect(screen.getByTitle("Select mode").textContent).toContain("Code");
+    await user.type(screen.getByRole("textbox"), "Rename the resolver module and update its imports{enter}");
+    expect(vi.mocked(streamChat).mock.calls[0][0]).toMatchObject({ mode: "code", modeFlags: { dev_mode: true } });
+  });
+
+  it("lists the orchestrators beside Code instead of replacing it", async () => {
+    const user = userEvent.setup();
+    render(<InputBar experience="code" workspaceKey="C:/alpha" modeOptions={CODE_MODES} defaultMode="code" />);
+    await user.click(screen.getByTitle("Select mode"));
+    expect(screen.getByText("Coordinator researches through multiple Pioneer perspectives, then reconciles them")).toBeTruthy();
+    expect(screen.getByText("Pioneer builders and critics iterate against a quality bar")).toBeTruthy();
+    expect(screen.queryByText("Single-pass web/doc research & synthesis")).toBeNull();
+  });
+
+  it("runs Collective with both the coordinator and research flags from the Code workspace", async () => {
+    const user = userEvent.setup();
+    render(<InputBar experience="code" workspaceKey="C:/alpha" modeOptions={CODE_MODES} defaultMode="code" extraFlags={{ dev_mode: true }} />);
+    await user.click(screen.getByTitle("Select mode"));
+    await user.click(screen.getByText("Coordinator researches through multiple Pioneer perspectives, then reconciles them"));
+    await user.type(screen.getByRole("textbox"), "How should the gateway be rate-limited?{enter}");
+    expect(vi.mocked(streamChat).mock.calls[0][0]).toMatchObject({
+      mode: "swarm", modeFlags: { dev_mode: true, swarm_mode: true, research_mode: true },
+    });
+  });
+
+  it("states when a slash command selects a pipeline this workspace does not offer", async () => {
+    const user = userEvent.setup();
+    render(<InputBar experience="code" workspaceKey="C:/alpha" modeOptions={CODE_MODES} defaultMode="code" />);
+    await user.type(screen.getByRole("textbox"), "/research");
+    await user.tab();
+    const notice = await screen.findByText(/\/research selects Research/);
+    expect(notice.textContent).toContain("the mode shown stays Code");
+    expect(screen.getByTitle("Select mode").textContent).toContain("Code");
   });
 
   it("keeps the selected model when Product Design or Sites locks design mode", async () => {
@@ -221,7 +259,7 @@ describe("desktop parity interaction contracts (mocked runtime)", () => {
     expect(screen.getAllByRole("link", { name: "Open / download" })).toHaveLength(3);
   });
 
-  it.each(["Daily", "Repeating", "One-time"])("serializes Collective schedules with swarm_mode for %s", async (schedule) => {
+  it.each(["Daily", "Repeating", "One-time"])("serializes Collective schedules with both orchestration flags for %s", async (schedule) => {
     vi.mocked(createTrigger).mockResolvedValue({ status: 200 });
     const user = userEvent.setup();
     render(<ScheduledTasks />);
@@ -231,7 +269,9 @@ describe("desktop parity interaction contracts (mocked runtime)", () => {
     await user.click(screen.getByRole("button", { name: schedule }));
     await user.click(screen.getByRole("checkbox", { name: "Run in Collective mode" }));
     await user.click(screen.getByRole("button", { name: "Create" }));
-    expect(createTrigger).toHaveBeenCalledWith(expect.objectContaining({ task_config: { prompt: "Test prompt", swarm_mode: true } }));
+    expect(createTrigger).toHaveBeenCalledWith(expect.objectContaining({
+      task_config: { prompt: "Test prompt", swarm_mode: true, research_mode: true },
+    }));
   });
 
   it("retries a failed schedule load and resumes only the selected schedule", async () => {

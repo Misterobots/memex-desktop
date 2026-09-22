@@ -249,10 +249,10 @@ export function DevView() {
                   <div className="flex-1 flex flex-col items-center justify-center px-6 select-none">
                     <div className="max-w-conversation w-full text-center">
                       <div className="text-4xl text-accent mb-4 font-mono opacity-80">{"</>"}</div>
-                      <h1 className="text-xl text-text font-medium mb-2">Code with the Collective</h1>
+                      <h1 className="text-xl text-text font-medium mb-2">Code with Memex</h1>
                       <p className="text-muted text-sm max-w-sm mx-auto">
                         {cwd
-                          ? `Working in ${folderName}. Ask the agent to read, edit, and run code in this folder.`
+                          ? `Working in ${folderName}. One agent reads, edits, and runs the project, calling in Pioneers where the scope needs them.`
                           : "Open a folder, then describe what you want to build or change."}
                       </p>
                     </div>
@@ -265,7 +265,7 @@ export function DevView() {
                   experience="code"
                   workspaceKey={cwd || undefined}
                   modeOptions={CODE_MODES}
-                  defaultMode="swarm"
+                  defaultMode="code"
                   extraFlags={{ dev_mode: true }}
                   disabledReason={cwd ? undefined : "Open a project folder to start coding"}
                   placeholder={cwd ? `Ask the agent to change ${folderName}…` : "Open a folder to start…"}

@@ -68,6 +68,7 @@ export interface WorkspaceRunPreferences {
 /** Wire/storage identifiers remain legacy-compatible; use MODE_LABELS for UI copy. */
 export type MemexMode =
   | "chat"
+  | "code"
   | "swarm"
   | "research"
   | "design"
@@ -76,9 +77,18 @@ export type MemexMode =
   | "gauntlet"
   | "workshop";
 
+/**
+ * The runtime routes on these flags alone — the desktop never sends a mode
+ * string, so this table is the whole contract between the two.
+ */
 export const MODE_FLAGS: Record<MemexMode, Record<string, boolean>> = {
   chat:     {},
-  swarm:    { swarm_mode: true },
+  code:     { dev_mode: true },
+  // Collective is perspective research: the coordinator only enters Perspective
+  // Research Mode when it is orchestrating (swarm_mode) *and* asked to research
+  // (research_mode). Either flag on its own yields a build loop or a single
+  // librarian pass, neither of which is a Collective.
+  swarm:    { swarm_mode: true, research_mode: true },
   research: { research_mode: true },
   design:   { design_mode: true },
   think:    { ultrathink_mode: true },
@@ -89,6 +99,7 @@ export const MODE_FLAGS: Record<MemexMode, Record<string, boolean>> = {
 
 export const MODE_LABELS: Record<MemexMode, string> = {
   chat:     "Chat",
+  code:     "Code",
   swarm:    "Collective",
   research: "Research",
   design:   "Design",

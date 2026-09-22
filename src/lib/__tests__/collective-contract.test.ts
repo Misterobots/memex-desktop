@@ -12,8 +12,13 @@ describe("Collective terminology and legacy wire compatibility", () => {
     const saved = JSON.parse('{"mode":"swarm","events":[]}');
     expect(modeLabel(saved.mode)).toBe("Collective");
     expect(JSON.stringify(saved)).toBe('{"mode":"swarm","events":[]}');
-    expect(MODE_FLAGS.swarm).toEqual({ swarm_mode: true });
+    expect(MODE_FLAGS.swarm).toEqual({ swarm_mode: true, research_mode: true });
     expect(MODE_FLAGS.plan).toEqual({ swarm_mode: true, ultraplan_mode: true });
+    // Perspective Research Mode only engages when research_mode reaches the
+    // coordinator, so Collective must carry both flags and Code must carry neither.
+    expect(MODE_FLAGS.research).toEqual({ research_mode: true });
+    expect(MODE_FLAGS.code).toEqual({ dev_mode: true });
+    expect(MODE_LABELS.code).toBe("Code");
   });
 
   it("sends the legacy swarm model sentinel and swarm_mode to the runtime", async () => {
@@ -25,8 +30,23 @@ describe("Collective terminology and legacy wire compatibility", () => {
       onEvent: vi.fn(), onDone: resolve, onError: reject,
     }));
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(body).toMatchObject({ model: "swarm", swarm_mode: true, memory_enabled: true, session_id: "legacy-session" });
+    expect(body).toMatchObject({ model: "swarm", swarm_mode: true, research_mode: true, memory_enabled: true, session_id: "legacy-session" });
     expect(JSON.stringify(body)).not.toContain("collective");
+  });
+
+  it("sends only dev_mode for a standard Code turn", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("data: [DONE]\n\n"));
+    vi.stubGlobal("fetch", fetchMock);
+    await new Promise<void>((resolve, reject) => streamChat({
+      messages: [{ role: "user", content: "Fix the failing resolver test" }],
+      mode: "code", modeFlags: MODE_FLAGS.code, sessionId: "code-session",
+      workspaceKey: "C:/alpha", onEvent: vi.fn(), onDone: resolve, onError: reject,
+    }));
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.dev_mode).toBe(true);
+    expect(body.swarm_mode).toBeUndefined();
+    expect(body.research_mode).toBeUndefined();
+    expect(body.gauntlet_mode).toBeUndefined();
   });
 
   it("serializes an explicit general routing hint when provided", async () => {

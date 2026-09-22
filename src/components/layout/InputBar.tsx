@@ -11,11 +11,18 @@ import { RunControls } from "../chat/VerbosityControl";
 
 /** General conversation intentionally excludes production-only Gauntlet work. */
 export const CHAT_MODES: MemexMode[] = ["chat", "swarm", "research", "design", "think", "plan"];
-/** Code owns the Pioneer Gauntlet because its output is a reviewed project change. */
-export const CODE_MODES: MemexMode[] = ["swarm", "gauntlet"];
+/**
+ * Code is its own mode, not a side effect of the orchestrators: one coordinator
+ * drives the project and calls Pioneers in as the scope needs them. Collective
+ * and Gauntlet sit beside it for perspective research and for reviewed project
+ * work respectively, and Plan/Think stay available because both are things you
+ * can want about an open project.
+ */
+export const CODE_MODES: MemexMode[] = ["code", "swarm", "gauntlet", "plan", "think"];
 
 const MODE_DOT: Record<MemexMode, string> = {
   chat:     "bg-muted",
+  code:     "bg-sky-400",
   swarm:    "bg-accent",
   research: "bg-green",
   design:   "bg-yellow",
@@ -25,12 +32,14 @@ const MODE_DOT: Record<MemexMode, string> = {
   workshop: "bg-accent",
 };
 
-// One-line descriptions so the picker makes clear which mode does what — e.g.
-// Code tasks belong in Collective, not Research (which forces a research pipeline).
+// One-line descriptions so the picker makes clear which mode does what. These
+// describe the pipeline the runtime actually selects from the request flags,
+// not what the button is nearest to.
 const MODE_DESC: Record<MemexMode, string> = {
   chat:     "General conversation & Q&A",
-  swarm:    "Build & write code with agents",
-  research: "Web/doc research & synthesis",
+  code:     "Direct project work — one agent reads, edits, runs, and calls Pioneers as needed",
+  swarm:    "Coordinator researches through multiple Pioneer perspectives, then reconciles them",
+  research: "Single-pass web/doc research & synthesis",
   design:   "Generate UI / HTML mockups",
   think:    "Extended step-by-step reasoning",
   plan:     "Plan a build before executing",
@@ -72,14 +81,14 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     label: "Audit Flow",
     category: "Flow",
     description: "Read-only sweep checking a large set against explicit rules (dead links, broken exports, policy violations). Never mutates.",
-    targetMode: "swarm",
+    targetMode: "code",
   },
   {
     cmd: "/flow-scaffold",
     label: "Scaffold Flow",
     category: "Flow",
     description: "Generate boilerplate skeleton for one new unit (component, service, route, module) with structure in place but logic empty.",
-    targetMode: "swarm",
+    targetMode: "code",
   },
   {
     cmd: "/flow-variants",
@@ -99,16 +108,23 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   // Memex Workflows
   {
     cmd: "/build",
-    label: "Collective Build",
+    label: "Code Build",
     category: "Workflow",
-    description: "Multi-agent swarm coordination to plan, write, and verify code across files.",
-    targetMode: "swarm",
+    description: "Direct project work: the Code agent plans, edits, runs, and calls Pioneers where the scope needs them.",
+    targetMode: "code",
   },
   {
     cmd: "/swarm",
-    label: "Swarm Mode",
+    label: "Collective (legacy alias)",
     category: "Workflow",
-    description: "Alias for Collective build: coordinate specialists to execute project tasks.",
+    description: "Alias for Collective: the coordinator researches the question through multiple Pioneer perspectives.",
+    targetMode: "swarm",
+  },
+  {
+    cmd: "/collective",
+    label: "Collective",
+    category: "Workflow",
+    description: "Pioneer perspectives research the same question from different domains, then the coordinator reconciles it.",
     targetMode: "swarm",
   },
   {
@@ -143,7 +159,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     cmd: "/research",
     label: "Deep Research",
     category: "Workflow",
-    description: "Deep web and documentation research with perspective synthesis.",
+    description: "Single-agent web and documentation research with synthesis. For multi-perspective analysis, use Collective.",
     targetMode: "research",
   },
   {
@@ -220,6 +236,7 @@ interface InputBarProps {
 export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder, experience = "chat", workspaceKey, disabledReason, prefillText, modeOptions, defaultMode }: InputBarProps) {
   const [text, setText] = useState("");
   const [modeOpen, setModeOpen] = useState(false);
+  const [modeNotice, setModeNotice] = useState("");
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [gauntletBar, setGauntletBar] = useState("");
   const [gauntletError, setGauntletError] = useState("");
@@ -332,6 +349,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
     useStore.getState().clearWorkspaceDraft(gauntletDraftKey);
     setText("");
     setGauntletBar("");
+    setModeNotice("");
 
     const session = activeSession(experience, workspaceKey);
     const sessionId = session?.id ?? createSession(experience, workspaceKey);
@@ -522,10 +540,18 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
     setText(cmd.cmd + " ");
     if (cmd.targetMode && availableModes.includes(cmd.targetMode)) {
       setMode(cmd.targetMode);
+      setModeNotice("");
+    } else if (cmd.targetMode) {
+      // The runtime reads slash prefixes from the message text itself, so an
+      // unoffered command still shapes the run while the composer keeps showing
+      // this workspace's mode. Say so instead of completing it silently.
+      setModeNotice(lockMode
+        ? `${cmd.cmd} selects ${MODE_LABELS[cmd.targetMode]}, but this composer always runs ${MODE_LABELS[lockMode]}.`
+        : `${cmd.cmd} selects ${MODE_LABELS[cmd.targetMode]}, which this workspace doesn't offer — the command can still steer the run while the mode shown stays ${MODE_LABELS[mode]}.`);
     }
     setSlashDismissed(true);
     textareaRef.current?.focus();
-  }, [availableModes, setMode]);
+  }, [availableModes, lockMode, mode, setMode]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (isSlash && slashMatches.length > 0) {
@@ -616,6 +642,12 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
               ))}
             </div>
           )}
+          {modeNotice && (
+            <p role="status" className="mb-2 px-2 text-xs text-yellow">
+              {modeNotice}
+              <button onClick={() => setModeNotice("")} className="ml-2 text-muted underline hover:text-text">Dismiss</button>
+            </p>
+          )}
           {mode === "gauntlet" && <label className="mb-2 block px-2 text-xs text-muted">Quality bar
             <input aria-label="Gauntlet quality bar" value={gauntletBar} onChange={(event) => { setGauntletBar(event.target.value); setGauntletError(""); }} placeholder="A named, fetchable reference — URL, product, repo, or publication" className="mt-1 w-full rounded-md border border-border/60 bg-canvas px-2 py-1.5 text-xs text-text placeholder-faint focus:outline-none focus:border-accent" />
             {gauntletError && <span role="alert" className="mt-1 block text-xs text-yellow">{gauntletError}</span>}
@@ -684,7 +716,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
                       {availableModes.map((m) => (
                         <button
                           key={m}
-                          onClick={() => { setMode(m); setModeOpen(false); }}
+                          onClick={() => { setMode(m); setModeOpen(false); setModeNotice(""); }}
                           className={`w-full text-left flex items-start gap-2 px-3 py-1.5 text-xs transition-colors
                             ${m === globalMode ? "bg-accent/10 text-text" : "text-text/80 hover:bg-surface2/60"}`}
                         >
