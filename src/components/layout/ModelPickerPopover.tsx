@@ -108,8 +108,8 @@ export function ModelPickerPopover() {
       if (alive) void checkAccess();
     });
 
-    return () => { 
-      alive = false; 
+    return () => {
+      alive = false;
       cleanup?.();
     };
   }, []);
@@ -144,7 +144,7 @@ export function ModelPickerPopover() {
         if (Array.isArray(data.data)) mList = data.data;
         else if (Array.isArray(data.models)) mList = data.models;
       }
-      
+
       if (mList.length === 0) {
         setModels([{ id: "Error: Unrecognized API response", label: "Error" }]);
       } else {
