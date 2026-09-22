@@ -6,6 +6,42 @@ Baseline: source commit `ce1574e`; the current local installer artifact is versi
 
 Revision 2: expanded from the initial layout/QoL audit into the complete Code-mode experience backlog. The Q01–Q16 findings remain the evidence register, not the limit of scope. The workstreams and master delivery order below govern the comprehensive plan. All proposed additions require implementation approval; their inclusion is not a claim that they are missing or broken in every existing route.
 
+## Mode contract fix (2026-09-22) — Code mode, Collective as perspective research, runtime gate
+
+Reported by the user: the Code composer offered only **Collective** and **Gauntlet**, and `/research` there did not produce the Perspectives pipeline. Three defects, one per layer, the middle two invisible from the client:
+
+1. `CODE_MODES` had been narrowed to two entries by `833d621`, whose stated purpose was to *add* Gauntlet to Code. No mode meant "just code", so the workspace's ordinary case had to pass through an orchestrator.
+2. No `MemexMode` carried `swarm_mode` **and** `research_mode` together — the only combination that selects Perspective Research Mode (`agents/coordination/orchestrator.py`: `_use_perspective_mode = research_mode`, reachable only through the coordinator). `research` alone is a single librarian agent; `swarm` alone is build orchestration. Perspectives were therefore unreachable from the desktop from *any* workspace, not only from Code.
+3. `chat_completions()` in the `:8008` runtime returned the DevHarness stream for any `dev_mode` request except a Gauntlet. Code attaches `dev_mode` to every turn for its workspace context, so a Collective launched there never reached `church.py` — and because the desktop sends no mode string, only flags, nothing in the response revealed that the flags had been discarded.
+
+Implemented (both repos, uncommitted at the time of writing):
+
+| Repo | Change |
+| --- | --- |
+| `memex-desktop` | `MemexMode` gains `code` with `MODE_FLAGS.code = { dev_mode: true }`; `MODE_FLAGS.swarm` becomes `{ swarm_mode, research_mode }`; `CODE_MODES = [code, swarm, gauntlet, plan, think]` with Code as the Code workspace default; picker dot and description copy; `/build` re-targeted to Code, `/collective` added, `/swarm` retained as the legacy alias, `/flow-audit` and `/flow-scaffold` re-targeted to Code, `/research` description corrected; an unoffered slash command now surfaces an inline notice instead of silently leaving the mode unchanged; scheduled "Run in Collective mode" carries `research_mode`; the CAD composer locks to Code instead of Collective. |
+| `Agent_Swarm` | `_routes_to_dev_harness()` extracted from the inline condition and made to yield to `swarm_mode`/`research_mode` as it already yielded to `gauntlet_mode`; `TriggerTaskConfig.research_mode` added and forwarded to `chat_swarm()` by the trigger scheduler. |
+
+Acceptance ledger — implementation and verification remain separate columns:
+
+| Item | Implemented | Automated verification | Packaged build | Installed acceptance |
+| --- | --- | --- | --- | --- |
+| Code mode sends `dev_mode` and no orchestrator flag | yes | `collective-contract.test.ts` (flags and request body), `desktop-interactions.test.tsx` (composer default) | **not performed** | **not performed** |
+| Collective carries both orchestration flags, including from Code | yes | the same two files | **not performed** | **not performed** |
+| Code picker is no longer two entries | yes | `desktop-interactions.test.tsx` picker case | **not performed** | **not performed** |
+| Unoffered slash command states itself | yes | `desktop-interactions.test.tsx` `/research`-in-Code case | **not performed** | **not performed** |
+| Scheduled Collective carries `research_mode` | yes | `desktop-interactions.test.tsx` schedule cases | **not performed** | **not performed** |
+| Runtime gate yields to a coordinator request | yes | 3 source-level pytest cases; the 8 behavioural cases **skip** here because `prometheus_client` and `agno` are not installed on this machine | **not performed** — needs an image rebuild | **not performed** |
+
+Validation at this checkpoint: `npm run typecheck` clean; `npm test` 37 files / 172 tests pass; `python -m pytest tests/test_dev_harness_routing.py` 3 passed, 8 skipped; `python -m py_compile agents/main.py` clean. One pre-existing test-hygiene defect was found while adding coverage and fixed: `desktop-interactions.test.tsx` never reset `workspaceDrafts` between cases, so an unsent draft leaked forward — the draft-isolation case only passed while no earlier case left a draft behind.
+
+Open, and deliberately not claimed:
+
+- The `Agent_Swarm` half is inert until the `agent_runtime` image is rebuilt and redeployed. No deploy was performed. Until it lands, Collective launched from Code still degrades to a Code loop, and the desktop's now-honest label over-promises.
+- No perspective matrix has been watched end to end from either workspace. The pipeline is established by reading `orchestrator.py` and `church.py`, not by observing a stream.
+- `_enforce_chat_features()` adds `research` to the entitlement set as soon as Collective carries `research_mode`, so an account lacking one of them now receives `403 Feature access denied: research, swarm` where it previously received a Collective.
+- Threads stored with `mode: "swarm"` keep that value and now name a different pipeline than the one they ran. Storage is intentionally unchanged for wire compatibility, so old Code threads read as "Collective" when they were DevHarness runs.
+- `Memex_Core`, the older runtime copy that ships `church_turing.py`, has its own guard that exempts `swarm_mode` but not `research_mode`. Left untouched: this client talks to the `:8008` `agent_runtime` built from `Agent_Swarm`.
+
 ## Close-out checkpoint (2026-09-22) — branch `agent-flows-ue-discovery`
 
 Original objective for this pass: carry the uncommitted explorer, model-picker and runtime-request work on the branch into reviewable commits, with acceptance state recorded honestly, and push the branch. No release, no merge to `master`, and no packaged qualification were authorized.
