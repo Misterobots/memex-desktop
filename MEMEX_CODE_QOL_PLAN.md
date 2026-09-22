@@ -6,6 +6,49 @@ Baseline: source commit `ce1574e`; the current local installer artifact is versi
 
 Revision 2: expanded from the initial layout/QoL audit into the complete Code-mode experience backlog. The Q01–Q16 findings remain the evidence register, not the limit of scope. The workstreams and master delivery order below govern the comprehensive plan. All proposed additions require implementation approval; their inclusion is not a claim that they are missing or broken in every existing route.
 
+## Close-out checkpoint (2026-09-22) — branch `agent-flows-ue-discovery`
+
+Original objective for this pass: carry the uncommitted explorer, model-picker and runtime-request work on the branch into reviewable commits, with acceptance state recorded honestly, and push the branch. No release, no merge to `master`, and no packaged qualification were authorized.
+
+Implemented and committed on the branch:
+
+- C09 foundation: the workspace explorer is now editable — create file or folder at root or inside a directory through inline rows, inline rename, copy path, delete behind an explicit confirm, OS-file drop into the directory under the cursor, Refresh and Collapse All, and an Add / Import menu for existing files or a folder. Expansion state is a path set restored across refresh, and a tree version counter scopes re-reads to changed directories. Commits `8cdcdac` (bridge) and `3bae259` (explorer).
+- C05 foundation: the model picker reports VRAM residency — a three-state trigger indicator for resident, idle-with-others-loaded, and nothing loaded; a banner with total resident footprint; per-model Unload, Unload all, and a Pre-load action that warms the selected model. Commit `da9e460`.
+- C06/C16 foundation: streamed requests resolve the completions endpoint once instead of blindly appending `/v1/chat/completions`, so a profile ending in `/v1` or the full path no longer produces a doubled URL; the per-request project context now states the sandbox mount at `/workspace` and tells the model not to search for the host absolute path. Commit `b2d16e8`.
+- Dead-surface cleanup: `activityPresentation` no longer carries the `detailed` parameter that stopped being read when reasoning events were exposed; `isActivityEvent` depth filtering is unchanged. Commit `27e900f`.
+- Repository hygiene: CAD scratch from an unrelated sink/faucet project and the agent runtime directory are ignored instead of cluttering `git status`; the patterns are root-anchored so tracked sources stay tracked. Commit `5150f56`.
+
+History rewrite that was required to publish the branch (C20 release integrity):
+
+- The branch already carried `f753e05`, which had committed two complete Electron build outputs — `release-0.1.43/` and `release-0.1.44/`, 158 tracked files, ~506 MB, including two 172 MB `win-unpacked/Memex Desktop.exe` binaries. GitHub's pre-receive hook declined the push with `GH001` at its 100 MB per-file limit, so nothing on the branch could be published. `.gitignore` covered `release/` but not the versioned siblings, which is how the output reached a commit unnoticed.
+- Removing the paths in a new commit cannot fix this, because the hook inspects every object in the push rather than only the tip. The range `6efc962..HEAD` was therefore rewritten with `git filter-branch --index-filter` to drop those two paths. Nine local commits changed hash, including `f753e05` → `fbf2146`. No published history changed: the remote tip was still `6efc962`, `git branch --contains f753e05` listed only this branch, and the tagged ancestors `v0.1.94`/`v0.1.95` kept their hashes, so the push stayed a plain fast-forward with no `--force`.
+- Integrity was verified by diffing the pre-rewrite branch against the rewritten one: apart from the two release trees the only differences were this plan document and `package.json`, both re-created afterwards. The pre-rewrite tip is retained on `backup-pre-closeout` as the undo path, and `release*/` is now ignored in commit `b30cc88`.
+- The 723 MB of build output was copied out to `C:\Users\panca\Documents\Github\memex-desktop-release-artifacts` before the rewrite, because `--index-filter` also clears the paths from the working tree, and restored from there afterwards. Nothing was deleted from disk.
+
+Acceptance ledger for this pass — implementation and verification are separate columns and must stay that way:
+
+| Item | Implemented | Automated verification | Packaged build | Installed acceptance |
+| --- | --- | --- | --- | --- |
+| C09 explorer file operations | yes | 6 DOM tests in `src/components/sidebar/FileTree.test.tsx` | **not performed** | **not performed** |
+| IPC fs delete/rename/copy, `dialog:openFiles` | yes | none directly | **not performed** | **not performed** |
+| C05 VRAM residency and load/unload | yes | 2 tests in `src/components/layout/ModelPickerPopover.test.tsx` | **not performed** | **not performed** |
+| Runtime endpoint shaping | yes | existing suite only; no new assertion pins the doubled-URL case | **not performed** | **not performed** |
+| `activityPresentation` signature | yes | `workspace-outputs.test.tsx` thought-event assertion | n/a | n/a |
+
+Validation at this checkpoint: `npm run typecheck` clean; `npm test` 37 files, 167 tests pass; `git diff --check` clean. The first run was against the working tree whose content equals committed tree `27e900f`, and the same three checks were rerun after the history rewrite, since the rewrite touched only the two release trees.
+
+Known gaps and blockers, none resolved by this pass:
+
+- Delete and the create/rename paths use `window.confirm` and native dialogs. Neither has been exercised in a packaged Electron window, where dialog ownership and focus behaviour differ from the DOM harness. C09 therefore remains open on installed acceptance, and C12/C18 keyboard-only and focus-return checks were not run against the new controls.
+- `fs:delete` removes directories recursively and returns false only when the target is absent; the firewall is the sole guard. No test covers the permission-denied branch, and no trash/undo path exists.
+- Loaded-model polling enumerates fixed LAN Ollama hosts in code rather than reading them from runtime profiles, so the reported VRAM accounting is unverified against real hardware on this machine or a second host.
+- The renderer duplicates the `/api/ps` read for non-Electron runs, so two code paths produce the residency list.
+- Release integrity (C20): `package.json` carries `0.1.107` while the newest tag is `v0.1.95`, so `0.1.96`–`0.1.104` shipped without tags. `master` is 223 commits behind this branch with zero divergence, so it remains fast-forwardable. Reconcile tags before any further release.
+
+Next action: run the C09 and C05 flows in a packaged build against a real workspace and a loaded Ollama model, record the artifact hash and executable version with the observed behaviour, then open the PR or fast-forward `master` as a separate, explicitly authorized step.
+
+## Earlier checkpoints
+
 ### Current implementation checkpoint (2026-09-13)
 
 Implemented locally in the working tree:
