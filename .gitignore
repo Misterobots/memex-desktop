@@ -2,6 +2,10 @@ node_modules/
 dist/
 dist-electron/
 release/
+# Packaged build output lands in versioned siblings too (release-0.1.43/,
+# release-0.1.44/). Those directories carried two 172 MB executables into a
+# commit and GitHub's pre-receive hook rejected the push, so they are ignored.
+release*/
 *.log
 .DS_Store
 .env
