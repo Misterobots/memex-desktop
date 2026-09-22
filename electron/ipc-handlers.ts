@@ -21,7 +21,7 @@ import {
 } from "fs";
 import { exec }      from "child_process";
 import { promisify } from "util";
-import { join, dirname } from "path";
+import { join, dirname, basename } from "path";
 import * as pty      from "node-pty";
 import type { ConfigStore }       from "./config-store";
 import type { WorkspaceFirewall } from "./workspace-firewall";
@@ -36,10 +36,13 @@ import type { ArtifactStore }          from "./artifact-store";
 import type { HooksStore }             from "./hooks-store";
 import type { PermissionStore }        from "./permission-store";
 import type { WorktreeManager }        from "./worktree-manager";
+import type { GauntletHandoffStore }   from "./gauntlet-handoff-store";
 import { fireHooks }                   from "./hooks-runner";
 import { runOpenScad, type RenderParams } from "./openscad-runner";
 import { autoWireStore }                  from "./ipc-autowire";
 import { MEMEX_PUBLIC_ORIGIN, publicSessionHeaders } from "./remote-auth";
+import { inspectLocalLlm, normalizeLocalEndpoint } from "./local-llm";
+import { discoverUnrealInstalls, validateUnrealRoot } from "./unreal-engine";
 
 const execAsync = promisify(exec);
 
@@ -101,12 +104,13 @@ export interface IpcContext {
   evals:     EvalStore;
   artifacts: ArtifactStore;
   hooks:     HooksStore;
+  gauntletHandoffs: GauntletHandoffStore;
   getMain:   () => BrowserWindow | null;
   startHealthLoop: () => void;
 }
 
 export function registerAllIpc(ctx: IpcContext): void {
-  const { config, firewall, permissions, worktrees, lsp, browser, browserPane, runs, evals, artifacts, hooks, getMain, startHealthLoop } = ctx;
+  const { config, firewall, permissions, worktrees, lsp, browser, browserPane, runs, evals, artifacts, hooks, gauntletHandoffs, getMain, startHealthLoop } = ctx;
 
   // ── Identity ──────────────────────────────────────────────────────────────
   ipcMain.handle("identity:get", () => getCurrentUid());
@@ -324,6 +328,20 @@ export function registerAllIpc(ctx: IpcContext): void {
     const r = await dialog.showOpenDialog({ properties: ["openDirectory"] });
     return r.canceled ? null : r.filePaths[0];
   });
+  ipcMain.handle("dialog:saveText", async (_e, name: string, content: string, mimeType = "text/plain") => {
+    const safeName = basename(name).replace(/[<>:"/\\|?*\x00-\x1F]/g, "_") || "memex-output.txt";
+    const options = {
+      defaultPath: safeName,
+      filters: mimeType === "text/html" ? [{ name: "HTML", extensions: ["html", "htm"] }] : [{ name: "Text", extensions: ["txt", "md"] }],
+    };
+    const mainWindow = getMain();
+    const r = mainWindow
+      ? await dialog.showSaveDialog(mainWindow, options)
+      : await dialog.showSaveDialog(options);
+    if (r.canceled || !r.filePath) return { canceled: true };
+    writeFileSync(r.filePath, content, "utf-8");
+    return { canceled: false, path: r.filePath };
+  });
   ipcMain.handle("cadPrint:getBridgeConfig", () => {
     const saved = savedCadBridgeImport();
     const envPath = saved?.envPath || process.env.MEMEX_CAD_PRINT_BRIDGE_ENV
@@ -459,6 +477,7 @@ export function registerAllIpc(ctx: IpcContext): void {
     const marker = join(dirname(process.resourcesPath), ".memex-setup-required");
     if (existsSync(marker)) unlinkSync(marker);
   });
+  ipcMain.handle("config:requireWizard", () => config.requireWizard());
   ipcMain.handle("config:setActive", (_e, id: string) => {
     const ok = config.setActive(id);
     if (ok) {
@@ -540,6 +559,60 @@ export function registerAllIpc(ctx: IpcContext): void {
     } catch {
       return null;
     }
+  });
+
+  // Gauntlet packets are intentionally local and append-only. This keeps the
+  // goal/bar/effort policy available even if the hosted coordinator changes.
+  autoWireStore("gauntlet", gauntletHandoffs, { create: "create", get: "get", forSession: "forSession", patch: "patch", accept: "accept" });
+  ipcMain.handle("gauntlet:resume", (_event, id: string, clarification: string) => gauntletHandoffs.resume(id, clarification));
+
+  // ── Local LLM setup ──────────────────────────────────────────────────────
+  ipcMain.handle("localLlm:inspect", () => inspectLocalLlm());
+  ipcMain.handle("localLlm:openOllamaDownload", async () => {
+    await shell.openExternal("https://ollama.com/download");
+  });
+  ipcMain.handle("localLlm:pullModel", async (_e, ollamaUrl: string, model: string) => {
+    try {
+      const base = normalizeLocalEndpoint(ollamaUrl);
+      if (!/^[a-zA-Z0-9._:/-]+$/.test(model)) throw new Error("Invalid model name");
+      const response = await fetch(`${base}/api/pull`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: model, stream: false }), signal: AbortSignal.timeout(30 * 60_000),
+      });
+      if (!response.ok) throw new Error((await response.text()).slice(0, 500));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : "Could not pull model" };
+    }
+  });
+  ipcMain.handle("localLlm:activate", (_e, payload: {
+    harnessUrl: string; mempalaceUrl: string; ollamaUrl: string; openWebUiUrl?: string; comfyUiUrl?: string; model: string;
+  }) => {
+    const profile = config.saveProfile({
+      id: "local-llm", name: "Local LLMs", providerType: "internal",
+      agentRuntime: normalizeLocalEndpoint(payload.harnessUrl),
+      mempalace: normalizeLocalEndpoint(payload.mempalaceUrl),
+      ollama: normalizeLocalEndpoint(payload.ollamaUrl),
+      localServices: {
+        openWebUi: payload.openWebUiUrl ? normalizeLocalEndpoint(payload.openWebUiUrl) : undefined,
+        comfyUi: payload.comfyUiUrl ? normalizeLocalEndpoint(payload.comfyUiUrl) : undefined,
+      },
+      defaultModel: payload.model,
+    });
+    config.setActive(profile.id);
+    getMain()?.webContents.send("config:changed", profile);
+    startHealthLoop();
+    return profile;
+  });
+
+  // ── Development tool setup ───────────────────────────────────────────────
+  ipcMain.handle("devTools:inspectUnreal", () => ({ configured: config.getUnrealEngine(), detected: discoverUnrealInstalls() }));
+  ipcMain.handle("devTools:configureUnreal", (_e, root: string) => {
+    const install = validateUnrealRoot(root);
+    return install ? config.setUnrealEngine(install) : null;
+  });
+  ipcMain.handle("devTools:openUnrealInstall", async () => {
+    await shell.openExternal("https://www.unrealengine.com/download");
   });
 
   // ── Eval store (pure passthrough) ─────────────────────────────────────────

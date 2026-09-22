@@ -20,6 +20,8 @@ export interface RuntimeProfile {
   ollama?:      string;
   /** Last model deliberately selected for this routing profile. */
   defaultModel?: string;
+  /** Optional local companion services configured by Local LLM setup. */
+  localServices?: { openWebUi?: string; comfyUi?: string };
   apiKey?:      string;   // plaintext in memory/IPC; encrypted only in the persisted file
   readonly?:    boolean; // seed profiles are read-only by convention (UI hint only)
 }
@@ -56,10 +58,18 @@ export interface ShortcutConfig {
   newChat:     string;  // new conversation
 }
 
+export interface UnrealEngineConfig {
+  root: string;
+  version: string;
+  editorPath: string;
+  commandPath: string;
+}
+
 export interface AppConfig {
   activeProfileId:     string;
   profiles:            RuntimeProfile[];
   allowedExtensionIds: string[]; // Chrome extension IDs for the browser bridge
+  unrealEngine?: UnrealEngineConfig;
   wizardComplete?:     boolean;
   shortcuts?:          Partial<ShortcutConfig>;
   trayHintShown?:      boolean;
@@ -102,15 +112,24 @@ const SEED_PROFILES: RuntimeProfile[] = [
     id:           "localhost",
     name:         "Localhost",
     providerType: "internal",
-    agentRuntime: "http://localhost:8008",
-    mempalace:    "http://localhost:8200",
-    ollama:       "http://localhost:11434",
+    // Lovelace's WSL/Docker port relay listens on IPv6 loopback.  An explicit
+    // address avoids Windows resolving localhost to an unusable IPv4 route.
+    agentRuntime: "http://[::1]:8008",
+    // Memory is a companion service on Hopper, not a local process.
+    mempalace:    "http://192.168.2.102:8200",
+    // The harness owns the Docker-internal Ollama route.  Keep this endpoint
+    // for advanced direct use, while health derives model availability from
+    // the harness node registry.
+    ollama:       "http://[::1]:11434",
     defaultModel: "qwen3:14b",
     readonly:     true,
   },
 ];
 
-const DEFAULT_ACTIVE = "memex-anywhere";
+// Desktop is local-first.  A hosted profile remains available, but a fresh
+// installation must not appear signed out/degraded simply because its optional
+// hosted browser session has not been established yet.
+const DEFAULT_ACTIVE = "localhost";
 
 export class ConfigStore {
   private configPath: string;
@@ -135,6 +154,15 @@ export class ConfigStore {
           if (!raw.profiles.find((p) => p.id === seed.id)) {
             raw.profiles.unshift(seed);
           }
+        }
+        // Repair the original localhost seed on existing installs. It pointed
+        // to IPv4-only loopback and a memory service that is not local on this
+        // workstation, so a working harness was displayed as three failures.
+        const localhostSeed = SEED_PROFILES.find((p) => p.id === "localhost")!;
+        const localhost = raw.profiles.find((p) => p.id === "localhost");
+        if (localhost && localhost.readonly && localhost.agentRuntime === "http://localhost:8008") {
+          Object.assign(localhost, localhostSeed);
+          this.persist(raw);
         }
         if (!hadAnywhere) {
           raw.activeProfileId = DEFAULT_ACTIVE;
@@ -226,6 +254,13 @@ export class ConfigStore {
     this.config.shortcuts = { ...this.getShortcuts(), ...sc };
     this.save();
     return this.getShortcuts();
+  }
+
+  getUnrealEngine(): UnrealEngineConfig | null { return this.config.unrealEngine ?? null; }
+  setUnrealEngine(engine: UnrealEngineConfig): UnrealEngineConfig {
+    this.config.unrealEngine = engine;
+    this.save();
+    return engine;
   }
 
   /** Convenience: URLs for the active profile (used in main.ts) */

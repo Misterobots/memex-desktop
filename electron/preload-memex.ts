@@ -82,6 +82,8 @@ contextBridge.exposeInMainWorld("memex", {
   // Dialogs
   dialog: {
     openFolder: () => ipcRenderer.invoke("dialog:openFolder"),
+    saveText: (name: string, content: string, mimeType?: string) =>
+      ipcRenderer.invoke("dialog:saveText", name, content, mimeType) as Promise<{ canceled: boolean; path?: string }>,
   },
 
   cadPrint: {
@@ -213,7 +215,7 @@ contextBridge.exposeInMainWorld("memex", {
   config: {
     ...bridgeNamespace("config", {
       getAll: "getAll", getActive: "getActive", save: "save", delete: "delete",
-      getUrls: "getUrls", getWizardDone: "getWizardDone", setWizardDone: "setWizardDone",
+      getUrls: "getUrls", getWizardDone: "getWizardDone", setWizardDone: "setWizardDone", requireWizard: "requireWizard",
     }),
     // setActive broadcasts config:changed on the main-process side (see
     // ipc-handlers.ts) — stays hand-written alongside its listener, same as
@@ -248,6 +250,21 @@ contextBridge.exposeInMainWorld("memex", {
   ollama: {
     listModels:    () => ipcRenderer.invoke("ollama:listModels"),
     contextLength: (model: string) => ipcRenderer.invoke("ollama:contextLength", model) as Promise<number | null>,
+  },
+
+  gauntlet: { ...bridgeNamespace("gauntlet", { create: "create", get: "get", forSession: "forSession", patch: "patch", accept: "accept" }), resume: (id: string, clarification: string) => ipcRenderer.invoke("gauntlet:resume", id, clarification) },
+
+  localLlm: {
+    inspect: () => ipcRenderer.invoke("localLlm:inspect"),
+    pullModel: (ollamaUrl: string, model: string) => ipcRenderer.invoke("localLlm:pullModel", ollamaUrl, model),
+    activate: (config: unknown) => ipcRenderer.invoke("localLlm:activate", config),
+    openOllamaDownload: () => ipcRenderer.invoke("localLlm:openOllamaDownload"),
+  },
+
+  devTools: {
+    inspectUnreal: () => ipcRenderer.invoke("devTools:inspectUnreal"),
+    configureUnreal: (root: string) => ipcRenderer.invoke("devTools:configureUnreal", root),
+    openUnrealInstall: () => ipcRenderer.invoke("devTools:openUnrealInstall"),
   },
 
   // Global keyboard shortcuts

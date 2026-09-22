@@ -1,12 +1,17 @@
 import { useRef, useState, useCallback, useEffect } from "react";
-import { useStore } from "../../lib/store";
+import { defaultRunPreferences, sessionScopeKey, useStore } from "../../lib/store";
 import { streamChat } from "../../lib/sse-stream";
+import { desktop, type GauntletHandoff } from "../../lib/desktop";
 import { pushSession } from "../../lib/conv-sync";
 import { MODE_FLAGS, MODE_LABELS, type ExperienceId, type MemexMode, type ChatMessage, type MessageEvent } from "../../types/memex";
 import { ModelPickerPopover } from "./ModelPickerPopover";
 import { ContextMeter } from "./ContextMeter";
+import { RunControls } from "../chat/VerbosityControl";
 
-const MODES: MemexMode[] = ["chat", "swarm", "research", "design", "think", "plan"];
+/** General conversation intentionally excludes production-only Gauntlet work. */
+export const CHAT_MODES: MemexMode[] = ["chat", "swarm", "research", "design", "think", "plan"];
+/** Code owns the Pioneer Gauntlet because its output is a reviewed project change. */
+export const CODE_MODES: MemexMode[] = ["swarm", "gauntlet"];
 
 const MODE_DOT: Record<MemexMode, string> = {
   chat:     "bg-muted",
@@ -15,11 +20,12 @@ const MODE_DOT: Record<MemexMode, string> = {
   design:   "bg-yellow",
   think:    "bg-accent2",
   plan:     "bg-yellow",
+  gauntlet: "bg-red-400",
   workshop: "bg-accent",
 };
 
 // One-line descriptions so the picker makes clear which mode does what — e.g.
-// code tasks belong in Swarm, not Research (which forces a research pipeline).
+// Code tasks belong in Collective, not Research (which forces a research pipeline).
 const MODE_DESC: Record<MemexMode, string> = {
   chat:     "General conversation & Q&A",
   swarm:    "Build & write code with agents",
@@ -27,6 +33,7 @@ const MODE_DESC: Record<MemexMode, string> = {
   design:   "Generate UI / HTML mockups",
   think:    "Extended step-by-step reasoning",
   plan:     "Plan a build before executing",
+  gauntlet: "Pioneer builders and critics iterate against a quality bar",
   workshop: "Refine an idea into a brief",
 };
 
@@ -40,6 +47,7 @@ interface InputBarProps {
   extraFlags?: Record<string, boolean>;
   /** When set, the composer is locked to this mode and the mode pill is hidden. */
   lockMode?: MemexMode;
+  lockModeLabel?: string;
   /** Placeholder override. */
   placeholder?: string;
   /** Routes messages into the owning product history, not the last app-wide chat. */
@@ -50,24 +58,32 @@ interface InputBarProps {
   disabledReason?: string;
   /** Drops example/starter text into the composer (e.g. an empty-state suggestion click). */
   prefillText?: string;
+  /** Limits the composer to modes appropriate for its owning workspace. */
+  modeOptions?: MemexMode[];
+  /** Used when the global picker selection does not belong to this workspace. */
+  defaultMode?: MemexMode;
 }
 
-export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = "chat", workspaceKey, disabledReason, prefillText }: InputBarProps) {
+export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder, experience = "chat", workspaceKey, disabledReason, prefillText, modeOptions, defaultMode }: InputBarProps) {
   const [text, setText] = useState("");
   const [modeOpen, setModeOpen] = useState(false);
+  const [gauntletBar, setGauntletBar] = useState("");
+  const [gauntletError, setGauntletError] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modeRef = useRef<HTMLDivElement>(null);
   const {
     mode: globalMode, setMode, createSession,
     addMessage, appendEvent, updateMessageContent, updateMessageRunId, setMessageUsage,
-    setStreaming, streamingSessions, stopStreams, activeSession, selectedModel,
+    setStreaming, streamingSessions, stopStreams, activeSession, selectedModel, workspaceRunPreferences,
   } = useStore();
 
-  const mode = lockMode ?? globalMode;
+  const availableModes = modeOptions ?? CHAT_MODES;
+  const mode = lockMode ?? (availableModes.includes(globalMode) ? globalMode : (defaultMode ?? availableModes[0]));
   const currentSession = activeSession(experience, workspaceKey);
   const currentSessionId = currentSession?.id;
   const streaming = currentSessionId ? !!streamingSessions[currentSessionId] : false;
   const stopStream = currentSessionId ? stopStreams[currentSessionId] : undefined;
+  const runPreferences = workspaceRunPreferences[sessionScopeKey(experience, workspaceKey)] ?? defaultRunPreferences;
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -82,6 +98,20 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
     textareaRef.current?.focus();
   }, [prefillText]);
 
+  // Native quick-entry and capability-recovery cards hand off a proposed
+  // follow-up through this event. Prefill rather than auto-send so the user
+  // reviews the action before a local tool or workspace is used.
+  useEffect(() => {
+    const receivePrefill = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      if (typeof detail !== "string" || !detail.trim()) return;
+      setText(detail);
+      textareaRef.current?.focus();
+    };
+    window.addEventListener("chat:prefill", receivePrefill);
+    return () => window.removeEventListener("chat:prefill", receivePrefill);
+  }, []);
+
   useEffect(() => {
     if (!modeOpen) return;
     const h = (e: MouseEvent) => { if (!modeRef.current?.contains(e.target as Node)) setModeOpen(false); };
@@ -89,9 +119,15 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
     return () => document.removeEventListener("mousedown", h);
   }, [modeOpen]);
 
-  const submit = useCallback(() => {
+  const submit = useCallback(async () => {
     const content = text.trim();
     if (!content || streaming || disabledReason) return;
+    // Browser/dev mode has no durable desktop checkpoint to resolve a resume
+    // request from, so it still requires the bar up front.
+    if (mode === "gauntlet" && !gauntletBar.trim() && !desktop()?.gauntlet) {
+      setGauntletError("Choose a named, fetchable reference for the quality bar before starting the Gauntlet.");
+      return;
+    }
     setText("");
 
     const session = activeSession(experience, workspaceKey);
@@ -107,12 +143,12 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
       id: assistantId, role: "assistant", content: "",
       events: [], timestamp: Date.now(), mode,
     } as ChatMessage);
-    if (experience === "code") {
-      appendEvent(sessionId, assistantId, {
-        type: "status",
-        content: "Starting Code agent…",
-      });
-    }
+    const activityLabel = experience === "code" ? "Starting Code agent…"
+      : experience === "sites" ? "Request sent — preparing the site workspace…"
+      : experience === "product_design" ? "Request sent — preparing the design workspace…"
+      : experience === "research" ? "Request sent — preparing research…"
+      : "Request sent — preparing Memex…";
+    appendEvent(sessionId, assistantId, { type: "status", content: activityLabel, receivedAt: Date.now(), data: { type: "stream_started" } });
 
     // Persist an initial turn checkpoint before the first model token. The
     // debounced/retrying sync queue coalesces subsequent stream updates, so a
@@ -125,16 +161,76 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
     history.push({ role: "user", content });
 
     let accumulated = "";
+    // Create the durable contract before streaming. The hosted runtime gets a
+    // copy, but resuming is always based on this desktop-owned record.
+    let handoffId: string | undefined;
+    let handoffPacket: GauntletHandoff | null = null;
+    const bridge = desktop();
+    if (mode === "gauntlet" && bridge?.gauntlet) {
+      const mentionedId = content.match(/Resume Gauntlet checkpoint\s+([\w-]+)/i)?.[1];
+      const continuationText = content.replace(/^\s*start\s+fresh\s*[:,-]?\s*/i, "").trim() || content;
+      const sessionPackets = await bridge.gauntlet.forSession(sessionId);
+      const startFresh = /\bstart\s+fresh\b/i.test(content);
+      const stopped = sessionPackets.find((candidate) => candidate.status === "cancelled") ?? null;
+      const previous = mentionedId
+        ? await bridge.gauntlet.get(mentionedId)
+        : startFresh ? null
+        : stopped ?? (/\bresume\b/i.test(content) ? sessionPackets.find((candidate) => candidate.status === "ready" || candidate.status === "accepted") ?? null : null);
+      if (!previous && !gauntletBar.trim()) {
+        setText(content);
+        setGauntletError("Choose a named, fetchable reference for the quality bar before starting the Gauntlet.");
+        return;
+      }
+      const created = previous?.status === "cancelled"
+        ? await bridge.gauntlet.resume(previous.id, content) ?? previous
+        : previous ?? await bridge.gauntlet.create({
+        sessionId, workspaceKey, role: "coordinator", goal: continuationText, qualityBar: gauntletBar.trim(),
+        effort: { model: selectedModel ?? "swarm", outputDetail: runPreferences.outputDetail, reasoningSummary: runPreferences.reasoningSummary, reasoningEffort: runPreferences.reasoningEffort },
+      });
+      // Coordinator ownership is bookkeeping for durable recovery, not a
+      // decision the user should have to make before their requested work can
+      // start.  Record it as soon as a new desktop checkpoint exists.
+      const packet = !previous && created.status === "ready"
+        ? await bridge.gauntlet.accept(created.id, "desktop coordinator") ?? created
+        : created;
+      handoffId = packet.id;
+      handoffPacket = packet;
+      appendEvent(sessionId, assistantId, {
+        type: "status",
+          content: previous
+            ? `Resumed Gauntlet checkpoint ${packet.id.slice(0, 8)} — your added context is attached to the preserved original goal, quality bar, and effort policy.`
+            : `Gauntlet checkpoint ${packet.id.slice(0, 8)} saved — coordinator ownership, goal, quality bar, and effort policy are preserved locally.`,
+        receivedAt: Date.now(), data: { type: "gauntlet_checkpoint", handoffId: packet.id },
+      });
+      syncSession();
+    }
     const stop = streamChat({
       messages: history,
       mode,
       model: selectedModel,
-      modeFlags: { ...MODE_FLAGS[mode], ...extraFlags },
+      style: runPreferences.outputDetail === "low" ? "concise" : runPreferences.outputDetail === "high" ? "explanatory" : undefined,
+      gauntletBar: handoffPacket?.qualityBar ?? (mode === "gauntlet" ? gauntletBar.trim() : undefined),
+      gauntletHandoff: mode === "gauntlet" && handoffId ? {
+        id: handoffId, role: "coordinator", phase: "scope",
+        goal: handoffPacket?.goal ?? content,
+        qualityBar: handoffPacket?.qualityBar ?? gauntletBar.trim(),
+          effort: {
+          model: handoffPacket?.effort.model ?? selectedModel ?? "swarm",
+          outputDetail: handoffPacket?.effort.outputDetail ?? runPreferences.outputDetail,
+          reasoningSummary: handoffPacket?.effort.reasoningSummary ?? runPreferences.reasoningSummary,
+          reasoningEffort: handoffPacket?.effort.reasoningEffort ?? runPreferences.reasoningEffort,
+          },
+          clarifications: handoffPacket?.clarifications ?? [],
+      } : undefined,
+      modeFlags: { ...MODE_FLAGS[mode], ...extraFlags, ...(runPreferences.reasoningEffort === "high" ? { ultrathink_mode: true } : {}) },
       sessionId,
       workspaceKey,
       runMeta: { profile: "default" },
       onRunStarted: (runId) => {
         updateMessageRunId(sessionId, assistantId, runId);
+        if (handoffId && bridge?.gauntlet) {
+          void bridge.gauntlet.patch(handoffId, { runId, phase: "scope", nextAction: "Coordinator is preparing the first builder handoff against the preserved quality bar." });
+        }
         syncSession();
       },
       onUsage: (usage) => {
@@ -142,7 +238,7 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
         syncSession();
       },
       onEvent: (event) => {
-        appendEvent(sessionId, assistantId, event as MessageEvent);
+        appendEvent(sessionId, assistantId, { ...event, receivedAt: Date.now() } as MessageEvent);
         if (event.type === "message" || event.type === "response") {
           accumulated += event.content;
           updateMessageContent(sessionId, assistantId, accumulated);
@@ -150,17 +246,42 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
         syncSession();
       },
       onDone: () => {
+        appendEvent(sessionId, assistantId, { type: "status", content: "Response stream ended.", receivedAt: Date.now(), data: { type: "stream_complete" } });
         setStreaming(sessionId, false);
+        if (handoffId && bridge?.gauntlet) {
+          const producedAnswer = accumulated.trim().length > 0;
+          const needsCoordinatorInput = useStore.getState().activeSession(experience, workspaceKey)?.messages
+            .find((message) => message.id === assistantId)?.events
+            .some((event) => event.type === "clarification_card");
+          void bridge.gauntlet.patch(handoffId, needsCoordinatorInput ? {
+            status: "needs_input", phase: "scope",
+            pending: ["Answer the coordinator's project-routing question", "Continue with the same quality bar and effort policy"],
+            nextAction: "The coordinator needs a project decision. Answer its card; the original Gauntlet contract will be retained.",
+          } : producedAnswer ? {
+            // A finished SSE transport is not proof that the remote critic or
+            // verification loop completed. Keep the durable run active and
+            // let the automatic coordinator reconciliation report the actual
+            // phase/completion state.
+            nextAction: "Response stream ended; refreshing the durable coordinator state automatically.",
+          } : {
+            nextAction: "No response arrived on this transport; checking the durable coordinator state automatically before treating the run as blocked.",
+          });
+        }
         syncSession();
       },
       onError: (err) => {
         appendEvent(sessionId, assistantId, { type: "log", content: `Error: ${err.message}` });
         setStreaming(sessionId, false);
+        if (handoffId && bridge?.gauntlet) {
+          void bridge.gauntlet.patch(handoffId, {
+            nextAction: "The connection ended unexpectedly; refreshing durable coordinator status automatically before any resume is offered.",
+          });
+        }
         syncSession();
       },
     });
     setStreaming(sessionId, true, stop);
-  }, [text, streaming, disabledReason, mode, experience, workspaceKey, extraFlags]);
+  }, [text, streaming, disabledReason, mode, experience, workspaceKey, extraFlags, runPreferences, gauntletBar]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Enter sends; Shift+Enter inserts a newline. Skip while an IME composition
@@ -172,6 +293,8 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
     if (e.key === "Escape" && streaming && stopStream) {
       stopStream();
       if (currentSessionId) {
+        const message = useStore.getState().activeSession(experience, workspaceKey)?.messages.at(-1);
+        if (message) appendEvent(currentSessionId, message.id, { type: "status", content: "Stopped by you.", data: { type: "cancelled" } });
         setStreaming(currentSessionId, false);
         syncSessionById(currentSessionId);
       }
@@ -182,6 +305,10 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
     <div className="px-6 pb-5 pt-2 flex-shrink-0">
       <div className="max-w-conversation mx-auto">
         <div className="bg-surface border border-border rounded-2xl px-3 pt-3 pb-2 focus-within:border-accent/50 transition-colors shadow-lg shadow-black/10">
+          {mode === "gauntlet" && <label className="mb-2 block px-2 text-xs text-muted">Quality bar
+            <input aria-label="Gauntlet quality bar" value={gauntletBar} onChange={(event) => { setGauntletBar(event.target.value); setGauntletError(""); }} placeholder="A named, fetchable reference — URL, product, repo, or publication" className="mt-1 w-full rounded-md border border-border/60 bg-canvas px-2 py-1.5 text-xs text-text placeholder-faint focus:outline-none focus:border-accent" />
+            {gauntletError && <span role="alert" className="mt-1 block text-xs text-yellow">{gauntletError}</span>}
+          </label>}
           <textarea
             ref={textareaRef}
             value={text}
@@ -198,7 +325,7 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
               {lockMode ? (
                 <span className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted">
                   <span className={`w-1.5 h-1.5 rounded-full ${MODE_DOT[mode]}`} />
-                  {MODE_LABELS[mode]}
+                  {lockModeLabel ?? MODE_LABELS[mode]}
                 </span>
               ) : (
                 <div ref={modeRef} className="relative">
@@ -216,7 +343,7 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
                   </button>
                   {modeOpen && (
                     <div className="absolute bottom-full mb-2 left-0 w-60 bg-canvas border border-border/60 rounded-xl shadow-2xl z-50 overflow-hidden py-1">
-                      {MODES.map((m) => (
+                      {availableModes.map((m) => (
                         <button
                           key={m}
                           onClick={() => { setMode(m); setModeOpen(false); }}
@@ -242,6 +369,7 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
                 </div>
               )}
               <ModelPickerPopover />
+              <RunControls experience={experience} workspaceKey={workspaceKey} />
               <ContextMeter />
             </div>
 
@@ -249,6 +377,8 @@ export function InputBar({ extraFlags = {}, lockMode, placeholder, experience = 
               onClick={streaming ? () => {
                 stopStream?.();
                 if (currentSessionId) {
+                  const message = useStore.getState().activeSession(experience, workspaceKey)?.messages.at(-1);
+                  if (message) appendEvent(currentSessionId, message.id, { type: "status", content: "Stopped by you.", data: { type: "cancelled" } });
                   setStreaming(currentSessionId, false);
                   syncSessionById(currentSessionId);
                 }

@@ -32,7 +32,7 @@ export function runEventTypeForSSE(event: SSEEvent): RunEventType {
   if (rawType === "memory_read") return "memory_read";
   if (rawType === "memory_write") return "memory_write";
   if (rawType === "file_change") return "file_write";
-  if (rawType === "error" || event.type === "log") return "error";
+  if (rawType === "error" || /^Error:/.test(event.content)) return "error";
   if (event.type === "message" || event.type === "response" || event.type === "thought") return "message_chunk";
   return "status";
 }
@@ -41,6 +41,12 @@ export interface StreamOptions {
   messages: Array<{ role: string; content: string }>;
   mode: MemexMode;
   modeFlags: Record<string, boolean>;
+  /** Backend-supported output shaping: concise, default, or explanatory. */
+  style?: "concise" | "explanatory";
+  /** Required quality reference for a Gauntlet Collective run. */
+  gauntletBar?: string;
+  /** Desktop-owned continuation contract; the runtime may use it but does not own it. */
+  gauntletHandoff?: { id: string; role: string; phase: string; goal: string; qualityBar: string; effort: Record<string, string>; clarifications?: string[] };
   /** Ollama model id to route to (e.g. "qwen3-coder:30b"). Defaults to "swarm". */
   model?: string;
   sessionId?: string;
@@ -64,15 +70,35 @@ export interface StreamOptions {
 export function normalizeSSEDelta(delta: Record<string, unknown>): SSEEvent | null {
   const rawType = typeof delta.type === "string" ? delta.type : "message";
   const typeMap: Record<string, EventType> = {
+    design_artifact: "artifact", media_attachment: "artifact", artifact: "artifact",
     content: "message", error: "log", tool_start: "tool_call_start",
     tool_approval_needed: "status", tool_result: "tool_call_result",
     file_change: "agent_event", todo: "status", approval_requested: "status",
     approval_granted: "status", approval_denied: "status", continuation: "status",
   };
   const knownTypes: EventType[] = ["message", "status", "thought", "response", "log", "agent_event", "clarification_card", "tool_call_start", "tool_call_result"];
-  const eventType = typeMap[rawType] ?? (knownTypes.includes(rawType as EventType) ? rawType as EventType : "log");
+  const isActivitySignal = rawType === "turn_metadata" || rawType === "stream_mode" || rawType === "model_queue_status";
+  const eventType = typeMap[rawType] ?? (knownTypes.includes(rawType as EventType)
+    ? rawType as EventType : isActivitySignal ? "status" : "log");
   const rawContent = delta.content;
-  const content = typeof rawContent === "string" ? rawContent : rawType === "todo" ? "Updated task plan." : rawType === "file_change" ? "Proposed file changes." : JSON.stringify(rawContent ?? {});
+  const turnMetadata = delta.turnMetadata as Record<string, unknown> | undefined;
+  const name = typeof delta.tool_name === "string" ? delta.tool_name : typeof delta.name === "string" ? delta.name : "Command";
+  const worker = typeof delta.pioneer_name === "string" ? delta.pioneer_name : typeof delta.agent_name === "string" ? delta.agent_name : typeof delta.role === "string" ? delta.role : "Worker";
+  const task = typeof delta.task === "string" ? delta.task : typeof delta.phase_name === "string" ? delta.phase_name : undefined;
+  const verdict = typeof delta.verdict === "string" ? delta.verdict : typeof delta.status === "string" ? delta.status : undefined;
+  const content = typeof rawContent === "string" ? rawContent
+    : rawType === "turn_metadata" ? `${String(turnMetadata?.agentName ?? "Memex")} started this turn.`
+    : rawType === "stream_mode" ? `Stream mode: ${String(delta.streamMode ?? "working")}.`
+    : rawType === "model_queue_status" ? "Model queue status received."
+    : rawType === "tool_start" ? `${name} started.`
+    : rawType === "tool_result" ? `${name} completed.`
+    : rawType === "todo" ? typeof delta.summary === "string" ? delta.summary : "Updated task plan."
+    : rawType === "file_change" ? typeof delta.path === "string" ? `Changed ${delta.path}.` : "Changed project files."
+    : rawType === "swarm_worker_created" ? `${worker} started${task ? `: ${task}` : "."}`
+    : rawType === "swarm_task_list" ? "Coordinator updated the worker plan."
+    : rawType === "swarm_phase" ? `Phase ${String(delta.phase ?? "")}${task ? `: ${task}` : " updated"}.`
+    : rawType === "gauntlet_critic_verdict" ? `Quality review${verdict ? `: ${verdict}` : " completed"}.`
+    : isActivitySignal ? `Runtime event: ${rawType}.` : JSON.stringify(rawContent ?? {});
   return {
     type: eventType,
     content,
@@ -131,6 +157,9 @@ export function streamChat(opts: StreamOptions): () => void {
     already_steered: opts.alreadySteered ?? false,
     dev_resume: opts.devResume ?? false,
     workspace_key: opts.workspaceKey ?? opts.sessionId ?? "default-workspace",
+    ...(opts.style ? { style: opts.style } : {}),
+    ...(opts.gauntletBar ? { gauntlet_bar: opts.gauntletBar } : {}),
+    ...(opts.gauntletHandoff ? { gauntlet_handoff: opts.gauntletHandoff } : {}),
     ...opts.modeFlags,
   });
 
@@ -259,7 +288,30 @@ export function streamChat(opts: StreamOptions): () => void {
         opts.onError(new Error(String(event.value ?? "Stream failed")));
       }
     });
-    return () => { cancel(); if (runId) bridge.runs?.end(runId, "cancelled"); };
+    return () => {
+      cancel();
+      if (runId) bridge.runs?.end(runId, "cancelled");
+      // Stopping a visible Gauntlet must stop its durable coordinator too.
+      // Aborting only the renderer's SSE reader left GPU workers running and
+      // turned a deliberate stop into a confusing later reconnect.
+      if (opts.gauntletHandoff?.id) {
+        const checkpoint = opts.gauntletHandoff.id;
+        void bridge.api.request({
+          url: `${getAgentRuntime()}/v1/tasks/${encodeURIComponent(checkpoint)}/stop`,
+          method: "POST",
+        }).then((response) => {
+          if (response.status >= 200 && response.status < 300) {
+            void bridge.gauntlet?.patch(checkpoint, {
+              status: "cancelled",
+              nextAction: "Stopped by you. The preserved goal and quality bar remain available for an explicit future restart.",
+            });
+          }
+        }).catch(() => {
+          // Keep the packet active on a failed stop request so its automatic
+          // status refresh can still reveal a coordinator that is running.
+        });
+      }
+    };
   }
 
   fetch(`${getAgentRuntime()}/v1/chat/completions`, {

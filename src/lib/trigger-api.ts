@@ -1,5 +1,5 @@
 /**
- * Scheduled Tasks API client — talks to Agent_Swarm's trigger scheduler
+ * Scheduled Tasks API client — talks to the Memex runtime trigger scheduler
  * (agents/trigger_scheduler.py) via agents/main.py's /api/v1/trigger/* routes.
  * Same-origin proxy in web mode (getAgentRuntime() === ""), active profile URL
  * in Electron — same pattern as tasks-api.ts.

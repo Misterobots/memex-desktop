@@ -2,6 +2,20 @@ import type { SkillEntry } from "../types/memex";
 
 export type SkillScope = "project" | "user";
 
+export type SkillScanRoot = { path: string; scope: SkillScope };
+
+/** Supported local conventions for Claude and Codex skills. */
+export function skillScanRoots(cwd: string, home: string): SkillScanRoot[] {
+  return [
+    { path: `${cwd}/.claude/skills`, scope: "project" },
+    { path: `${cwd}/.claude`, scope: "project" },
+    { path: `${cwd}/.codex/skills`, scope: "project" },
+    { path: `${home}/.claude/skills`, scope: "user" },
+    { path: `${home}/.claude`, scope: "user" },
+    { path: `${home}/.codex/skills`, scope: "user" },
+  ];
+}
+
 export function parseSkillFrontmatter(md: string): { name?: string; version?: string; description?: string } {
   const match = md.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
   if (!match) return {};

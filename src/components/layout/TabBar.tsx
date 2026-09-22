@@ -1,6 +1,9 @@
+import { useEffect, useRef, useState } from "react";
 import { useStore } from "../../lib/store";
 import { isDesktop } from "../../lib/desktop";
 import type { AppTab } from "../../types/memex";
+import { getMyPermissions, type FeatureKey } from "../../lib/user-permissions";
+import { SessionList } from "../sidebar/SessionList";
 
 // Tabs requiring the Electron native bridge (local terminal/editor/FS, local
 // run store) — hidden when running as a web app.
@@ -10,11 +13,16 @@ interface TabDef {
   id: AppTab;
   label: string;
   icon: JSX.Element;
+  feature?: FeatureKey;
 }
+
+const CHAT_TABS: AppTab[] = ["chat", "research", "goals", "art", "design"];
+const CODE_TABS: AppTab[] = ["dev", "skills", "goals", "eval", "pulls", "design"];
 
 const TABS: TabDef[] = [
   {
     id: "chat",
+    feature: "chat",
     label: "Chat",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -24,6 +32,7 @@ const TABS: TabDef[] = [
   },
   {
     id: "dev",
+    feature: "code",
     label: "Code",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -33,6 +42,7 @@ const TABS: TabDef[] = [
   },
   {
     id: "research",
+    feature: "research",
     label: "Research",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -43,6 +53,7 @@ const TABS: TabDef[] = [
   },
   {
     id: "goals",
+    feature: "routines",
     label: "Routines",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -54,6 +65,7 @@ const TABS: TabDef[] = [
   },
   {
     id: "design",
+    feature: "design",
     label: "Design",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -65,6 +77,7 @@ const TABS: TabDef[] = [
   },
   {
     id: "art",
+    feature: "art",
     label: "Art",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -76,6 +89,7 @@ const TABS: TabDef[] = [
   },
   {
     id: "memory",
+    feature: "memory",
     label: "Memory",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -87,10 +101,43 @@ const TABS: TabDef[] = [
   },
   {
     id: "eval",
+    feature: "eval",
     label: "Eval",
     icon: (
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
         <path d="M2 2h4v4H2zM10 2h4v4h-4zM2 10h4v4H2zM10 10h4v4h-4z" />
+      </svg>
+    ),
+  },
+  {
+    id: "sites",
+    feature: "design",
+    label: "Sites",
+    icon: (<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="2" y="2.5" width="12" height="11" rx="1.5" /><path d="M2.5 6h11M5 4.25h.01M7 4.25h.01M9 4.25h.01M5 9h6M5 11h3" /></svg>),
+  },
+  {
+    id: "skills",
+    label: "Skills",
+    icon: (<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 2.5h7.5a2 2 0 012 2V13l-3-1.5L6.5 13V4.5a2 2 0 00-2-2z" /><path d="M10 6h3M11.5 4.5v3" /></svg>),
+  },
+  {
+    id: "schedules",
+    feature: "routines",
+    label: "Scheduled",
+    icon: (<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="5.5" /><path d="M8 4.5V8l2.5 1.5" /></svg>),
+  },
+  {
+    id: "pulls",
+    feature: "code",
+    label: "Pull requests",
+    icon: (<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="4" cy="3.5" r="1.5" /><circle cx="12" cy="12.5" r="1.5" /><path d="M4 5v5a2.5 2.5 0 002.5 2.5H10M4 5l4 3M8 8h3" /></svg>),
+  },
+  {
+    id: "admin",
+    label: "Admin",
+    icon: (
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <circle cx="8" cy="5" r="2.5" /><path d="M3 14c.4-3 2-4.5 5-4.5s4.6 1.5 5 4.5M12.5 2.5l1 1 1.5-1.5" />
       </svg>
     ),
   },
@@ -107,29 +154,90 @@ const TABS: TabDef[] = [
 ];
 
 export function TabBar() {
-  const { activeTab, setActiveTab } = useStore();
+  const { activeTab, setActiveTab, shellMode, setShellMode, sidebarOpen } = useStore();
+  const [features, setFeatures] = useState<Partial<Record<FeatureKey, boolean>> | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
+  const tabButtons = useRef<Partial<Record<AppTab, HTMLButtonElement | null>>>({});
+  useEffect(() => {
+    let alive = true;
+    getMyPermissions().then((policy) => { if (alive) { setFeatures(policy.features); setIsAdmin(Boolean(policy.is_admin)); } }).catch(() => { if (alive) setFeatures(null); });
+    return () => { alive = false; };
+  }, []);
   const web = !isDesktop();
-  const tabs = web ? TABS.filter((t) => !DESKTOP_ONLY.includes(t.id)) : TABS;
+  const visibleTabs = shellMode === "chat" ? CHAT_TABS : CODE_TABS;
+  const tabs = TABS.filter((tab) =>
+    visibleTabs.includes(tab.id) &&
+    !(web && DESKTOP_ONLY.includes(tab.id)) &&
+    (tab.id !== "admin" || isAdmin) &&
+    (!tab.feature || features?.[tab.feature] !== false));
+
+  useEffect(() => {
+    // Sites deliberately has no top-level tab: it is a Design subspace.
+    // Treat it as valid whenever Design is available rather than redirecting
+    // the user to the shell default after choosing it.
+    // Settings is intentionally reached through the persistent account control,
+    // not the focused workspace navigation. It remains a valid destination in
+    // either shell; otherwise this guard immediately redirects a Settings click
+    // back to Chat/Code and makes the view appear to flash.
+    const activeIsVisible = activeTab === "settings" || tabs.some((tab) => tab.id === activeTab || (activeTab === "sites" && tab.id === "design"));
+    if (features && !activeIsVisible) setActiveTab(shellMode === "code" ? "dev" : "chat");
+  }, [activeTab, features, shellMode, setActiveTab]);
+
+  useEffect(() => {
+    tabButtons.current[activeTab]?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activeTab]);
+
+  if (!sidebarOpen) return null;
 
   return (
-    <div className="flex items-center gap-1 px-2 sm:px-3 h-12 bg-canvas border-b border-border/60 flex-shrink-0 overflow-x-auto no-scrollbar">
-      {tabs.map((tab) => {
-        const active = activeTab === tab.id;
-        return (
-          <button
+    <aside className="relative flex w-[248px] flex-shrink-0 flex-col border-r border-border/60 bg-surface">
+      <div className="relative border-b border-border/60 p-3">
+        <button
+          aria-expanded={workspaceMenuOpen}
+          aria-haspopup="menu"
+          onClick={() => setWorkspaceMenuOpen((open) => !open)}
+          className="flex w-full items-center justify-between rounded-md px-1 py-1 text-left text-sm font-semibold text-text hover:bg-surface2"
+        >
+          <span>Memex {shellMode === "chat" ? "Chat" : "Code"}</span><span className="text-faint">⌄</span>
+        </button>
+        {workspaceMenuOpen && <div role="menu" className="absolute left-3 top-11 z-50 w-[220px] rounded-lg border border-border bg-canvas p-1 shadow-xl">
+          {(["chat", "code"] as const).map((mode) => <button
+            key={mode}
+            role="menuitemradio"
+            aria-checked={shellMode === mode}
+            onClick={() => { setShellMode(mode); setWorkspaceMenuOpen(false); }}
+            className={`flex w-full flex-col rounded-md px-3 py-2.5 text-left text-xs ${shellMode === mode ? "bg-surface2 text-text" : "text-muted hover:bg-surface2 hover:text-text"}`}
+          >
+            <span className="font-medium">Memex {mode === "chat" ? "Chat" : "Code"}</span>
+            <span className="mt-0.5 text-[11px] text-faint">{mode === "chat" ? "Chat, Research, Routines, Art" : "Code, Skills, Routines, Eval"}</span>
+          </button>)}
+        </div>}
+      </div>
+
+      <nav aria-label="Workspace navigation" className="space-y-0.5 px-2 py-3">
+        {tabs.map((tab) => {
+          const active = activeTab === tab.id || (tab.id === "design" && activeTab === "sites");
+          return <button
             key={tab.id}
+            ref={(element) => { tabButtons.current[tab.id] = element; }}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-3 sm:px-3.5 py-1.5 rounded-lg text-sm transition-colors flex-shrink-0 whitespace-nowrap ${
-              active
-                ? "bg-surface2 text-text"
-                : "text-muted hover:text-text hover:bg-surface/60"
+            aria-label={tab.label}
+            className={`flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors ${
+              active ? "bg-surface2 text-text" : "text-muted hover:bg-surface2 hover:text-text"
             }`}
           >
-            <span className={active ? "text-accent" : ""}>{tab.icon}</span>
-            <span className={active ? "" : "hidden sm:inline"}>{tab.label}</span>
-          </button>
-        );
-      })}
-    </div>
+            <span className={active ? "text-accent" : "text-faint"}>{tab.icon}</span><span>{tab.label}</span>
+          </button>;
+        })}
+      </nav>
+
+      {shellMode === "chat" && <div className="min-h-0 flex-1 overflow-y-auto border-t border-border/60">
+        <SessionList />
+      </div>}
+      {shellMode === "code" && <div className="mt-auto border-t border-border/60 px-4 py-3 text-xs leading-relaxed text-faint">
+        Open a project in Code to access its files, terminal, tasks, and agent threads.
+      </div>}
+    </aside>
   );
 }

@@ -97,6 +97,34 @@ export interface OllamaModel {
   modifiedAt:    string;
 }
 
+export interface LocalLlmInspection {
+  systemRamGb: number;
+  gpus: Array<{ name: string; vramGb: number }>;
+  ollama: { url: string; reachable: boolean; models: string[] };
+  openWebUi: { url: string; reachable: boolean };
+  comfyUi: { url: string; reachable: boolean };
+  harness: { url: string; reachable: boolean };
+  recommendations: Array<{ model: string; label: string; reason: string }>;
+}
+
+export interface UnrealEngineInstall {
+  root: string;
+  version: string;
+  editorPath: string;
+  commandPath: string;
+}
+
+export type GauntletRole = "coordinator" | "builder" | "critic";
+export type GauntletPhase = "scope" | "build" | "critic" | "compare" | "repair" | "verify" | "final_review";
+export type GauntletHandoffStatus = "ready" | "accepted" | "needs_input" | "completed" | "blocked" | "cancelled";
+export interface GauntletHandoff {
+  id: string; version: 1; createdAt: string; updatedAt: string; sessionId: string; workspaceKey?: string; runId?: string; parentId?: string;
+  role: GauntletRole; phase: GauntletPhase; status: GauntletHandoffStatus;
+  goal: string; qualityBar: string;
+  effort: { model: string; outputDetail: "low" | "medium" | "high"; reasoningSummary: "auto" | "concise" | "detailed" | "none"; reasoningEffort: "low" | "medium" | "high" };
+  owner?: string; acceptedAt?: string; completed: string[]; pending: string[]; deficits: string[]; nextAction: string; clarifications: string[];
+}
+
 // Fallback constants used when not running inside Electron (e.g. browser dev).
 // In Electron, the active RuntimeProfile's URLs are used instead via config.getUrls().
 export const AGENT_RUNTIME_DEFAULT = "http://192.168.2.101:8008";
@@ -117,6 +145,7 @@ export interface RuntimeProfile {
   ollama?:      string;
   /** Last model deliberately selected for this routing profile. */
   defaultModel?: string;
+  localServices?: { openWebUi?: string; comfyUi?: string };
   apiKey?:      string; // only present when providerType === "external"
   readonly?:    boolean;
 }
@@ -159,7 +188,10 @@ export interface MemexBridge {
     openExternal: (url: string) => Promise<void>;
   };
 
-  dialog: { openFolder: () => Promise<string | null> };
+  dialog: {
+    openFolder: () => Promise<string | null>;
+    saveText: (name: string, content: string, mimeType?: string) => Promise<{ canceled: boolean; path?: string }>;
+  };
 
   cadPrint: {
     getBridgeConfig: () => Promise<{ configured: boolean; envPath: string; url: string; importedAt: string | null }>;
@@ -262,6 +294,7 @@ export interface MemexBridge {
     getUrls:       () => Promise<{ agentRuntime: string; mempalace: string; ollama: string }>;
     getWizardDone: () => Promise<boolean>;
     setWizardDone: () => Promise<void>;
+    requireWizard: () => Promise<void>;
     onChange:      (cb: (profile: RuntimeProfile) => void) => () => void;
   };
 
@@ -285,6 +318,28 @@ export interface MemexBridge {
     contextLength: (model: string) => Promise<number | null>;
   };
 
+  gauntlet: {
+    create: (input: Omit<GauntletHandoff, "id" | "version" | "createdAt" | "updatedAt" | "status" | "completed" | "pending" | "deficits" | "phase" | "nextAction" | "clarifications"> & Partial<Pick<GauntletHandoff, "status" | "completed" | "pending" | "deficits" | "phase" | "nextAction">>) => Promise<GauntletHandoff>;
+    get: (id: string) => Promise<GauntletHandoff | null>;
+    forSession: (sessionId: string) => Promise<GauntletHandoff[]>;
+    patch: (id: string, patch: Partial<GauntletHandoff>) => Promise<GauntletHandoff | null>;
+    accept: (id: string, owner: string) => Promise<GauntletHandoff | null>;
+    resume: (id: string, clarification: string) => Promise<GauntletHandoff | null>;
+  };
+
+  localLlm: {
+    inspect: () => Promise<LocalLlmInspection>;
+    pullModel: (ollamaUrl: string, model: string) => Promise<{ ok: boolean; error?: string }>;
+    activate: (config: { harnessUrl: string; mempalaceUrl: string; ollamaUrl: string; openWebUiUrl?: string; comfyUiUrl?: string; model: string }) => Promise<RuntimeProfile>;
+    openOllamaDownload: () => Promise<void>;
+  };
+
+  devTools: {
+    inspectUnreal: () => Promise<{ configured: UnrealEngineInstall | null; detected: UnrealEngineInstall[] }>;
+    configureUnreal: (root: string) => Promise<UnrealEngineInstall | null>;
+    openUnrealInstall: () => Promise<void>;
+  };
+
   shortcuts: {
     get: () => Promise<ShortcutConfig>;
     set: (sc: Partial<ShortcutConfig>) => Promise<ShortcutConfig>;
@@ -295,7 +350,7 @@ export interface MemexBridge {
     saveCase:     (c: Partial<EvalCase>)                => Promise<EvalCase>;
     deleteCase:   (id: string)                          => Promise<void>;
     getResults:   (caseId?: string)                     => Promise<EvalResult[]>;
-    startResult:  (caseId: string, runId?: string)      => Promise<EvalResult>;
+    startResult:  (caseId: string, runId?: string, model?: string) => Promise<EvalResult>;
     updateResult: (id: string, patch: Partial<EvalResult>) => Promise<EvalResult | null>;
   };
 

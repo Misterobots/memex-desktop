@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { desktop }  from "../../lib/desktop";
 import type { SkillEntry } from "../../types/memex";
-import { mergeSkillsByPrecedence, parseSkillFrontmatter } from "../../lib/skills";
+import { mergeSkillsByPrecedence, parseSkillFrontmatter, skillScanRoots } from "../../lib/skills";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -11,12 +11,7 @@ import { mergeSkillsByPrecedence, parseSkillFrontmatter } from "../../lib/skills
 // ---------------------------------------------------------------------------
 async function scanSkills(bridge: NonNullable<ReturnType<typeof desktop>>): Promise<SkillEntry[]> {
   const [cwd, home] = await Promise.all([bridge.cwd(), bridge.path("home")]);
-  const roots: Array<{ path: string; scope: "project" | "user" }> = [
-    { path: `${cwd}/.claude/skills`, scope: "project" },
-    { path: `${cwd}/.claude`, scope: "project" },
-    { path: `${home}/.claude/skills`, scope: "user" },
-    { path: `${home}/.claude`, scope: "user" },
-  ];
+  const roots = skillScanRoots(cwd, home);
   const found: SkillEntry[] = [];
 
   for (const root of roots.sort((a, b) => a.scope.localeCompare(b.scope) || a.path.localeCompare(b.path))) {
@@ -112,7 +107,7 @@ export function SkillRegistry() {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted">
-          Project skills in <code className="font-mono">.claude/</code> override user skills in <code className="font-mono">~/.claude/</code>.
+          Project skills in <code className="font-mono">.claude/</code> or <code className="font-mono">.codex/</code> override user-level skills.
         </p>
         <div className="flex gap-2">
           <button onClick={load}

@@ -58,7 +58,7 @@ export function normalizeCadBridgeToken(value: string): string {
 
 export function loadCadBridgeConfig(): CadBridgeConfig {
   // Runtime can proxy this in the future. Until then, a local bridge is the
-  // safest default; no ambient credentials are sent to Agent_Swarm.
+  // safest default; no ambient credentials are sent to the Memex runtime.
   return {
     url: localStorage.getItem("memex.cadPrintBridgeUrl") || "http://127.0.0.1:8790",
     token: localStorage.getItem("memex.cadPrintBridgeToken") || "",

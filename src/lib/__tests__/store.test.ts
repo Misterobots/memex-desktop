@@ -2,11 +2,31 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { useStore } from "../store";
 
 describe("experience-owned sessions", () => {
+  it("applies workspace verbosity before a thread exists and isolates Code projects", () => {
+    useStore.getState().setWorkspaceDisplayMode("sites", undefined, "thought");
+    useStore.getState().setWorkspaceDisplayMode("code", "C:/alpha", "summary");
+    useStore.getState().createSession("sites");
+    useStore.getState().createSession("code", "C:/alpha");
+    useStore.getState().createSession("code", "C:/beta");
+    expect(useStore.getState().activeSession("sites")?.displayMode).toBe("thought");
+    expect(useStore.getState().activeSession("code", "C:/alpha")?.displayMode).toBe("summary");
+    expect(useStore.getState().activeSession("code", "C:/beta")?.displayMode).toBe("normal");
+  });
+  it("keeps run controls independent for each workspace", () => {
+    useStore.getState().setWorkspaceRunPreferences("research", undefined, { outputDetail: "high", reasoningSummary: "detailed" });
+    useStore.getState().setWorkspaceRunPreferences("code", "C:/alpha", { reasoningEffort: "high" });
+    expect(useStore.getState().workspaceRunPreferences.research).toMatchObject({ outputDetail: "high", reasoningSummary: "detailed", reasoningEffort: "medium" });
+    expect(useStore.getState().workspaceRunPreferences["code:C:/alpha"]).toMatchObject({ outputDetail: "medium", reasoningSummary: "auto", reasoningEffort: "high" });
+  });
   beforeEach(() => {
     useStore.setState({
       sessions: [],
       activeSessionIds: {},
+      workspaceDisplayModes: {},
+      workspaceRunPreferences: {},
       activeTab: "chat",
+      shellMode: "chat",
+      designSurface: "product",
       cwd: "",
       streamingSessions: {},
       stopStreams: {},
@@ -61,6 +81,31 @@ describe("experience-owned sessions", () => {
     useStore.getState().setActiveTab("memory");
 
     expect(useStore.getState().activeSession()).toBeNull();
+  });
+
+  it("switches between focused shells while preserving shared Design and Routines destinations", () => {
+    useStore.getState().setActiveTab("design");
+    useStore.getState().setShellMode("code");
+    expect(useStore.getState()).toMatchObject({ shellMode: "code", activeTab: "design" });
+
+    useStore.getState().setActiveTab("research");
+    useStore.getState().setShellMode("code");
+    expect(useStore.getState()).toMatchObject({ shellMode: "code", activeTab: "dev" });
+
+    useStore.getState().setActiveTab("goals");
+    useStore.getState().setShellMode("chat");
+    expect(useStore.getState()).toMatchObject({ shellMode: "chat", activeTab: "goals" });
+
+    useStore.getState().setActiveTab("sites");
+    useStore.getState().setShellMode("code");
+    expect(useStore.getState()).toMatchObject({ shellMode: "code", activeTab: "design", designSurface: "sites" });
+  });
+
+  it("keeps Settings open across shell changes", () => {
+    useStore.getState().setActiveTab("settings");
+    useStore.getState().setShellMode("code");
+
+    expect(useStore.getState()).toMatchObject({ shellMode: "code", activeTab: "settings" });
   });
 
   it("titles a new thread from its first user prompt", () => {

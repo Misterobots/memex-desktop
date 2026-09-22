@@ -3,6 +3,7 @@ import { useStore } from "../../lib/store";
 import { ConversationPane } from "../chat/ConversationPane";
 import { InputBar } from "../layout/InputBar";
 import { SessionList } from "../sidebar/SessionList";
+import { WorkspaceSidebar } from "../sidebar/WorkspaceSidebar";
 
 export function ResearchView() {
   const { activeSession } = useStore();
@@ -12,9 +13,9 @@ export function ResearchView() {
 
   return (
     <div className="flex flex-1 min-h-0">
-      <aside className="w-[260px] flex-shrink-0 border-r border-border/60 bg-surface overflow-y-auto">
+      <WorkspaceSidebar>
         <SessionList experience="research" newLabel="New research" />
-      </aside>
+      </WorkspaceSidebar>
       <main className="flex flex-col flex-1 min-w-0 min-h-0">
         {empty ? (
           <div className="flex-1 flex flex-col items-center justify-center px-6 select-none">

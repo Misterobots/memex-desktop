@@ -1,7 +1,9 @@
-export type AppTab = "chat" | "dev" | "research" | "goals" | "design" | "art" | "memory" | "eval" | "settings";
+export type AppTab = "chat" | "dev" | "research" | "goals" | "design" | "art" | "memory" | "eval" | "pulls" | "schedules" | "skills" | "sites" | "admin" | "settings";
+/** The top-level product workspace, independent from the selected destination. */
+export type AppShellMode = "chat" | "code";
 
 /** Conversational products own separate histories and lifecycle state. */
-export type ExperienceId = "chat" | "code" | "research" | "goals" | "product_design" | "design";
+export type ExperienceId = "chat" | "code" | "research" | "goals" | "product_design" | "sites" | "design";
 
 // ---------------------------------------------------------------------------
 // Task board types (mobile Codex loop — mirrors agent_runtime /v1/tasks)
@@ -51,8 +53,19 @@ export interface TaskWorker {
   completed_at?: number;
 }
 
-export type ChatDisplayMode = "normal" | "summary" | "thought";
+export type ChatDisplayMode = "none" | "normal" | "summary" | "thought";
+export type OutputDetail = "low" | "medium" | "high";
+export type ReasoningSummary = "auto" | "concise" | "detailed" | "none";
+export type ReasoningEffort = "low" | "medium" | "high";
 
+/** Per-workspace run controls, deliberately separate from the chosen model. */
+export interface WorkspaceRunPreferences {
+  outputDetail: OutputDetail;
+  reasoningSummary: ReasoningSummary;
+  reasoningEffort: ReasoningEffort;
+}
+
+/** Wire/storage identifiers remain legacy-compatible; use MODE_LABELS for UI copy. */
 export type MemexMode =
   | "chat"
   | "swarm"
@@ -60,6 +73,7 @@ export type MemexMode =
   | "design"
   | "think"
   | "plan"
+  | "gauntlet"
   | "workshop";
 
 export const MODE_FLAGS: Record<MemexMode, Record<string, boolean>> = {
@@ -69,20 +83,26 @@ export const MODE_FLAGS: Record<MemexMode, Record<string, boolean>> = {
   design:   { design_mode: true },
   think:    { ultrathink_mode: true },
   plan:     { swarm_mode: true, ultraplan_mode: true },
+  gauntlet: { swarm_mode: true, gauntlet_mode: true },
   workshop: { workshop_mode: true },
 };
 
 export const MODE_LABELS: Record<MemexMode, string> = {
   chat:     "Chat",
-  swarm:    "Swarm",
+  swarm:    "Collective",
   research: "Research",
   design:   "Design",
   think:    "Think",
   plan:     "Plan",
+  gauntlet: "Gauntlet",
   workshop: "Workshop",
 };
 
+/** Display legacy values without renaming saved sessions or runtime contracts. */
+export const modeLabel = (mode: string): string => MODE_LABELS[mode as MemexMode] ?? mode;
+
 export type EventType =
+  | "artifact"
   | "message"
   | "status"
   | "thought"
@@ -169,6 +189,8 @@ export interface MessageEvent {
   /** Full raw delta for rich (non-text) events — generic escape hatch so new
    *  structured event types are available to renderers without a parser change. */
   data?: Record<string, unknown>;
+  /** Browser receipt time, used to make the live execution timeline legible. */
+  receivedAt?: number;
 }
 
 export interface Session {
@@ -212,6 +234,8 @@ export interface EvalCase {
   input:         string;
   mode:          MemexMode;
   model:         string;
+  /** Ordered arena entrants. `model` remains the legacy/default entrant. */
+  models?:       string[];
   expectedNotes: string;
   rubric:        string;
   workspaceRoot?: string;
@@ -222,6 +246,8 @@ export interface EvalResult {
   id:         string;
   caseId:     string;
   runId?:     string;
+  /** The entrant that produced this result, absent on legacy records. */
+  model?:     string;
   startedAt:  string;
   endedAt?:   string;
   latencyMs?: number;

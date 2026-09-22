@@ -2,12 +2,18 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type {
   ChatMessage, Session, ConnectionStatus, MemexMode, MessageEvent, AppTab, TokenUsage,
-  ExperienceId, ChatDisplayMode,
+  ExperienceId, ChatDisplayMode, AppShellMode, WorkspaceRunPreferences,
 } from "../types/memex";
+
+const SHELL_TABS: Record<AppShellMode, AppTab[]> = {
+  chat: ["chat", "research", "goals", "art", "design", "sites"],
+  code: ["dev", "skills", "goals", "eval", "pulls", "design", "sites"],
+};
 
 export const experienceForTab = (tab: AppTab): ExperienceId | null => {
   if (tab === "goals") return "goals";
   if (tab === "design") return "product_design";
+  if (tab === "sites") return "sites";
   if (tab === "art") return "design";
   if (tab === "dev") return "code";
   if (tab === "research") return "research";
@@ -22,13 +28,23 @@ export const sessionMatches = (session: Session, experience: ExperienceId, works
 export const sessionScopeKey = (experience: ExperienceId, workspaceKey?: string) =>
   experience === "code" ? `code:${workspaceKey || "unselected"}` : experience;
 
+export const defaultRunPreferences: WorkspaceRunPreferences = {
+  outputDetail: "medium", reasoningSummary: "auto", reasoningEffort: "medium",
+};
+
 interface AppState {
   // Sessions
   sessions: Session[];
   activeSessionIds: Record<string, string | undefined>;
+  workspaceDisplayModes: Record<string, ChatDisplayMode>;
+  setWorkspaceDisplayMode: (experience: ExperienceId, workspaceKey: string | undefined, mode: ChatDisplayMode) => void;
+  workspaceRunPreferences: Record<string, WorkspaceRunPreferences>;
+  setWorkspaceRunPreferences: (experience: ExperienceId, workspaceKey: string | undefined, preferences: Partial<WorkspaceRunPreferences>) => void;
 
   // UI state
   activeTab: AppTab;
+  shellMode: AppShellMode;
+  designSurface: "product" | "sites";
   mode: MemexMode;
   cwd: string;
   sidebarOpen: boolean;
@@ -55,6 +71,8 @@ interface AppState {
 
   // Actions — UI
   setActiveTab: (tab: AppTab) => void;
+  setShellMode: (mode: AppShellMode) => void;
+  setDesignSurface: (surface: "product" | "sites") => void;
   setMode: (mode: MemexMode) => void;
   setCwd: (cwd: string) => void;
   toggleSidebar: () => void;
@@ -73,7 +91,24 @@ export const useStore = create<AppState>()(
     (set, get) => ({
       sessions: [],
       activeSessionIds: {},
+      workspaceDisplayModes: {},
+      setWorkspaceDisplayMode: (experience, workspaceKey, mode) => set((s) => ({
+        workspaceDisplayModes: { ...s.workspaceDisplayModes, [sessionScopeKey(experience, workspaceKey)]: mode },
+        // Sync the active thread's preference without retimestamping unrelated history.
+        sessions: s.sessions.map((session) => session.id === get().activeSession(experience, workspaceKey)?.id
+          ? { ...session, displayMode: mode, updatedAt: Date.now() } : session),
+      })),
+      workspaceRunPreferences: {},
+      setWorkspaceRunPreferences: (experience, workspaceKey, preferences) => set((s) => {
+        const key = sessionScopeKey(experience, workspaceKey);
+        return { workspaceRunPreferences: {
+          ...s.workspaceRunPreferences,
+          [key]: { ...defaultRunPreferences, ...s.workspaceRunPreferences[key], ...preferences },
+        } };
+      }),
       activeTab: "chat",
+      shellMode: "chat",
+      designSurface: "product",
       mode: "chat",
       cwd: "",
       sidebarOpen: true,
@@ -103,6 +138,7 @@ export const useStore = create<AppState>()(
           createdAt: now,
           updatedAt: now,
           messages: [],
+          displayMode: get().workspaceDisplayModes[sessionScopeKey(experience, workspaceKey)] ?? "normal",
         };
         set((s) => ({
           sessions: [session, ...s.sessions],
@@ -221,7 +257,23 @@ export const useStore = create<AppState>()(
         sessions: s.sessions.map((sess) => sess.id === sessionId ? { ...sess, displayMode, updatedAt: Date.now() } : sess),
       })),
 
-      setActiveTab:      (activeTab)         => set({ activeTab }),
+      setActiveTab: (activeTab) => set((state) => ({
+        // Preserve old deep links/commands to Sites, but keep them inside the
+        // single Design workspace so the focused shell never hides its route.
+        activeTab: activeTab === "sites" ? "design" : activeTab,
+        designSurface: activeTab === "sites" ? "sites" : activeTab === "design" ? "product" : state.designSurface,
+      })),
+      setShellMode: (shellMode) => set((state) => ({
+        shellMode,
+        // Design (and its Sites subspace) plus Routines are shared. Keep those
+        // contexts visible across the switch. Settings is a persistent utility
+        // route opened from the account menu, so do not turn a shell switch into
+        // a surprise redirect away from it.
+        activeTab: state.activeTab === "settings" || SHELL_TABS[shellMode].includes(state.activeTab)
+          ? state.activeTab
+          : shellMode === "code" ? "dev" : "chat",
+      })),
+      setDesignSurface: (designSurface) => set({ designSurface, activeTab: "design" }),
       setMode:           (mode)              => set({ mode }),
       setCwd:            (cwd)               => set({ cwd }),
       toggleSidebar:     ()                  => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
@@ -246,14 +298,18 @@ export const useStore = create<AppState>()(
     }),
     {
       name: "memex-desktop",
-      version: 4,
+      version: 7,
       // mode is intentionally NOT persisted — it's a per-session intent, and a
       // sticky "swarm" silently turned greetings into build orchestration.
       // Each launch starts in the default "chat" mode.
       partialize: (s) => ({
         sessions: s.sessions.slice(0, 50),
         activeSessionIds: s.activeSessionIds,
+        workspaceDisplayModes: s.workspaceDisplayModes,
+        workspaceRunPreferences: s.workspaceRunPreferences,
         activeTab: s.activeTab,
+        shellMode: s.shellMode,
+        designSurface: s.designSurface,
         cwd: s.cwd,
         sidebarOpen: s.sidebarOpen,
         selectedModel: s.selectedModel,
@@ -286,6 +342,14 @@ export const useStore = create<AppState>()(
         if (persisted && version < 4 && persisted.selectedModel === "qwen3.6:27b") {
           persisted.selectedModel = "qwen3:14b";
         }
+        if (persisted && version < 5) {
+          persisted.shellMode = ["dev", "skills", "eval", "pulls"].includes(persisted.activeTab) ? "code" : "chat";
+        }
+        if (persisted && version < 6) {
+          persisted.designSurface = persisted.activeTab === "sites" ? "sites" : "product";
+          if (persisted.activeTab === "sites") persisted.activeTab = "design";
+        }
+        if (persisted && version < 7) persisted.workspaceRunPreferences = {};
         return persisted;
       },
     }

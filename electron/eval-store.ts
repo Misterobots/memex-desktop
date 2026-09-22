@@ -11,6 +11,8 @@ export interface EvalCase {
   input:         string;
   mode:          MemexMode;
   model:         string;
+  /** Ordered arena entrants. `model` remains the legacy/default entrant. */
+  models?:       string[];
   expectedNotes: string;
   rubric:        string;
   workspaceRoot?: string;
@@ -21,6 +23,8 @@ export interface EvalResult {
   id:         string;
   caseId:     string;
   runId?:     string;
+  /** The entrant that produced this result, absent on legacy records. */
+  model?:     string;
   startedAt:  string;
   endedAt?:   string;
   latencyMs?: number;
@@ -60,7 +64,8 @@ export class EvalStore {
       name:          partial.name,
       input:         partial.input,
       mode:          partial.mode,
-      model:         partial.model,
+      model:         partial.model || partial.models?.[0] || "",
+      models:        partial.models?.map((model) => model.trim()).filter(Boolean),
       expectedNotes: partial.expectedNotes,
       rubric:        partial.rubric,
       workspaceRoot: partial.workspaceRoot,
@@ -92,11 +97,12 @@ export class EvalStore {
     return caseId ? all.filter((r) => r.caseId === caseId) : all;
   }
 
-  startResult(caseId: string, runId?: string): EvalResult {
+  startResult(caseId: string, runId?: string, model?: string): EvalResult {
     const r: EvalResult = {
       id:        `er-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       caseId,
       runId,
+      model,
       startedAt: new Date().toISOString(),
       output:    "",
     };

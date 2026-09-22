@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SkillEntry } from "../../types/memex";
-import { mergeSkillsByPrecedence, parseSkillFrontmatter } from "../skills";
+import { mergeSkillsByPrecedence, parseSkillFrontmatter, skillScanRoots } from "../skills";
 
 const entry = (name: string, scope: "project" | "user", sourcePath: string): SkillEntry => ({
   id: `${scope}:${sourcePath}`, name, version: "1", enabled: true, sourcePath, scope, description: "", modifiedAt: "now",
@@ -18,5 +18,12 @@ describe("markdown skill discovery", () => {
     ]);
     expect(result).toHaveLength(1);
     expect(result[0].scope).toBe("project");
+  });
+
+  it("discovers both Claude and Codex user skill conventions", () => {
+    expect(skillScanRoots("C:/repo", "C:/Users/memex")).toEqual(expect.arrayContaining([
+      { path: "C:/repo/.codex/skills", scope: "project" },
+      { path: "C:/Users/memex/.codex/skills", scope: "user" },
+    ]));
   });
 });
