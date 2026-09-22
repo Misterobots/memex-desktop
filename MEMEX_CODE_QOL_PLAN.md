@@ -35,7 +35,9 @@ Acceptance ledger for this pass — implementation and verification are separate
 | Runtime endpoint shaping | yes | existing suite only; no new assertion pins the doubled-URL case | **not performed** | **not performed** |
 | `activityPresentation` signature | yes | `workspace-outputs.test.tsx` thought-event assertion | n/a | n/a |
 
-Validation at this checkpoint: `npm run typecheck` clean; `npm test` 37 files, 167 tests pass; `git diff --check` clean. The first run was against the working tree whose content equals committed tree `27e900f`, and the same three checks were rerun after the history rewrite, since the rewrite touched only the two release trees.
+Validation at this checkpoint: `npm run typecheck` clean; `npm test` 37 files, 167 tests pass. Both were run before committing and rerun after the history rewrite; the post-rewrite pair ran while `package.json` still read `0.1.104`, because the version bump is the final commit, so the only delta from that verified tree onward is the version string plus the whitespace-only `6de158a`.
+
+Correction to an earlier claim in this section: it first said `git diff --check` was clean. That was measured against the index of an already-staged tree, which is trivially empty, not against the pushed range. Re-measured per commit, the range is clean at every commit except four: `da9e460` carried three trailing-space lines, stripped in `6de158a`, and `28eb56d` (3), `a624f8c` (5) and `fbf2146` (11) carry 15 pre-existing findings in `UnifiedSidebar.tsx`, `DevView.tsx`, `AgentWorkTrace.tsx`, `store.ts` and `workspace-outputs.ts` that predate this pass and remain open. A cumulative `git diff --check 6efc962 HEAD` overstates this, because endpoint alignment surfaces whitespace lines that no single commit introduced — the per-commit form is the one to trust here.
 
 Known gaps and blockers, none resolved by this pass:
 
