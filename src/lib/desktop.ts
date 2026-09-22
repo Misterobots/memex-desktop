@@ -97,6 +97,15 @@ export interface OllamaModel {
   modifiedAt:    string;
 }
 
+export interface LoadedOllamaModel {
+  name: string;
+  model: string;
+  sizeGb: number;
+  vramGb: number;
+  host: string;
+  expiresAt?: string;
+}
+
 export interface LocalLlmInspection {
   systemRamGb: number;
   gpus: Array<{ name: string; vramGb: number }>;
@@ -182,6 +191,9 @@ export interface MemexBridge {
     writeFile:    (path: string, content: string) => Promise<void>;
     readDir:      (path: string)                  => Promise<Array<{ name: string; path: string; isDir: boolean }>>;
     mkdir:        (path: string)                  => Promise<void>;
+    delete:       (path: string)                  => Promise<boolean>;
+    rename:       (oldPath: string, newPath: string) => Promise<boolean>;
+    copy:         (srcPath: string, destPath: string) => Promise<boolean>;
   };
 
   shell: {
@@ -191,6 +203,7 @@ export interface MemexBridge {
 
   dialog: {
     openFolder: () => Promise<string | null>;
+    openFiles:  (options?: { title?: string; multiSelections?: boolean; directory?: boolean }) => Promise<string[]>;
     saveText: (name: string, content: string, mimeType?: string) => Promise<{ canceled: boolean; path?: string }>;
   };
 
@@ -315,8 +328,11 @@ export interface MemexBridge {
   };
 
   ollama: {
-    listModels:    () => Promise<OllamaModel[]>;
-    contextLength: (model: string) => Promise<number | null>;
+    listModels:      () => Promise<OllamaModel[]>;
+    contextLength:   (model: string) => Promise<number | null>;
+    getLoadedModels: () => Promise<LoadedOllamaModel[]>;
+    unloadModel:     (model?: string) => Promise<{ ok: boolean; unloaded: string[] }>;
+    loadModel:       (model: string) => Promise<{ ok: boolean; host?: string; error?: string }>;
   };
 
   gauntlet: {

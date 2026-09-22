@@ -70,8 +70,11 @@ contextBridge.exposeInMainWorld("memex", {
     stat:         (path: string)                  => ipcRenderer.invoke("fs:stat", path),
     previewWrite: (path: string)                  => ipcRenderer.invoke("fs:previewWrite", path) as Promise<string>,
     writeFile:    (path: string, content: string) => ipcRenderer.invoke("fs:writeFile", path, content),
-    readDir:   (path: string)                  => ipcRenderer.invoke("fs:readDir", path),
-    mkdir:     (path: string)                  => ipcRenderer.invoke("fs:mkdir", path),
+    readDir:      (path: string)                  => ipcRenderer.invoke("fs:readDir", path),
+    mkdir:        (path: string)                  => ipcRenderer.invoke("fs:mkdir", path),
+    delete:       (path: string)                  => ipcRenderer.invoke("fs:delete", path),
+    rename:       (oldPath: string, newPath: string) => ipcRenderer.invoke("fs:rename", oldPath, newPath),
+    copy:         (srcPath: string, destPath: string) => ipcRenderer.invoke("fs:copy", srcPath, destPath),
   },
 
   // Shell
@@ -83,6 +86,8 @@ contextBridge.exposeInMainWorld("memex", {
   // Dialogs
   dialog: {
     openFolder: () => ipcRenderer.invoke("dialog:openFolder"),
+    openFiles: (options?: { title?: string; multiSelections?: boolean; directory?: boolean }) =>
+      ipcRenderer.invoke("dialog:openFiles", options),
     saveText: (name: string, content: string, mimeType?: string) =>
       ipcRenderer.invoke("dialog:saveText", name, content, mimeType) as Promise<{ canceled: boolean; path?: string }>,
   },
@@ -249,8 +254,11 @@ contextBridge.exposeInMainWorld("memex", {
 
   // Ollama model list
   ollama: {
-    listModels:    () => ipcRenderer.invoke("ollama:listModels"),
-    contextLength: (model: string) => ipcRenderer.invoke("ollama:contextLength", model) as Promise<number | null>,
+    listModels:      () => ipcRenderer.invoke("ollama:listModels"),
+    contextLength:   (model: string) => ipcRenderer.invoke("ollama:contextLength", model) as Promise<number | null>,
+    getLoadedModels: () => ipcRenderer.invoke("ollama:getLoadedModels"),
+    unloadModel:     (model?: string) => ipcRenderer.invoke("ollama:unloadModel", model),
+    loadModel:       (model: string) => ipcRenderer.invoke("ollama:loadModel", model),
   },
 
   gauntlet: { ...bridgeNamespace("gauntlet", { create: "create", get: "get", forSession: "forSession", patch: "patch", accept: "accept" }), resume: (id: string, clarification: string) => ipcRenderer.invoke("gauntlet:resume", id, clarification) },

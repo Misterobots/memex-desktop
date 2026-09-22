@@ -18,6 +18,7 @@ import {
 } from "electron";
 import {
   readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, existsSync, unlinkSync,
+  rmSync, renameSync, copyFileSync, cpSync,
 } from "fs";
 import { exec }      from "child_process";
 import { promisify } from "util";
@@ -259,6 +260,34 @@ export function registerAllIpc(ctx: IpcContext): void {
     if (!await firewall.checkMkdir(path, getMain())) throw new Error("Permission denied");
     mkdirSync(path, { recursive: true });
   });
+  ipcMain.handle("fs:delete", async (_e, path: string) => {
+    if (!await firewall.checkWrite(path, getMain())) throw new Error("Permission denied");
+    if (!existsSync(path)) return false;
+    const stat = statSync(path);
+    if (stat.isDirectory()) {
+      rmSync(path, { recursive: true, force: true });
+    } else {
+      unlinkSync(path);
+    }
+    return true;
+  });
+  ipcMain.handle("fs:rename", async (_e, oldPath: string, newPath: string) => {
+    if (!await firewall.checkWrite(oldPath, getMain())) throw new Error("Permission denied");
+    if (!await firewall.checkWrite(newPath, getMain())) throw new Error("Permission denied");
+    renameSync(oldPath, newPath);
+    return true;
+  });
+  ipcMain.handle("fs:copy", async (_e, srcPath: string, destPath: string) => {
+    if (!await firewall.checkRead(srcPath, getMain())) throw new Error("Permission denied");
+    if (!await firewall.checkWrite(destPath, getMain())) throw new Error("Permission denied");
+    const stat = statSync(srcPath);
+    if (stat.isDirectory()) {
+      cpSync(srcPath, destPath, { recursive: true });
+    } else {
+      copyFileSync(srcPath, destPath);
+    }
+    return true;
+  });
 
   // ── Shell (workspace-gated) ───────────────────────────────────────────────
   ipcMain.handle("shell:exec", async (_e, cmd: string, cwd?: string) => {
@@ -331,7 +360,27 @@ export function registerAllIpc(ctx: IpcContext): void {
   // ── App / dialog ──────────────────────────────────────────────────────────
   ipcMain.handle("dialog:openFolder", async () => {
     const r = await dialog.showOpenDialog({ properties: ["openDirectory"] });
-    return r.canceled ? null : r.filePaths[0];
+    if (!r.canceled && r.filePaths[0]) {
+      firewall.addRoot(r.filePaths[0]);
+      return r.filePaths[0];
+    }
+    return null;
+  });
+  ipcMain.handle("dialog:openFiles", async (_e, options?: { title?: string; multiSelections?: boolean; directory?: boolean }) => {
+    const props: Array<"openFile" | "openDirectory" | "multiSelections"> = [];
+    if (options?.directory) {
+      props.push("openDirectory");
+    } else {
+      props.push("openFile");
+    }
+    if (options?.multiSelections !== false) {
+      props.push("multiSelections");
+    }
+    const r = await dialog.showOpenDialog({
+      title: options?.title ?? "Select files to add",
+      properties: props,
+    });
+    return r.canceled ? [] : r.filePaths;
   });
   ipcMain.handle("dialog:saveText", async (_e, name: string, content: string, mimeType = "text/plain") => {
     const safeName = basename(name).replace(/[<>:"/\\|?*\x00-\x1F]/g, "_") || "memex-output.txt";
@@ -566,6 +615,120 @@ export function registerAllIpc(ctx: IpcContext): void {
     } catch {
       return null;
     }
+  });
+
+  // ── Ollama loaded models in VRAM ──────────────────────────────────────────
+  ipcMain.handle("ollama:getLoadedModels", async () => {
+    try {
+      const urls = config.getUrls();
+      const hosts = Array.from(new Set([
+        urls.ollama ?? "http://localhost:11434",
+        "http://127.0.0.1:11434",
+        "http://192.168.2.101:11434",
+        "http://192.168.2.103:11434",
+      ]));
+      const results: Array<{ name: string; model: string; sizeGb: number; vramGb: number; host: string; expiresAt?: string }> = [];
+      const seen = new Set<string>();
+
+      for (const base of hosts) {
+        try {
+          const res = await fetch(`${base}/api/ps`, { signal: AbortSignal.timeout(2500) });
+          if (!res.ok) continue;
+          const data = await res.json() as { models?: Array<{ name: string; model: string; size: number; size_vram?: number; expires_at?: string }> };
+          for (const m of data.models ?? []) {
+            const key = `${m.name}@${base}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              results.push({
+                name: m.name,
+                model: m.model ?? m.name,
+                sizeGb: +((m.size || 0) / 1e9).toFixed(1),
+                vramGb: +(((m.size_vram ?? m.size) || 0) / 1e9).toFixed(1),
+                host: base,
+                expiresAt: m.expires_at,
+              });
+            }
+          }
+        } catch {}
+      }
+      return results;
+    } catch {
+      return [];
+    }
+  });
+
+  // ── Ollama unload model from VRAM ─────────────────────────────────────────
+  ipcMain.handle("ollama:unloadModel", async (_e, model?: string) => {
+    const urls = config.getUrls();
+    const hosts = Array.from(new Set([
+      urls.ollama ?? "http://localhost:11434",
+      "http://127.0.0.1:11434",
+      "http://192.168.2.101:11434",
+      "http://192.168.2.103:11434",
+    ]));
+    const unloaded: string[] = [];
+
+    for (const base of hosts) {
+      try {
+        let targets: string[] = [];
+        if (model && model !== "all") {
+          targets = [model];
+        } else {
+          // Discover loaded models on this host to unload them
+          const psRes = await fetch(`${base}/api/ps`, { signal: AbortSignal.timeout(2500) });
+          if (psRes.ok) {
+            const data = await psRes.json() as { models?: Array<{ name: string }> };
+            targets = (data.models ?? []).map((m) => m.name);
+          }
+        }
+
+        for (const target of targets) {
+          try {
+            const res = await fetch(`${base}/api/generate`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ model: target, keep_alive: 0 }),
+              signal: AbortSignal.timeout(5000),
+            });
+            if (res.ok) {
+              unloaded.push(`${target} (${base})`);
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+
+    return { ok: true, unloaded };
+  });
+
+  // ── Ollama pre-load / warm-up model into VRAM ──────────────────────────────
+  ipcMain.handle("ollama:loadModel", async (_e, model: string) => {
+    if (!model) return { ok: false, error: "No model specified" };
+    const urls = config.getUrls();
+    const hosts = Array.from(new Set([
+      urls.ollama ?? "http://localhost:11434",
+      "http://127.0.0.1:11434",
+      "http://192.168.2.101:11434",
+      "http://192.168.2.103:11434",
+    ]));
+
+    const cleanModel = model.replace(/^ollama\//, "");
+
+    for (const base of hosts) {
+      try {
+        const res = await fetch(`${base}/api/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: cleanModel, prompt: "" }),
+          signal: AbortSignal.timeout(60000),
+        });
+        if (res.ok) {
+          const data = await res.json() as { done_reason?: string };
+          return { ok: true, host: base, doneReason: data.done_reason };
+        }
+      } catch {}
+    }
+    return { ok: false, error: "Failed to load model on available Ollama hosts" };
   });
 
   // Gauntlet packets are intentionally local and append-only. This keeps the
