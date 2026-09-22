@@ -128,9 +128,7 @@ describe("workspace output delivery", () => {
     expect(activityPresentation({ type: "thought", content: "private scratchpad text" })).toMatchObject({
       tone: "intent", title: "private scratchpad text", detail: "Considering response",
     });
-    expect(activityPresentation({ type: "thought", content: "private scratchpad text" }, true)).toMatchObject({
-      tone: "intent", title: "private scratchpad text", detail: "Considering response",
-    });
+
   });
   it.each<ChatDisplayMode>(["summary", "normal", "thought"])("keeps real media and cancellation visible in %s", (displayMode) => {
     const media = normalizeSSEDelta({ type: "media_attachment", content: { filename: "test.png", mimeType: "image/png", url: "/api/backend/delivered_artifacts/test.png", downloadUrl: "/api/backend/delivered_artifacts/test.png?dl=1" } })!;

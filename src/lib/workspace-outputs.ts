@@ -120,7 +120,7 @@ function toolDetail(data: Record<string, unknown>): string | undefined {
  * display private model scratchpad: `thought` events are runtime-provided
  * summaries and retain their original, user-safe wording.
  */
-export function activityPresentation(event: MessageEvent, detailed = false): ActivityPresentation {
+export function activityPresentation(event: MessageEvent): ActivityPresentation {
   const data = record(event.data);
   const rawType = String(data.type ?? event.type);
   const eventType = String(data.event_type ?? data.kind ?? "");

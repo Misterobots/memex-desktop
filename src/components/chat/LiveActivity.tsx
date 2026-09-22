@@ -103,7 +103,7 @@ export function LiveActivity({ events, active, waiting, verbose = false, brief =
         {verbose && !hideHeader && <p className="border-b border-border pb-2 text-[10px] font-medium uppercase tracking-wider text-muted">Reasoning and activity</p>}
         {rows.map((row, index) => {
           if (row.kind === "tool-group") {
-            const tools = row.events.map((event) => activityPresentation(event, verbose));
+            const tools = row.events.map((event) => activityPresentation(event));
             const names = [...new Set(tools.map((item) => item.title.replace(/^(?:Running|Ran) /, "")))];
             const summary = names.length === 1 ? `${active ? "Running" : "Ran"} ${names[0]}` : `${active ? "Running" : "Ran"} commands`;
             return <details key={`tools-${index}`} aria-label={summary} className="group text-xs leading-5">
@@ -123,7 +123,7 @@ export function LiveActivity({ events, active, waiting, verbose = false, brief =
             </details>;
           }
           const event = row.event;
-          const item = activityPresentation(event, verbose);
+          const item = activityPresentation(event);
           const label = item.tone === "intent" ? "Thinking" : item.tone === "tool" ? "Tool" : item.tone === "issue" ? "Issue" : "Activity";
           const textClass = item.tone === "intent" ? "text-blue-100" : item.tone === "tool" ? "text-pink-100" : item.tone === "issue" ? "text-red-200" : "text-emerald-100";
           const detailClass = item.tone === "intent" ? "text-blue-200/70" : item.tone === "tool" ? "text-pink-200/70" : item.tone === "issue" ? "text-red-200/70" : "text-emerald-200/70";
