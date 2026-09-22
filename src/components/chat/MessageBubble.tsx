@@ -97,28 +97,29 @@ export function responseTimeline(events: import("../../types/memex").MessageEven
   return entries;
 }
 
-function ResponseTimeline({ events, active, waiting, verbose, fallback }: {
+function ResponseTimeline({ events, active, waiting, verbose, fallback, showActivity }: {
   events: import("../../types/memex").MessageEvent[];
   active: boolean;
   waiting: boolean;
   verbose: boolean;
   fallback: string;
+  showActivity: boolean;
 }) {
   const entries = responseTimeline(events, verbose);
-  const hasActivity = entries.some((entry) => entry.kind === "activity");
+  const hasActivity = showActivity && entries.some((entry) => entry.kind === "activity");
   const [activityOpen, setActivityOpen] = useState(active);
   if (!entries.some((entry) => entry.kind === "response")) {
     const activity = entries.find((entry): entry is Extract<TimelineEntry, { kind: "activity" }> => entry.kind === "activity");
     return <>
       {fallback || waiting ? <div className={waiting ? "cursor-blink" : ""}><MessageContent content={fallback} /></div> : null}
-      {activity && <LiveActivity events={activity.events} active={active} waiting={waiting} verbose={verbose} />}
+      {showActivity && activity && <LiveActivity events={activity.events} active={active} waiting={waiting} verbose={verbose} />}
     </>;
   }
   return <div className="space-y-2.5">
     {hasActivity && <WorkTraceHeader events={events} active={active} expanded={activityOpen} onToggle={() => setActivityOpen((open) => !open)} />}
     {entries.map((entry, index) => entry.kind === "response"
       ? <MessageContent key={`response-${index}`} content={entry.content} />
-      : activityOpen && <LiveActivity key={`activity-${index}`} events={entry.events} active={active} waiting={waiting} verbose={verbose} hideHeader />)}
+      : showActivity && activityOpen && <LiveActivity key={`activity-${index}`} events={entry.events} active={active} waiting={waiting} verbose={verbose} hideHeader />)}
   </div>;
 }
 
@@ -178,7 +179,7 @@ export function MessageBubble({ message, isActive = false, displayMode = "normal
         )}
         {!isActive && events.some((event) => event.data?.type === "cancelled") && <p role="status" className="text-sm text-muted">Stopped. Any partial output is preserved below.</p>}
         {(message.content || isWaiting || events.length > 0) && (
-          <ResponseTimeline events={events} active={isActive} waiting={isWaiting} verbose={showThoughts} fallback={message.content} />
+          <ResponseTimeline events={events} active={isActive} waiting={isWaiting} verbose={showThoughts} fallback={message.content} showActivity={showActivity} />
         )}
         {showActivity && <AgentWorkTrace events={events} active={isActive} />}
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ipc } from "../../lib/ipc";
 import { desktop } from "../../lib/desktop";
-import { getEditorBuffer, setEditorBuffer } from "../../lib/editorBufferStore";
+import { clearEditorBuffer, getEditorBuffer, setEditorBuffer } from "../../lib/editorBufferStore";
 
 interface Props {
   path: string;
@@ -161,6 +161,7 @@ export function FileEditor({ path, onClose, onDirtyChange }: Props) {
   };
 
   const reloadExternal = async () => {
+    if (dirty && !window.confirm("This file changed outside Memex. Reload and discard your local edits?")) return;
     try {
       const next = await ipc.readFile(path);
       contentRef.current = next;
@@ -176,7 +177,13 @@ export function FileEditor({ path, onClose, onDirtyChange }: Props) {
   };
 
   const requestClose = () => {
-    if (dirty && !window.confirm("Discard unsaved changes to this file?")) return;
+    if (dirty) {
+      if (!window.confirm("Discard unsaved changes to this file?")) return;
+      // Prevent the unmount cleanup below from writing the just-discarded
+      // buffer back into the cache, which would silently resurrect it.
+      contentRef.current = null;
+      clearEditorBuffer(path);
+    }
     onClose();
   };
 

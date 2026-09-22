@@ -370,5 +370,27 @@ export function streamChat(opts: StreamOptions): () => void {
       }
     });
 
-  return () => controller.abort();
+  return () => {
+    controller.abort();
+    // Stopping a visible Gauntlet must stop its durable coordinator too.
+    // Aborting only the renderer's fetch reader left GPU workers running and
+    // turned a deliberate stop into a confusing later reconnect (same fix as
+    // the native-IPC branch above, mirrored here for the browser transport).
+    if (opts.gauntletHandoff?.id) {
+      const checkpoint = opts.gauntletHandoff.id;
+      void fetch(`${getAgentRuntime()}/v1/tasks/${encodeURIComponent(checkpoint)}/stop`, {
+        method: "POST",
+      }).then((response) => {
+        if (response.status >= 200 && response.status < 300) {
+          void bridge?.gauntlet?.patch(checkpoint, {
+            status: "cancelled",
+            nextAction: "Stopped by you. The preserved goal and quality bar remain available for an explicit future restart.",
+          });
+        }
+      }).catch(() => {
+        // Keep the packet active on a failed stop request so its automatic
+        // status refresh can still reveal a coordinator that is running.
+      });
+    }
+  };
 }

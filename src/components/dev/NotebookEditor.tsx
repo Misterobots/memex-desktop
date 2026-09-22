@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ipc } from "../../lib/ipc";
 import { parseNotebook, serializeNotebook, type NotebookCell, type NotebookDocument } from "../../lib/notebook";
-import { getEditorBuffer, setEditorBuffer } from "../../lib/editorBufferStore";
+import { clearEditorBuffer, getEditorBuffer, setEditorBuffer } from "../../lib/editorBufferStore";
 
 interface Props {
   path: string;
@@ -118,7 +118,13 @@ export function NotebookEditor({ path, onClose, onDirtyChange }: Props) {
   };
 
   const requestClose = () => {
-    if (dirty && !window.confirm("Discard unsaved changes to this notebook?")) return;
+    if (dirty) {
+      if (!window.confirm("Discard unsaved changes to this notebook?")) return;
+      // Prevent the unmount cleanup below from writing the just-discarded
+      // buffer back into the cache, which would silently resurrect it.
+      notebookRef.current = null;
+      clearEditorBuffer(path);
+    }
     onClose();
   };
 
@@ -128,6 +134,7 @@ export function NotebookEditor({ path, onClose, onDirtyChange }: Props) {
   };
 
   const reloadExternal = async () => {
+    if (dirty && !window.confirm("This notebook changed outside Memex. Reload and discard your local edits?")) return;
     try {
       const raw = await ipc.readFile(path);
       const parsed = parseNotebook(raw);

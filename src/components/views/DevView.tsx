@@ -41,7 +41,10 @@ export function DevView() {
   });
   const [resizingExplorer, setResizingExplorer] = useState(false);
   const explorerRef = useRef<HTMLElement>(null);
-  const explorerScopeRef = useRef(cwd || "unselected");
+  // Deliberately not initialized to the current scope: that would make the
+  // very first run of the sync effect below think the scope is unchanged
+  // and skip loading this project's saved width, overwriting it instead.
+  const explorerScopeRef = useRef<string | null>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
 
   const termId = `term-${session?.id ?? `project-${cwd || "unselected"}`}`;
@@ -262,7 +265,7 @@ export function DevView() {
         {worktreesOpen && cwd && <WorktreePanel repoPath={cwd} onSelect={(path) => { changeProject(path); setWorktreesOpen(false); }} />}
 
         {/* Pane area */}
-        <div ref={workspaceRef} className={`flex flex-col flex-1 min-h-0 ${resizing ? "select-none cursor-row-resize" : ""}`}>
+        <div ref={workspaceRef} className={`relative flex flex-col flex-1 min-h-0 ${resizing ? "select-none cursor-row-resize" : ""}`}>
           {/* Primary pane */}
           <div className={`flex flex-col flex-1 min-h-0 ${bottomPane !== "none" ? "border-b border-border/60" : ""}`}
                style={{ height: bottomPane !== "none" ? `${100 - bottomHeight}%` : "100%" }}>
@@ -274,9 +277,9 @@ export function DevView() {
               <ProjectTasksPane cwd={cwd} />
             ) : primary === "editor" && openFile ? (
               openFile.toLowerCase().endsWith(".ipynb") ? (
-                <NotebookEditor path={openFile} onDirtyChange={setEditorDirty} onClose={() => { setOpenFile(null); setEditorDirty(false); setPrimary("chat"); }} />
+                <NotebookEditor key={openFile} path={openFile} onDirtyChange={setEditorDirty} onClose={() => { setOpenFile(null); setEditorDirty(false); setPrimary("chat"); }} />
               ) : (
-                <FileEditor path={openFile} onDirtyChange={setEditorDirty} onClose={() => { setOpenFile(null); setEditorDirty(false); setPrimary("chat"); }} />
+                <FileEditor key={openFile} path={openFile} onDirtyChange={setEditorDirty} onClose={() => { setOpenFile(null); setEditorDirty(false); setPrimary("chat"); }} />
               )
             ) : (
               <div className="flex flex-col flex-1 min-h-0">
@@ -350,19 +353,23 @@ export function DevView() {
                   </svg>
                 </button>
               </div>
-              {bottomPane === "terminal" ? (
-                <TerminalPane id={termId} cwd={cwd || undefined} className="flex-1 min-h-0" />
-              ) : (
-                <BrowserView />
-              )}
+              {bottomPane === "browser" && <BrowserView />}
             </div>
           )}
-          {/* Keep an opened terminal mounted while another bottom tool is
-              visible (or the split is hidden). Terminal visibility is a layout
-              choice; unmounting here would terminate the user's PTY. */}
-          {terminalOpened && bottomPane !== "terminal" && (
-            <div className="pointer-events-none absolute h-px w-px overflow-hidden opacity-0" aria-hidden="true">
-              <TerminalPane id={termId} cwd={cwd || undefined} />
+          {/* Single persistent TerminalPane instance, rendered from one fixed
+              position in the tree and repositioned/hidden purely via CSS.
+              Mounting it at two different JSX locations (visible vs. hidden)
+              made React unmount+remount it on every switch, killing its PTY;
+              a stable mount point is what actually keeps the shell alive. */}
+          {terminalOpened && (
+            <div
+              className={bottomPane === "terminal"
+                ? "absolute inset-x-0 bottom-0 flex flex-col min-h-0"
+                : "pointer-events-none absolute left-0 top-0 h-px w-px overflow-hidden opacity-0"}
+              style={bottomPane === "terminal" ? { height: `calc(${bottomHeight}% - 2rem)` } : undefined}
+              aria-hidden={bottomPane === "terminal" ? undefined : "true"}
+            >
+              <TerminalPane id={termId} cwd={cwd || undefined} className="h-full" />
             </div>
           )}
         </div>
