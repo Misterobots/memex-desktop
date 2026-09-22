@@ -6,3 +6,32 @@ release/
 .DS_Store
 .env
 .env.local
+
+# Agent runtime scratch (graphify caches, background-shell output)
+.qwen/
+
+# Personal CAD scratch for the sink/faucet water-slide project, worked in this repo
+# root but unrelated to Memex Desktop. Kept on disk, never committed. Patterns are
+# root-anchored so tracked sources (public/icon.png, patch_*.py, fix_pull_menu.py)
+# stay tracked.
+/cad/
+/scratch_sink_imgs/
+/*.stl
+/*.scad
+/apply_lips.py
+/build_*.py
+/cut_orig_mount.py
+/cut_orig_mount.png
+/export_support_free.py
+/inspect_slope.py
+/make_monolithic.py
+/render_*.py
+/run_recompile.py
+/test_*.py
+/test_*.png
+/test_*.scad
+/test_*.stl
+/update_*.py
+/view_*.py
+/view_*.png
+/view_*.scad
