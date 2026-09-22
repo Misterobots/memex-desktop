@@ -183,11 +183,11 @@ export function SetupWizard({ onComplete }: Props) {
             if (connectionChoice === "local") void activateLocal().then((ok) => { if (ok) next(); });
             else next();
           }} nextLabel={connectionChoice === "local" ? "Use Local LLMs" : "Continue"}>
-            <p className="text-sm text-muted">Hosted Memex works from anywhere. Local LLMs connects this desktop to AI services you run on this computer.</p>
+            <p className="text-sm text-muted">Memex Anywhere works from anywhere. Local LLMs connects this desktop to AI services you run on this computer.</p>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => { setConnectionChoice("hosted"); setActiveId(publicProfile?.id ?? activeId); bridge?.config.setActive(publicProfile?.id ?? activeId); }}
                 className={`text-left px-3 py-3 rounded-xl border ${connectionChoice === "hosted" ? "border-accent/50 bg-accent/10" : "border-border/40"}`}>
-                <div className="text-sm font-medium text-text">Hosted Memex</div><div className="text-xs text-muted mt-1">Secure, remote-ready</div>
+                <div className="text-sm font-medium text-text">Memex Anywhere</div><div className="text-xs text-muted mt-1">Secure, remote-ready</div>
               </button>
               <button onClick={() => { setConnectionChoice("local"); void inspectLocal(); }}
                 className={`text-left px-3 py-3 rounded-xl border ${connectionChoice === "local" ? "border-accent/50 bg-accent/10" : "border-border/40"}`}>

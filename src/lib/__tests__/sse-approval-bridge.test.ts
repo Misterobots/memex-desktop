@@ -60,4 +60,33 @@ describe("desktop DevHarness approval bridge", () => {
       }),
     }));
   });
+
+  it("waits for an asynchronous chunk before closing the run", async () => {
+    let resolveApproval: ((value: { approved: boolean; scope: string }) => void) | undefined;
+    const permission = vi.fn(() => new Promise<{ approved: boolean; scope: string }>((resolve) => { resolveApproval = resolve; }));
+    const stream = vi.fn((_id, _requestInfo, onEvent) => {
+      onEvent({ kind: "response", value: { status: 200 } });
+      onEvent({
+        kind: "chunk",
+        value: new TextEncoder().encode(`data: ${JSON.stringify({ choices: [{ delta: {
+          type: "tool_approval_needed", content: "Approval required", tool_name: "write_file", tool_call_id: "call-ordered",
+        } }] })}\n\n`),
+      });
+      onEvent({ kind: "done" });
+      return vi.fn();
+    });
+    (globalThis as { window?: unknown }).window = {
+      memex: { isDesktop: true, api: { request: vi.fn().mockResolvedValue({ status: 200, body: "{}" }), stream }, permissions: { request: permission } },
+    };
+
+    const { streamChat } = await import("../sse-stream");
+    const onDone = vi.fn();
+    streamChat({ messages: [{ role: "user", content: "edit" }], mode: "swarm", model: "swarm", modeFlags: {}, onEvent: vi.fn(), onDone, onError: vi.fn() });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(onDone).not.toHaveBeenCalled();
+
+    resolveApproval?.({ approved: true, scope: "once" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(onDone).toHaveBeenCalledOnce();
+  });
 });

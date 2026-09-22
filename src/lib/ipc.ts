@@ -12,6 +12,7 @@ function bridge() {
 
 export const ipc = {
   readFile:    (path: string)                  => bridge().fs.readFile(path),
+  stat:        (path: string)                  => bridge().fs.stat(path),
   writeFile:   (path: string, content: string) => bridge().fs.writeFile(path, content),
   readDir:     (path: string)                  => bridge().fs.readDir(path),
   mkdir:       (path: string)                  => bridge().fs.mkdir(path),

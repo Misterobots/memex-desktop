@@ -3,6 +3,7 @@ import { defaultRunPreferences, sessionScopeKey, useStore } from "../../lib/stor
 import { streamChat } from "../../lib/sse-stream";
 import { desktop, type GauntletHandoff } from "../../lib/desktop";
 import { pushSession } from "../../lib/conv-sync";
+import { extractConversationMemory } from "../../lib/memex-client";
 import { MODE_FLAGS, MODE_LABELS, type ExperienceId, type MemexMode, type ChatMessage, type MessageEvent } from "../../types/memex";
 import { ModelPickerPopover } from "./ModelPickerPopover";
 import { ContextMeter } from "./ContextMeter";
@@ -84,6 +85,40 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
   const streaming = currentSessionId ? !!streamingSessions[currentSessionId] : false;
   const stopStream = currentSessionId ? stopStreams[currentSessionId] : undefined;
   const runPreferences = workspaceRunPreferences[sessionScopeKey(experience, workspaceKey)] ?? defaultRunPreferences;
+  const draftKey = `${sessionScopeKey(experience, workspaceKey)}:${currentSessionId ?? "new"}`;
+  const gauntletDraftKey = `${draftKey}:gauntlet-bar`;
+  const draftKeyRef = useRef("");
+  const gauntletDraftKeyRef = useRef("");
+  const skipDraftPersistRef = useRef(true);
+  const skipGauntletDraftPersistRef = useRef(true);
+
+  // Drafts follow the active task rather than the mounted composer. This keeps
+  // a partially written request intact when the user opens the editor, tasks,
+  // terminal, or another project, while keeping separate Code tasks isolated.
+  useEffect(() => {
+    draftKeyRef.current = draftKey;
+    skipDraftPersistRef.current = true;
+    setText(useStore.getState().workspaceDrafts[draftKey] ?? "");
+  }, [draftKey]);
+  useEffect(() => {
+    gauntletDraftKeyRef.current = gauntletDraftKey;
+    skipGauntletDraftPersistRef.current = true;
+    setGauntletBar(useStore.getState().workspaceDrafts[gauntletDraftKey] ?? "");
+  }, [gauntletDraftKey]);
+  useEffect(() => {
+    if (draftKeyRef.current !== draftKey || skipDraftPersistRef.current) {
+      skipDraftPersistRef.current = false;
+      return;
+    }
+    useStore.getState().setWorkspaceDraft(draftKey, text);
+  }, [draftKey, text]);
+  useEffect(() => {
+    if (gauntletDraftKeyRef.current !== gauntletDraftKey || skipGauntletDraftPersistRef.current) {
+      skipGauntletDraftPersistRef.current = false;
+      return;
+    }
+    useStore.getState().setWorkspaceDraft(gauntletDraftKey, gauntletBar);
+  }, [gauntletDraftKey, gauntletBar]);
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -128,7 +163,10 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       setGauntletError("Choose a named, fetchable reference for the quality bar before starting the Gauntlet.");
       return;
     }
+    useStore.getState().clearWorkspaceDraft(draftKey);
+    useStore.getState().clearWorkspaceDraft(gauntletDraftKey);
     setText("");
+    setGauntletBar("");
 
     const session = activeSession(experience, workspaceKey);
     const sessionId = session?.id ?? createSession(experience, workspaceKey);
@@ -208,6 +246,10 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       messages: history,
       mode,
       model: selectedModel,
+      // Routines are ordinary repeatable-work requests, not Product Workshop
+      // discovery sessions. Tell the router to keep this workspace in the
+      // conversational path even when the prompt is ambiguous.
+      skill: experience === "goals" ? "general" : undefined,
       style: runPreferences.outputDetail === "low" ? "concise" : runPreferences.outputDetail === "high" ? "explanatory" : undefined,
       gauntletBar: handoffPacket?.qualityBar ?? (mode === "gauntlet" ? gauntletBar.trim() : undefined),
       gauntletHandoff: mode === "gauntlet" && handoffId ? {
@@ -248,6 +290,20 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       onDone: () => {
         appendEvent(sessionId, assistantId, { type: "status", content: "Response stream ended.", receivedAt: Date.now(), data: { type: "stream_complete" } });
         setStreaming(sessionId, false);
+        // Code runs through DevHarness, which deliberately bypasses the
+        // standard chat router's memory extraction hook. Mirror the completed
+        // turn directly to MemPalace so Code has the same durable memory
+        // behavior without double-extracting standard routes.
+        if (extraFlags.dev_mode && accumulated.trim()) {
+          void (async () => {
+            const ownerId = await bridge?.identity.get().catch(() => "desktop") ?? "desktop";
+            const count = await extractConversationMemory(`User: ${content}\nAssistant: ${accumulated}`, ownerId);
+            if (count > 0) {
+              appendEvent(sessionId, assistantId, { type: "status", content: `MemPalace stored ${count} durable memor${count === 1 ? "y" : "ies"}.`, receivedAt: Date.now(), data: { type: "memory_extract_complete", count } });
+              syncSession();
+            }
+          })();
+        }
         if (handoffId && bridge?.gauntlet) {
           const producedAnswer = accumulated.trim().length > 0;
           const needsCoordinatorInput = useStore.getState().activeSession(experience, workspaceKey)?.messages
@@ -281,7 +337,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       },
     });
     setStreaming(sessionId, true, stop);
-  }, [text, streaming, disabledReason, mode, experience, workspaceKey, extraFlags, runPreferences, gauntletBar]);
+  }, [text, streaming, disabledReason, mode, experience, workspaceKey, extraFlags, runPreferences, gauntletBar, draftKey, gauntletDraftKey]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Enter sends; Shift+Enter inserts a newline. Skip while an IME composition
@@ -302,7 +358,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
   };
 
   return (
-    <div className="px-6 pb-5 pt-2 flex-shrink-0">
+    <div className="memex-composer px-6 pb-5 pt-2 flex-shrink-0">
       <div className="max-w-conversation mx-auto">
         <div className="bg-surface border border-border rounded-2xl px-3 pt-3 pb-2 focus-within:border-accent/50 transition-colors shadow-lg shadow-black/10">
           {mode === "gauntlet" && <label className="mb-2 block px-2 text-xs text-muted">Quality bar

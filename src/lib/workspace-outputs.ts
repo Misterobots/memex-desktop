@@ -120,7 +120,7 @@ function toolDetail(data: Record<string, unknown>): string | undefined {
  * display private model scratchpad: `thought` events are runtime-provided
  * summaries and retain their original, user-safe wording.
  */
-export function activityPresentation(event: MessageEvent): ActivityPresentation {
+export function activityPresentation(event: MessageEvent, detailed = false): ActivityPresentation {
   const data = record(event.data);
   const rawType = String(data.type ?? event.type);
   const eventType = String(data.event_type ?? data.kind ?? "");
@@ -134,13 +134,17 @@ export function activityPresentation(event: MessageEvent): ActivityPresentation 
     // The activity trace reports lifecycle, while the dedicated output/review
     // surfaces own any user-authorized result inspection.
     const detail = isResult ? "Result received." : toolDetail(data) ?? (body !== name ? body : undefined);
-    return { tone: "tool", title: isResult ? `${name} completed` : `Running ${name}`, detail, command: isResult ? undefined : detail, actor };
+    return { tone: "tool", title: isResult ? `Ran ${name}` : `Running ${name}`, detail, command: isResult ? undefined : detail, actor };
   }
   if (event.type === "thought" || eventType === "thought" || rawType === "thinking") {
     // The runtime marks only its own observable, user-safe execution summaries
     // this way. Other thought events remain summarized so this surface never
     // becomes an accidental display of private scratchpad.
     if (data.safe_summary === true) return { tone: "intent", title: body, actor };
+    if (detailed) {
+      const detail = activityDetail(body, "thought");
+      return { tone: "intent", title: body, detail: detail !== body ? detail : undefined, actor };
+    }
     const detail = activityDetail(body, "thought");
     return { tone: "intent", title: actor ? `${actor} is assessing the task` : "Thinking", detail, actor };
   }
@@ -181,15 +185,22 @@ export function outputsFromEvents(events: MessageEvent[]): WorkspaceOutput[] {
   });
 }
 
+/** Whether an event belongs in the chronological activity trace. */
+export function isActivityEvent(event: MessageEvent, detailed: boolean): boolean {
+    const rawType = String(event.data?.type ?? event.type);
+    if (outputEventTypes.includes(rawType) || ["message", "response", "clarification_card"].includes(event.type)) return false;
+    if (["workshop_questions", "workflow_next_steps"].includes(rawType)) return false;
+    if (!detailed && (["stream_mode", "turn_metadata"].includes(rawType) || event.type === "log")) return false;
+    if (!detailed && /^(Runtime is still waiting|Stream mode:|Model queue status received)/.test(event.content)) return false;
+    if (!detailed && /Generating HTML —|since the last server update/.test(event.content)) return true;
+    return true;
+}
+
 export function activityEvents(events: MessageEvent[], detailed: boolean): MessageEvent[] {
   const result: MessageEvent[] = [];
   const progressPositions = new Map<string, number>();
   for (const event of events) {
-    const rawType = String(event.data?.type ?? event.type);
-    if (outputEventTypes.includes(rawType) || ["message", "response", "clarification_card"].includes(event.type)) continue;
-    if (["workshop_questions", "workflow_next_steps"].includes(rawType)) continue;
-    if (!detailed && (["stream_mode", "turn_metadata"].includes(rawType) || event.type === "log")) continue;
-    if (!detailed && /^(Runtime is still waiting|Stream mode:|Model queue status received)/.test(event.content)) continue;
+    if (!isActivityEvent(event, detailed)) continue;
     if (!detailed && /Generating HTML —|since the last server update/.test(event.content)) {
       const key = event.content.split("—")[0];
       const position = progressPositions.get(key);

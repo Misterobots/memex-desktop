@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { ipc } from "../../lib/ipc";
 import { desktop } from "../../lib/desktop";
+import { clearEditorBuffer, getEditorBuffer, setEditorBuffer } from "../../lib/editorBufferStore";
 
 interface Props {
   path: string;
   onClose: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 function lspLanguage(path: string): string {
@@ -21,29 +23,73 @@ function ext(path: string) {
   return path.split(".").pop()?.toLowerCase() ?? "";
 }
 
-export function FileEditor({ path, onClose }: Props) {
+export function FileEditor({ path, onClose, onDirtyChange }: Props) {
   const [content, setContent]   = useState<string | null>(null);
   const [original, setOriginal] = useState("");
   const [saving, setSaving]     = useState(false);
   const [error, setError]       = useState("");
+  const [externalChange, setExternalChange] = useState(false);
   const [diagnostics, setDiagnostics] = useState<Array<{ severity?: number; message: string; range?: { start?: { line?: number; character?: number } } }>>([]);
   const [vimEnabled, setVimEnabled] = useState(false);
   const [vimMode, setVimMode] = useState<"insert" | "normal">("insert");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const contentRef = useRef<string | null>(null);
+  const originalRef = useRef("");
+  const fileStatRef = useRef<{ mtimeMs: number; size: number } | null>(null);
   const lspDocumentRef = useRef<{ bridge: NonNullable<ReturnType<typeof desktop>>; lang: string; rootUri: string; uri: string; version: number } | null>(null);
 
   const filename = path.split(/[/\\]/).pop() ?? path;
   const dirty    = content !== null && content !== original;
 
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+
   useEffect(() => {
-    setContent(null);
     setDiagnostics([]);
-    contentRef.current = null;
-    ipc.readFile(path)
-      .then((c) => { contentRef.current = c; setContent(c); setOriginal(c); })
-      .catch((e) => setError(String(e)));
+    setError("");
+    setExternalChange(false);
+    fileStatRef.current = null;
+    const cached = getEditorBuffer(path);
+    if (cached) {
+      contentRef.current = cached.content;
+      originalRef.current = cached.original;
+      setContent(cached.content);
+      setOriginal(cached.original);
+      void ipc.stat(path).then((stat) => { fileStatRef.current = stat; }).catch(() => undefined);
+    } else {
+      setContent(null);
+      contentRef.current = null;
+      ipc.readFile(path)
+        .then((c) => {
+          contentRef.current = c;
+          originalRef.current = c;
+          setContent(c);
+          setOriginal(c);
+          setEditorBuffer(path, { content: c, original: c });
+          void ipc.stat(path).then((stat) => { fileStatRef.current = stat; }).catch(() => undefined);
+        })
+        .catch((e) => setError(String(e)));
+    }
+    return () => {
+      if (contentRef.current !== null) setEditorBuffer(path, { content: contentRef.current, original: originalRef.current });
+    };
   }, [path]);
+
+  // Detect changes made by an agent, another editor, or an external process.
+  // Never overwrite a dirty local buffer implicitly; the user must choose a
+  // reload or keep-theirs decision before saving over the external version.
+  useEffect(() => {
+    if (content === null) return;
+    let alive = true;
+    const check = async () => {
+      try {
+        const stat = await ipc.stat(path);
+        if (!alive || !fileStatRef.current) return;
+        if (stat.mtimeMs !== fileStatRef.current.mtimeMs || stat.size !== fileStatRef.current.size) setExternalChange(true);
+      } catch { /* file may be temporarily unavailable; preserve the local buffer */ }
+    };
+    const timer = window.setInterval(check, 1500);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [path, content === null]);
 
   // Connect the native language server for this file when one is available.
   useEffect(() => {
@@ -80,6 +126,7 @@ export function FileEditor({ path, onClose }: Props) {
 
   useEffect(() => {
     contentRef.current = content;
+    if (content !== null) setEditorBuffer(path, { content, original: originalRef.current });
     const document = lspDocumentRef.current;
     if (!document || content === null) return;
     document.version += 1;
@@ -101,7 +148,11 @@ export function FileEditor({ path, onClose }: Props) {
     setSaving(true);
     try {
       await ipc.writeFile(path, content);
+      originalRef.current = content;
       setOriginal(content);
+      setEditorBuffer(path, { content, original: content });
+      fileStatRef.current = await ipc.stat(path).catch(() => fileStatRef.current);
+      setExternalChange(false);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -109,10 +160,42 @@ export function FileEditor({ path, onClose }: Props) {
     }
   };
 
+  const reloadExternal = async () => {
+    if (dirty && !window.confirm("This file changed outside Memex. Reload and discard your local edits?")) return;
+    try {
+      const next = await ipc.readFile(path);
+      contentRef.current = next;
+      originalRef.current = next;
+      setContent(next);
+      setOriginal(next);
+      setEditorBuffer(path, { content: next, original: next });
+      fileStatRef.current = await ipc.stat(path).catch(() => fileStatRef.current);
+      setExternalChange(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
+  const requestClose = () => {
+    if (dirty) {
+      if (!window.confirm("Discard unsaved changes to this file?")) return;
+      // Prevent the unmount cleanup below from writing the just-discarded
+      // buffer back into the cache, which would silently resurrect it.
+      contentRef.current = null;
+      clearEditorBuffer(path);
+    }
+    onClose();
+  };
+
+  const saveWithConflictGuard = async () => {
+    if (externalChange && !window.confirm("This file changed outside Memex. Save and replace the external changes?")) return;
+    await save();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "s") {
       e.preventDefault();
-      save();
+      void saveWithConflictGuard();
       return;
     }
     if (!vimEnabled || content === null) return;
@@ -215,7 +298,7 @@ export function FileEditor({ path, onClose }: Props) {
         <div className="flex items-center gap-2">
           {dirty && (
             <button
-              onClick={save}
+              onClick={saveWithConflictGuard}
               disabled={saving}
               className="px-2.5 py-1 text-xs bg-accent text-canvas rounded-md hover:bg-accentdim disabled:opacity-50"
             >
@@ -223,7 +306,7 @@ export function FileEditor({ path, onClose }: Props) {
             </button>
           )}
           <button
-            onClick={onClose}
+            onClick={requestClose}
             className="text-faint hover:text-text transition-colors text-lg leading-none"
           >
             ×
@@ -237,7 +320,8 @@ export function FileEditor({ path, onClose }: Props) {
       ) : content === null ? (
         <div className="flex-1 flex items-center justify-center text-faint text-xs">Loading…</div>
       ) : (
-        <div className="flex-1 overflow-auto">
+        <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+          {externalChange && <div role="alert" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-yellow-400/30 bg-yellow-400/10 px-4 py-2 text-xs text-yellow-100"><span className="min-w-0 flex-1">This file changed outside Memex. Reload it or keep your local edits; saving will replace the external version.</span><button type="button" onClick={() => void reloadExternal()} className="rounded border border-yellow-300/40 px-2 py-1 text-[11px] text-yellow-100 hover:bg-yellow-300/10">Reload</button></div>}
           {/* Line numbers + editor */}
           <div className="flex">
             <div className="flex-shrink-0 select-none text-right text-faint text-xs font-mono px-3 pt-3 leading-[1.6] min-w-[3.5rem]">

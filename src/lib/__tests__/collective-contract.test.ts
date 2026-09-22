@@ -25,7 +25,19 @@ describe("Collective terminology and legacy wire compatibility", () => {
       onEvent: vi.fn(), onDone: resolve, onError: reject,
     }));
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(body).toMatchObject({ model: "swarm", swarm_mode: true, session_id: "legacy-session" });
+    expect(body).toMatchObject({ model: "swarm", swarm_mode: true, memory_enabled: true, session_id: "legacy-session" });
     expect(JSON.stringify(body)).not.toContain("collective");
+  });
+
+  it("serializes an explicit general routing hint when provided", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("data: [DONE]\n\n"));
+    vi.stubGlobal("fetch", fetchMock);
+    await new Promise<void>((resolve, reject) => streamChat({
+      messages: [{ role: "user", content: "Prepare a repeatable checklist" }],
+      mode: "chat", modeFlags: {}, skill: "general", sessionId: "routine-session",
+      onEvent: vi.fn(), onDone: resolve, onError: reject,
+    }));
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.skill).toBe("general");
   });
 });

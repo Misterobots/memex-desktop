@@ -2,12 +2,13 @@ import type { MessageEvent } from "../../types/memex";
 
 type AgentState = "working" | "complete" | "failed" | "waiting";
 
-interface LiveAgent {
+export interface LiveAgent {
   id: string;
   name: string;
   role?: string;
   task?: string;
   state: AgentState;
+  events: MessageEvent[];
 }
 
 function object(value: unknown): Record<string, unknown> {
@@ -29,17 +30,20 @@ function stateFor(value: unknown): AgentState {
 /** Extract a stable worker roster from streamed coordinator events. */
 export function liveAgentsFromEvents(events: MessageEvent[]): LiveAgent[] {
   const agents = new Map<string, LiveAgent>();
-  const upsert = (candidate: Record<string, unknown>) => {
+  const upsert = (candidate: Record<string, unknown>, event?: MessageEvent) => {
     const id = string(candidate.worker_id ?? candidate.id ?? candidate.agent_id ?? candidate.pioneer_name ?? candidate.agent_name ?? candidate.role);
     if (!id) return;
     const prior = agents.get(id);
-    agents.set(id, {
+    const next: LiveAgent = {
       id,
       name: string(candidate.pioneer_name ?? candidate.agent_name ?? candidate.name) ?? prior?.name ?? string(candidate.role) ?? "Worker",
       role: string(candidate.role) ?? prior?.role,
       task: string(candidate.task ?? candidate.current_task ?? candidate.phase_name) ?? prior?.task,
       state: stateFor(candidate.status ?? candidate.state ?? candidate.event_type ?? prior?.state),
-    });
+      events: prior?.events ?? [],
+    };
+    if (event && event.content.trim()) next.events = [...next.events, event];
+    agents.set(id, next);
   };
   for (const event of events) {
     const data = object(event.data);
@@ -50,7 +54,7 @@ export function liveAgentsFromEvents(events: MessageEvent[]): LiveAgent[] {
       continue;
     }
     if (rawType === "swarm_worker_created" || event.type === "agent_event" || data.worker_id || data.pioneer_name) {
-      upsert({ ...data, pioneer_name: event.pioneer_name ?? data.pioneer_name, agent_name: event.agent_name ?? data.agent_name });
+      upsert({ ...data, pioneer_name: event.pioneer_name ?? data.pioneer_name, agent_name: event.agent_name ?? data.agent_name }, event);
     }
   }
   return [...agents.values()];
@@ -65,19 +69,26 @@ export function LiveAgentRoster({ events, active }: { events: MessageEvent[]; ac
     failed: "bg-red",
     waiting: "bg-yellow",
   };
-  return <section aria-label="Active agents" className="border-b border-border/60 px-3 py-3">
+  return <section aria-label="Pioneers" aria-live="polite" className="border-b border-border/60 px-3 py-3">
     <div className="mb-2 flex items-center justify-between">
-      <span className="text-[10px] font-medium uppercase tracking-wider text-faint">Agents</span>
+      <span className="text-[10px] font-medium uppercase tracking-wider text-faint">Pioneers</span>
       {active && <span className="text-[10px] text-accent">Live</span>}
     </div>
-    <div className="space-y-1">
-      {agents.map((agent) => <div key={agent.id} className="rounded-md border border-border/60 bg-canvas/40 px-2.5 py-2">
-        <div className="flex items-center gap-2 text-xs text-text">
+    <div className="divide-y divide-border/50">
+      {agents.map((agent) => <details key={agent.id} open={active && agent.state === "working"} className="group py-2 first:pt-0 last:pb-0">
+        <summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-text hover:text-accent">
           <span aria-label={agent.state} className={`h-1.5 w-1.5 shrink-0 rounded-full ${indicator[agent.state]}`} />
           <span className="min-w-0 truncate font-medium">{agent.name}</span>
-        </div>
-        {(agent.role || agent.task) && <p className="mt-0.5 truncate pl-3.5 text-[11px] text-muted">{agent.role}{agent.role && agent.task ? " · " : ""}{agent.task}</p>}
-      </div>)}
+          {agent.role && <span className="min-w-0 truncate text-muted">· {agent.role}</span>}
+          <span className="ml-auto text-muted transition-transform group-open:rotate-90">›</span>
+        </summary>
+        {(agent.task || agent.events.length > 0) && <div className="ml-3.5 mt-1.5 border-l border-border/60 pl-2.5">
+          {agent.task && <p className="mb-1 text-[11px] leading-4 text-muted">{agent.task}</p>}
+          {agent.events.length > 0 ? <ol className="space-y-0.5 text-[11px] leading-4 text-text/75">
+            {agent.events.slice(-10).map((event, index) => <li key={`${event.receivedAt ?? index}-${index}`} className="break-words">{event.content}</li>)}
+          </ol> : <p className="text-[11px] text-faint">Awaiting first update.</p>}
+        </div>}
+      </details>)}
     </div>
   </section>;
 }

@@ -7,6 +7,7 @@ const DOT: Record<string, string> = {
   connected:    "bg-green",
   disconnected: "bg-red",
   checking:     "bg-yellow status-dot-active",
+  sign_in_required: "bg-yellow",
 };
 
 /** Session token total — provider cost is shown when the runtime reports it. */
@@ -83,7 +84,7 @@ export function StatusBar() {
         >
           <span className={`w-2 h-2 rounded-full ${runtimeConnected ? DOT.connected : connections.agentRuntime === "checking" ? DOT.checking : DOT.disconnected}`} />
           <span className="text-muted text-xs">
-            {runtimeConnected ? (localServicesLimited ? "Connected · limited" : "Connected") : "Runtime unavailable"}
+            {runtimeConnected ? (localServicesLimited ? "Connected · limited" : "Connected") : connections.agentRuntime === "sign_in_required" ? "Sign in required" : "Runtime unavailable"}
           </span>
         </div>
         <SessionUsage />

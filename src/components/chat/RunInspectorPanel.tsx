@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { desktop }               from "../../lib/desktop";
+import { desktop, isDesktop }     from "../../lib/desktop";
 import type { ArtifactRecord }   from "../../lib/desktop";
 import type { RunRecord, RunEvent, RunEventType } from "../../types/memex";
 import { modeLabel } from "../../types/memex";
@@ -67,6 +67,10 @@ export function RunInspectorPanel({ runId, onClose }: Props) {
   const [viewing,   setViewing]   = useState<ArtifactRecord | null>(null);
 
   const bridge = desktop();
+  // Windows/Linux use a native title-bar overlay on the right edge. Keep the
+  // inspector close action inside the renderer's safe area so it cannot sit
+  // underneath the minimize/maximize/close controls.
+  const nativeWindowControls = isDesktop() && typeof navigator !== "undefined" && !/Mac/.test(navigator.userAgent);
 
   useEffect(() => {
     if (!bridge) return;
@@ -116,10 +120,10 @@ export function RunInspectorPanel({ runId, onClose }: Props) {
   const errors      = counts.error       ?? 0;
 
   return (
-    <div className="flex flex-col h-full w-full md:w-80 border-l border-border/40 bg-canvas flex-shrink-0">
+    <div className="flex h-full w-full max-w-full flex-col border-l border-border/40 bg-canvas flex-shrink-0 sm:w-[min(28rem,calc(100vw-1rem))]">
 
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 flex-shrink-0">
+      <div className={`flex items-center justify-between px-4 py-3 border-b border-border/40 flex-shrink-0 ${nativeWindowControls ? "pr-[140px]" : ""}`}>
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold text-muted uppercase tracking-wide">Run Inspector</span>
           {run && (
@@ -129,7 +133,7 @@ export function RunInspectorPanel({ runId, onClose }: Props) {
             </span>
           )}
         </div>
-        <button aria-label="Close run inspector" onClick={onClose} className="text-muted hover:text-text p-0.5">
+        <button aria-label="Close run inspector" title="Close inspector (Esc)" onClick={onClose} className="text-muted hover:text-text p-0.5">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8">
             <path d="M3 3l10 10M13 3L3 13" />
           </svg>

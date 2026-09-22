@@ -10,7 +10,7 @@ import { fetchRemoteSessions } from "./lib/conv-sync";
 
 export default function App() {
   const {
-    setConnections, setCwd,
+    setConnections,
     setCommandPalette, commandPaletteOpen,
   } = useStore();
   const [wizardDone, setWizardDone] = useState<boolean | null>(null); // null = loading
@@ -45,17 +45,17 @@ export default function App() {
       // Subscribe to native health:status events from main process
       offHealth = bridge.health.onStatus((s) => {
         setConnections({
-          agentRuntime: s.agentRuntime as "connected" | "disconnected",
-          mempalace:    s.mempalace    as "connected" | "disconnected",
-          ollama:       s.ollama       as "connected" | "disconnected",
+          agentRuntime: s.agentRuntime,
+          mempalace:    s.mempalace,
+          ollama:       s.ollama,
         });
       });
       // Seed with last known status if available
       bridge.health.getLast().then((s) => {
         if (s) setConnections({
-          agentRuntime: s.agentRuntime as "connected" | "disconnected",
-          mempalace:    s.mempalace    as "connected" | "disconnected",
-          ollama:       s.ollama       as "connected" | "disconnected",
+          agentRuntime: s.agentRuntime,
+          mempalace:    s.mempalace,
+          ollama:       s.ollama,
         });
       });
     } else {
@@ -97,9 +97,9 @@ export default function App() {
         window.dispatchEvent(new CustomEvent("memex:importFile", { detail: path }));
       };
 
-      // Resolve working directory
-      bridge.fs.readDir(".").then(() => {}).catch(() => {});
-      setCwd("");
+      // Keep the persisted project context. DevView validates/recovers the
+      // folder when the user returns to Code; clearing it here discarded the
+      // last project on every desktop restart and broke task/draft restoration.
     }
 
     return () => {

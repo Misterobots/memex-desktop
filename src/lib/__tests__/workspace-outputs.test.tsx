@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { activityDetail, activityEvents, activityLabel, activityPresentation, outputsFromEvents, safeOutputUrl } from "../workspace-outputs";
 import { normalizeSSEDelta } from "../sse-stream";
-import { MessageBubble } from "../../components/chat/MessageBubble";
+import { MessageBubble, responseTimeline } from "../../components/chat/MessageBubble";
 import type { ChatDisplayMode, ChatMessage, MessageEvent } from "../../types/memex";
 
 vi.mock("../../components/views/ChatView", () => ({ useInspector: () => null }));
@@ -57,6 +57,16 @@ describe("workspace output delivery", () => {
     expect(activityEvents(events, false).map((e) => e.content)).toEqual(["Design Studio: Generating HTML — 500 characters"]);
     expect(activityEvents(events, true)).toHaveLength(3);
   });
+  it("preserves narrative and activity chronology instead of appending all activity after the response", () => {
+    const ordered: MessageEvent[] = [
+      { type: "message", content: "I’m checking the workspace first.\n\n" },
+      { type: "thought", content: "Reviewing the project requirements", data: { safe_summary: true } },
+      { type: "message", content: "Now I’ll run the focused test." },
+      { type: "tool_call_start", content: "run_command started", data: { type: "tool_start", tool_name: "run_command", tool_input: { command: "npm test" } } },
+    ];
+    expect(responseTimeline(ordered, true).map((entry) => entry.kind)).toEqual(["response", "activity", "response", "activity"]);
+    expect(responseTimeline(ordered, true)[0]).toEqual(expect.objectContaining({ content: "I’m checking the workspace first.\n\n" }));
+  });
   it("turns raw runtime emoji logs into compact product activity labels", () => {
     expect(activityLabel("🎨 Design Studio: Generating HTML — 500 characters")).toBe("Generating design");
     expect(activityLabel("🧠 Neural Cortex: Analyzing intent...")).toBe("Choosing approach");
@@ -96,7 +106,7 @@ describe("workspace output delivery", () => {
       tone: "tool", title: "Running run_command", command: "npm test",
     });
     expect(activityPresentation({ type: "tool_call_result", content: "SECRET=value", data: { type: "tool_result", tool_name: "read_file", tool_output: "SECRET=value" } })).toMatchObject({
-      tone: "tool", title: "read_file completed", detail: "Result received.", command: undefined,
+      tone: "tool", title: "Ran read_file", detail: "Result received.", command: undefined,
     });
     expect(activityPresentation({ type: "status", content: "Coordinator updated the worker plan.", data: { type: "swarm_task_list" } })).toMatchObject({
       tone: "progress", title: "Coordinator updated the worker plan.",
@@ -107,7 +117,8 @@ describe("workspace output delivery", () => {
       { type: "status", content: "Coordinator updated the worker plan.", data: { type: "swarm_task_list" } },
     ] }} />);
     expect(markup).toContain("Thinking");
-    expect(markup).toContain("Tool: Running run_command");
+    expect(markup).toContain("Ran run_command");
+    expect(markup).toContain("Running run_command");
     expect(markup).toContain("Activity: Coordinator updated the worker plan.");
     expect(markup).toContain("text-pink-100");
     expect(markup).not.toContain("border-pink-400/60");
@@ -118,6 +129,9 @@ describe("workspace output delivery", () => {
     });
     expect(activityPresentation({ type: "thought", content: "private scratchpad text" })).toMatchObject({
       tone: "intent", title: "Thinking", detail: "Considering response",
+    });
+    expect(activityPresentation({ type: "thought", content: "private scratchpad text" }, true)).toMatchObject({
+      tone: "intent", title: "private scratchpad text",
     });
   });
   it.each<ChatDisplayMode>(["summary", "normal", "thought"])("keeps real media and cancellation visible in %s", (displayMode) => {

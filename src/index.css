@@ -19,6 +19,14 @@ html, body, #root {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Compact mode trims the most common layout stacks without changing the
+   information hierarchy. The preset is scoped to the app shell so artifact
+   previews and editor contents remain untouched. */
+[data-density="compact"] .space-y-5 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.875rem; }
+[data-density="compact"] .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.7rem; }
+[data-density="compact"] .space-y-3 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.5rem; }
+[data-density="compact"] .gap-4 { gap: 0.75rem; }
+
 /* Scrollbar — subtle, neutral */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -30,6 +38,10 @@ html, body, #root {
 /* Drag region for frameless window */
 .drag-region { -webkit-app-region: drag; }
 .no-drag { -webkit-app-region: no-drag; }
+
+/* The floating AgentDock must track the actual composer height (including
+   multi-line quality-bar inputs), not a fixed bottom offset. */
+[aria-label="Agent Dock"] { bottom: var(--memex-composer-clearance, 6.5rem) !important; }
 
 /* Streaming cursor */
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }

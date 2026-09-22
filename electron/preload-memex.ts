@@ -67,6 +67,7 @@ contextBridge.exposeInMainWorld("memex", {
   // File system
   fs: {
     readFile:     (path: string)                  => ipcRenderer.invoke("fs:readFile", path),
+    stat:         (path: string)                  => ipcRenderer.invoke("fs:stat", path),
     previewWrite: (path: string)                  => ipcRenderer.invoke("fs:previewWrite", path) as Promise<string>,
     writeFile:    (path: string, content: string) => ipcRenderer.invoke("fs:writeFile", path, content),
     readDir:   (path: string)                  => ipcRenderer.invoke("fs:readDir", path),
@@ -191,9 +192,9 @@ contextBridge.exposeInMainWorld("memex", {
     check:   () => ipcRenderer.invoke("health:check"),
     getLast: () => ipcRenderer.invoke("health:getLast"),
     onStatus: (cb: (status: {
-      agentRuntime: "connected" | "disconnected";
-      mempalace:    "connected" | "disconnected";
-      ollama:       "connected" | "disconnected";
+      agentRuntime: "connected" | "disconnected" | "sign_in_required";
+      mempalace:    "connected" | "disconnected" | "sign_in_required";
+      ollama:       "connected" | "disconnected" | "sign_in_required";
       checkedAt:    string;
     }) => void) => {
       ipcRenderer.on("health:status", (_e, s) => cb(s));

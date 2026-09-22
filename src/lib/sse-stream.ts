@@ -49,6 +49,10 @@ export interface StreamOptions {
   gauntletHandoff?: { id: string; role: string; phase: string; goal: string; qualityBar: string; effort: Record<string, string>; clarifications?: string[] };
   /** Ollama model id to route to (e.g. "qwen3-coder:30b"). Defaults to "swarm". */
   model?: string;
+  /** Optional backend routing hint (for example, `general` for Routines). */
+  skill?: string;
+  /** Enable owner-scoped MemPalace recall and background extraction. */
+  memoryEnabled?: boolean;
   sessionId?: string;
   /** Workspace identity sent with dev approval decisions. */
   workspaceKey?: string;
@@ -153,7 +157,11 @@ export function streamChat(opts: StreamOptions): () => void {
     model: opts.model || "swarm",
     messages: opts.messages,
     stream: true,
+    ...(opts.skill ? { skill: opts.skill } : {}),
     session_id: opts.sessionId ?? "default_session",
+    // MemPalace memory is part of the desktop contract: the runtime recalls
+    // relevant owner-scoped memories and extracts durable facts after a turn.
+    memory_enabled: opts.memoryEnabled ?? true,
     already_steered: opts.alreadySteered ?? false,
     dev_resume: opts.devResume ?? false,
     workspace_key: opts.workspaceKey ?? opts.sessionId ?? "default-workspace",
@@ -260,6 +268,22 @@ export function streamChat(opts: StreamOptions): () => void {
     const streamId = `chat-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     let status = 0;
     let failureDetail = "";
+    let consumeQueue = Promise.resolve();
+    let streamEnded = false;
+    const finishWithError = (error: Error) => {
+      if (streamEnded) return;
+      streamEnded = true;
+      recordRunEvent("error", { message: error.message });
+      if (runId) bridge.runs?.end(runId, "error");
+      opts.onError(error);
+    };
+    const finishSuccessfully = () => {
+      if (streamEnded) return;
+      streamEnded = true;
+      recordRunEvent("done", { status: "done" });
+      if (runId) bridge.runs?.end(runId, "done");
+      opts.onDone();
+    };
     const cancel = bridge.api.stream(streamId, {
       url: `${getAgentRuntime()}/v1/chat/completions`,
       method: "POST",
@@ -271,24 +295,24 @@ export function streamChat(opts: StreamOptions): () => void {
         status = Number(response?.status ?? 0);
         failureDetail = response?.detail ?? "";
       } else if (event.kind === "chunk") {
-        void consumeChunk(new Uint8Array(event.value as ArrayBufferLike));
+        // Native IPC can deliver the next chunk before the previous async
+        // chunk has finished (for example while an approval is being bridged).
+        // Serialize consumption so activity, tokens, and approvals retain
+        // their wire order and the done event cannot race the final chunk.
+        consumeQueue = consumeQueue.then(() => consumeChunk(new Uint8Array(event.value as ArrayBufferLike)));
       } else if (event.kind === "done") {
-        if (status < 200 || status >= 300) {
-          const detail = failureDetail ? `: ${failureDetail.slice(0, 500)}` : "";
-          opts.onError(new Error(`agent_runtime returned ${status}${detail}`));
-        }
-        else {
-          recordRunEvent("done", { status: "done" });
-          if (runId) bridge.runs?.end(runId, "done");
-          opts.onDone();
-        }
+        void consumeQueue.then(() => {
+          if (status < 200 || status >= 300) {
+            const detail = failureDetail ? `: ${failureDetail.slice(0, 500)}` : "";
+            finishWithError(new Error(`agent_runtime returned ${status}${detail}`));
+          } else finishSuccessfully();
+        }).catch((error) => finishWithError(error instanceof Error ? error : new Error(String(error))));
       } else if (event.kind === "error") {
-        recordRunEvent("error", { message: String(event.value ?? "Stream failed") });
-        if (runId) bridge.runs?.end(runId, "error");
-        opts.onError(new Error(String(event.value ?? "Stream failed")));
+        finishWithError(new Error(String(event.value ?? "Stream failed")));
       }
     });
     return () => {
+      streamEnded = true;
       cancel();
       if (runId) bridge.runs?.end(runId, "cancelled");
       // Stopping a visible Gauntlet must stop its durable coordinator too.
@@ -346,5 +370,27 @@ export function streamChat(opts: StreamOptions): () => void {
       }
     });
 
-  return () => controller.abort();
+  return () => {
+    controller.abort();
+    // Stopping a visible Gauntlet must stop its durable coordinator too.
+    // Aborting only the renderer's fetch reader left GPU workers running and
+    // turned a deliberate stop into a confusing later reconnect (same fix as
+    // the native-IPC branch above, mirrored here for the browser transport).
+    if (opts.gauntletHandoff?.id) {
+      const checkpoint = opts.gauntletHandoff.id;
+      void fetch(`${getAgentRuntime()}/v1/tasks/${encodeURIComponent(checkpoint)}/stop`, {
+        method: "POST",
+      }).then((response) => {
+        if (response.status >= 200 && response.status < 300) {
+          void bridge?.gauntlet?.patch(checkpoint, {
+            status: "cancelled",
+            nextAction: "Stopped by you. The preserved goal and quality bar remain available for an explicit future restart.",
+          });
+        }
+      }).catch(() => {
+        // Keep the packet active on a failed stop request so its automatic
+        // status refresh can still reveal a coordinator that is running.
+      });
+    }
+  };
 }

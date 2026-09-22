@@ -12,6 +12,15 @@ describe("experience-owned sessions", () => {
     expect(useStore.getState().activeSession("code", "C:/alpha")?.displayMode).toBe("summary");
     expect(useStore.getState().activeSession("code", "C:/beta")?.displayMode).toBe("normal");
   });
+
+  it("stores drafts by task scope and clears only the submitted draft", () => {
+    useStore.getState().setWorkspaceDraft("code:C:/alpha:new", "finish the parser");
+    useStore.getState().setWorkspaceDraft("code:C:/beta:new", "review the tests");
+    useStore.getState().clearWorkspaceDraft("code:C:/alpha:new");
+
+    expect(useStore.getState().workspaceDrafts["code:C:/alpha:new"]).toBeUndefined();
+    expect(useStore.getState().workspaceDrafts["code:C:/beta:new"]).toBe("review the tests");
+  });
   it("keeps run controls independent for each workspace", () => {
     useStore.getState().setWorkspaceRunPreferences("research", undefined, { outputDetail: "high", reasoningSummary: "detailed" });
     useStore.getState().setWorkspaceRunPreferences("code", "C:/alpha", { reasoningEffort: "high" });
@@ -24,10 +33,13 @@ describe("experience-owned sessions", () => {
       activeSessionIds: {},
       workspaceDisplayModes: {},
       workspaceRunPreferences: {},
+      workspaceDrafts: {},
       activeTab: "chat",
       shellMode: "chat",
       designSurface: "product",
       cwd: "",
+      uiScale: 1,
+      uiDensity: "comfortable",
       streamingSessions: {},
       stopStreams: {},
     });
@@ -81,6 +93,15 @@ describe("experience-owned sessions", () => {
     useStore.getState().setActiveTab("memory");
 
     expect(useStore.getState().activeSession()).toBeNull();
+  });
+
+  it("clamps the global UI scale and keeps density as a persisted preference", () => {
+    useStore.getState().setUiScale(2);
+    expect(useStore.getState().uiScale).toBe(1.25);
+    useStore.getState().setUiScale(0.1);
+    expect(useStore.getState().uiScale).toBe(0.9);
+    useStore.getState().setUiDensity("compact");
+    expect(useStore.getState().uiDensity).toBe("compact");
   });
 
   it("switches between focused shells while preserving shared Design and Routines destinations", () => {

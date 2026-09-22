@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "../../lib/store";
 import { FileTree } from "../sidebar/FileTree";
 import { ConversationPane } from "../chat/ConversationPane";
@@ -10,12 +10,14 @@ import { WorkspaceSafetyBadge } from "../dev/WorkspaceSafetyBadge";
 import { ProjectTasksPane } from "../dev/ProjectTasksPane";
 import { BrowserView } from "./BrowserView";
 import { ipc } from "../../lib/ipc";
+import { desktop } from "../../lib/desktop";
 import { SessionList } from "../sidebar/SessionList";
 import { PrintWorkflowPanel } from "../dev/PrintWorkflowPanel";
 import { WorktreePanel } from "../dev/WorktreePanel";
 import { WorkspaceProjectsPanel } from "../dev/WorkspaceProjectsPanel";
 import { CodeUtilityMenu } from "../dev/CodeUtilityMenu";
-import { LiveAgentRoster } from "../sidebar/LiveAgentRoster";
+import { PioneersView } from "../swarm/PioneersView";
+import { explorerWidthForPointer } from "./dev-layout";
 
 type PrimaryPane = "projects" | "chat" | "editor" | "tasks" | "print";
 type BottomPane  = "terminal" | "browser" | "none";
@@ -28,18 +30,65 @@ export function DevView() {
 
   const [primary, setPrimary]       = useState<PrimaryPane>(cwd ? "chat" : "projects");
   const [bottomPane, setBottomPane] = useState<BottomPane>("none");
+  const [terminalOpened, setTerminalOpened] = useState(false);
   const [openFile, setOpenFile]     = useState<string | null>(null);
   const [worktreesOpen, setWorktreesOpen] = useState(false);
+  const [editorDirty, setEditorDirty] = useState(false);
   const [bottomHeight, setBottomHeight] = useState(40);
   const [resizing, setResizing] = useState(false);
+  const [explorerWidth, setExplorerWidth] = useState(() => {
+    try { return Math.min(420, Math.max(180, Number(localStorage.getItem("memex.layout.explorerWidth:unselected")) || 240)); } catch { return 240; }
+  });
+  const [resizingExplorer, setResizingExplorer] = useState(false);
+  const explorerRef = useRef<HTMLElement>(null);
+  // Deliberately not initialized to the current scope: that would make the
+  // very first run of the sync effect below think the scope is unchanged
+  // and skip loading this project's saved width, overwriting it instead.
+  const explorerScopeRef = useRef<string | null>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
 
   const termId = `term-${session?.id ?? `project-${cwd || "unselected"}`}`;
 
-  const toggleTerminal = () =>
+  const confirmNavigation = useCallback(() => {
+    if (!editorDirty) return true;
+    return window.confirm("This editor has unsaved changes. Continue navigation? Your in-memory draft will remain available if you return to the file.");
+  }, [editorDirty]);
+  const changePrimary = useCallback((next: PrimaryPane) => {
+    if (next === primary || confirmNavigation()) setPrimary(next);
+  }, [confirmNavigation, primary]);
+  const changeProject = useCallback((next: string) => {
+    if (next === cwd || confirmNavigation()) {
+      setEditorDirty(false);
+      setCwd(next);
+    }
+  }, [confirmNavigation, cwd, setCwd]);
+  const openFileFromTree = useCallback((path: string) => {
+    if (path === openFile || confirmNavigation()) {
+      setOpenFile(path);
+      setEditorDirty(false);
+      setPrimary("editor");
+    }
+  }, [confirmNavigation, openFile]);
+  const openProject = useCallback((path: string) => {
+    if (!confirmNavigation()) return;
+    setEditorDirty(false);
+    setCwd(path);
+    setPrimary("chat");
+  }, [confirmNavigation, setCwd]);
+
+  const toggleTerminal = () => {
+    setTerminalOpened(true);
     setBottomPane((p) => (p === "terminal" ? "none" : "terminal"));
+  };
   const toggleBrowser = () =>
     setBottomPane((p) => (p === "browser" ? "none" : "browser"));
+  const stopTerminal = () => {
+    // Hiding/switching the terminal preserves its PTY. This is the explicit
+    // user action that terminates the process and clears the retained mount.
+    void desktop()?.pty.kill(termId);
+    setTerminalOpened(false);
+    setBottomPane((pane) => pane === "terminal" ? "none" : pane);
+  };
   useEffect(() => {
     if (!resizing) return;
     const resize = (event: PointerEvent) => {
@@ -57,18 +106,61 @@ export function DevView() {
     };
   }, [resizing]);
 
+  // The composer moves when the primary or bottom project pane changes even
+  // though its own height may stay the same. Let the floating AgentDock
+  // recompute its viewport-safe clearance immediately after those layout
+  // transitions.
+  useEffect(() => {
+    window.dispatchEvent(new Event("memex:layout-change"));
+  }, [primary, bottomPane, bottomHeight]);
+  useEffect(() => {
+    try { const saved = Number(localStorage.getItem(`memex.layout.bottomHeight:${cwd || "unselected"}`)); if (saved) setBottomHeight(Math.min(70, Math.max(25, saved))); } catch { /* storage unavailable */ }
+  }, [cwd]);
+  useEffect(() => {
+    try { localStorage.setItem(`memex.layout.bottomHeight:${cwd || "unselected"}`, String(bottomHeight)); } catch { /* storage unavailable */ }
+  }, [bottomHeight, cwd]);
+  useEffect(() => {
+    const scope = cwd || "unselected";
+    if (explorerScopeRef.current !== scope) {
+      explorerScopeRef.current = scope;
+      try {
+        const saved = Number(localStorage.getItem(`memex.layout.explorerWidth:${scope}`));
+        if (saved) setExplorerWidth(Math.min(420, Math.max(180, saved)));
+      } catch { /* storage unavailable */ }
+      return;
+    }
+    try {
+      localStorage.setItem(`memex.layout.explorerWidth:${scope}`, String(explorerWidth));
+    } catch { /* storage unavailable */ }
+  }, [cwd, explorerWidth]);
+  useEffect(() => {
+    if (!resizingExplorer) return;
+    const resize = (event: PointerEvent) => {
+      const bounds = explorerRef.current?.getBoundingClientRect();
+      if (!bounds) return;
+      // The explorer is nested after the app navigation. Use its own left edge
+      // instead of viewport X so resizing does not jump when the app sidebar is
+      // visible, hidden, or rendered at a different scale.
+      setExplorerWidth(explorerWidthForPointer(event.clientX, bounds.left, window.innerWidth));
+    };
+    const stop = () => setResizingExplorer(false);
+    window.addEventListener("pointermove", resize);
+    window.addEventListener("pointerup", stop);
+    return () => { window.removeEventListener("pointermove", resize); window.removeEventListener("pointerup", stop); };
+  }, [resizingExplorer]);
+
 
   return (
     <div className="flex flex-1 min-h-0">
       {/* File explorer */}
       {sidebarOpen && (
-        <aside className="w-[240px] flex-shrink-0 border-r border-border/60 bg-surface flex flex-col">
+        <aside ref={explorerRef} style={{ width: explorerWidth }} className="relative flex-shrink-0 border-r border-border/60 bg-surface flex flex-col">
           <div className="flex items-center justify-between px-3 h-9 border-b border-border/60">
             <span className="text-xs text-faint font-medium truncate">
               {folderName ?? "Explorer"}
             </span>
             <button
-              onClick={() => ipc.openFolder().then((p) => p && setCwd(p))}
+              onClick={() => ipc.openFolder().then((p) => p && changeProject(p))}
               className="text-faint hover:text-accent transition-colors flex-shrink-0"
               title="Open folder"
             >
@@ -82,18 +174,14 @@ export function DevView() {
               <SessionList experience="code" workspaceKey={cwd} newLabel="New agent thread" />
             </div>
           )}
-          {session && <LiveAgentRoster
-            events={session.messages.flatMap((message) => message.events)}
-            active={Boolean(streamingSessions[session.id])}
-          />}
           <div className="flex-1 overflow-y-auto py-1 min-h-0">
             {cwd ? (
-              <FileTree root={cwd} onFileClick={(path) => { setOpenFile(path); setPrimary("editor"); }} />
+              <FileTree root={cwd} onFileClick={openFileFromTree} />
             ) : (
               <div className="px-3 py-6 text-center">
                 <p className="text-faint text-xs mb-3">Open a folder to start</p>
                 <button
-                  onClick={() => ipc.openFolder().then((p) => p && setCwd(p))}
+                  onClick={() => ipc.openFolder().then((p) => p && changeProject(p))}
                   className="px-3 py-1.5 text-xs text-accent border border-accent/40 rounded-lg hover:bg-accent/10 transition-colors"
                 >
                   Open folder
@@ -101,18 +189,36 @@ export function DevView() {
               </div>
             )}
           </div>
+          <button
+            type="button"
+            aria-label="Resize explorer panel"
+            title="Drag to resize explorer"
+            onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setResizingExplorer(true); }}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowLeft") { event.preventDefault(); setExplorerWidth((value) => Math.max(180, value - 16)); }
+              if (event.key === "ArrowRight") { event.preventDefault(); setExplorerWidth((value) => Math.min(420, value + 16)); }
+              if (event.key === "Home") { event.preventDefault(); setExplorerWidth(180); }
+              if (event.key === "End") { event.preventDefault(); setExplorerWidth(420); }
+            }}
+            role="separator"
+            aria-orientation="vertical"
+            aria-valuemin={180}
+            aria-valuemax={420}
+            aria-valuenow={explorerWidth}
+            className="absolute -right-1 top-0 z-10 h-full w-2 touch-none cursor-col-resize hover:bg-accent/20 focus:outline-none focus:bg-accent/20"
+          />
         </aside>
       )}
 
       {/* Main workspace */}
       <div className="relative flex flex-col flex-1 min-w-0">
         {/* Top toolbar */}
-        <div className="flex items-center gap-1 px-3 h-9 border-b border-border/60 bg-surface flex-shrink-0">
+        <div className="flex min-w-0 flex-nowrap items-center gap-1 overflow-x-auto px-3 h-9 border-b border-border/60 bg-surface flex-shrink-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {(["projects", "chat", "editor", "tasks", "print"] as PrimaryPane[]).map((p) => (
             <button
               key={p}
-              onClick={() => setPrimary(p)}
-              className={`px-2.5 py-1 text-xs rounded-md transition-colors capitalize ${
+              onClick={() => changePrimary(p)}
+              className={`shrink-0 px-2.5 py-1 text-xs rounded-md transition-colors capitalize ${
                 primary === p ? "bg-surface2 text-text" : "text-faint hover:text-text"
               }`}
             >
@@ -120,7 +226,7 @@ export function DevView() {
             </button>
           ))}
           <div className="flex-1" />
-          <CodeUtilityMenu onProjects={() => setPrimary("projects")} onNavigate={setActiveTab} />
+          <CodeUtilityMenu onProjects={() => changePrimary("projects")} onNavigate={(tab) => { if (confirmNavigation()) setActiveTab(tab); }} />
           <WorkspaceSafetyBadge />
           {cwd && <button
             onClick={() => setWorktreesOpen((open) => !open)}
@@ -156,24 +262,24 @@ export function DevView() {
           </button>
         </div>
 
-        {worktreesOpen && cwd && <WorktreePanel repoPath={cwd} onSelect={(path) => { setCwd(path); setWorktreesOpen(false); }} />}
+        {worktreesOpen && cwd && <WorktreePanel repoPath={cwd} onSelect={(path) => { changeProject(path); setWorktreesOpen(false); }} />}
 
         {/* Pane area */}
-        <div ref={workspaceRef} className={`flex flex-col flex-1 min-h-0 ${resizing ? "select-none cursor-row-resize" : ""}`}>
+        <div ref={workspaceRef} className={`relative flex flex-col flex-1 min-h-0 ${resizing ? "select-none cursor-row-resize" : ""}`}>
           {/* Primary pane */}
           <div className={`flex flex-col flex-1 min-h-0 ${bottomPane !== "none" ? "border-b border-border/60" : ""}`}
                style={{ height: bottomPane !== "none" ? `${100 - bottomHeight}%` : "100%" }}>
             {primary === "projects" ? (
-              <WorkspaceProjectsPanel cwd={cwd} onOpen={(path) => { setCwd(path); setPrimary("chat"); }} />
+              <WorkspaceProjectsPanel cwd={cwd} onOpen={openProject} />
             ) : primary === "print" ? (
               <PrintWorkflowPanel />
             ) : primary === "tasks" ? (
               <ProjectTasksPane cwd={cwd} />
             ) : primary === "editor" && openFile ? (
               openFile.toLowerCase().endsWith(".ipynb") ? (
-                <NotebookEditor path={openFile} onClose={() => { setOpenFile(null); setPrimary("chat"); }} />
+                <NotebookEditor key={openFile} path={openFile} onDirtyChange={setEditorDirty} onClose={() => { setOpenFile(null); setEditorDirty(false); setPrimary("chat"); }} />
               ) : (
-                <FileEditor path={openFile} onClose={() => { setOpenFile(null); setPrimary("chat"); }} />
+                <FileEditor key={openFile} path={openFile} onDirtyChange={setEditorDirty} onClose={() => { setOpenFile(null); setEditorDirty(false); setPrimary("chat"); }} />
               )
             ) : (
               <div className="flex flex-col flex-1 min-h-0">
@@ -218,20 +324,28 @@ export function DevView() {
                   aria-valuemin={25}
                   aria-valuemax={70}
                   aria-valuenow={bottomHeight}
-                  onPointerDown={(event) => { event.preventDefault(); setResizing(true); }}
+                  onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); setResizing(true); }}
                   onKeyDown={(event) => {
                     if (event.key === "ArrowUp") { event.preventDefault(); setBottomHeight((value) => Math.min(70, value + 5)); }
                     if (event.key === "ArrowDown") { event.preventDefault(); setBottomHeight((value) => Math.max(25, value - 5)); }
                     if (event.key === "Home") { event.preventDefault(); setBottomHeight(25); }
                     if (event.key === "End") { event.preventDefault(); setBottomHeight(70); }
                   }}
-                  className="h-4 w-3 -ml-2 mr-1 cursor-row-resize rounded hover:bg-accent/20 focus:outline-none focus:bg-accent/20"
+                  className="h-5 w-4 -ml-2 mr-1 touch-none cursor-row-resize rounded hover:bg-accent/20 focus:outline-none focus:bg-accent/20"
                   title="Drag to resize project tools"
                 />
                 <span className="text-xs text-faint font-medium">{bottomPane === "terminal" ? "Terminal" : `Browser · ${folderName ?? "Project"}`}</span>
                 <div className="flex-1" />
+                {bottomPane === "terminal" && <button
+                  type="button"
+                  onClick={stopTerminal}
+                  className="mr-2 rounded px-2 py-1 text-[10px] font-medium text-red-300 hover:bg-red-400/10 hover:text-red-200"
+                  title="Terminate the terminal process"
+                >Stop process</button>}
                 <button
                   onClick={() => setBottomPane("none")}
+                  aria-label={`Hide ${bottomPane}`}
+                  title={`Hide ${bottomPane}`}
                   className="text-faint hover:text-text transition-colors"
                 >
                   <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -239,15 +353,32 @@ export function DevView() {
                   </svg>
                 </button>
               </div>
-              {bottomPane === "terminal" ? (
-                <TerminalPane id={termId} cwd={cwd || undefined} className="flex-1 min-h-0" />
-              ) : (
-                <BrowserView />
-              )}
+              {bottomPane === "browser" && <BrowserView />}
+            </div>
+          )}
+          {/* Single persistent TerminalPane instance, rendered from one fixed
+              position in the tree and repositioned/hidden purely via CSS.
+              Mounting it at two different JSX locations (visible vs. hidden)
+              made React unmount+remount it on every switch, killing its PTY;
+              a stable mount point is what actually keeps the shell alive. */}
+          {terminalOpened && (
+            <div
+              className={bottomPane === "terminal"
+                ? "absolute inset-x-0 bottom-0 flex flex-col min-h-0"
+                : "pointer-events-none absolute left-0 top-0 h-px w-px overflow-hidden opacity-0"}
+              style={bottomPane === "terminal" ? { height: `calc(${bottomHeight}% - 2rem)` } : undefined}
+              aria-hidden={bottomPane === "terminal" ? undefined : "true"}
+            >
+              <TerminalPane id={termId} cwd={cwd || undefined} className="h-full" />
             </div>
           )}
         </div>
       </div>
+      {session && <PioneersView
+        events={session.messages.flatMap((message) => message.events)}
+        active={Boolean(streamingSessions[session.id])}
+        workspaceKey={cwd || "unselected"}
+      />}
     </div>
   );
 }

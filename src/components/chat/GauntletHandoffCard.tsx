@@ -103,20 +103,24 @@ export function GauntletHandoffCard({ handoffId }: { handoffId: string }) {
     }
   };
 
-  return <section className="rounded-lg border border-accent/35 bg-accent/5 px-3 py-2.5 text-xs" aria-label="Gauntlet checkpoint">
-    <div className="flex items-center justify-between gap-3">
-      <span className="font-medium text-text">Gauntlet run</span>
-      <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] text-muted">{packet.status} · {packet.phase}</span>
-    </div>
-    <p className="mt-1 text-muted line-clamp-2"><span className="text-text">Bar:</span> {packet.qualityBar}</p>
-    <p className="mt-1 text-muted">{packet.effort.model} · {packet.effort.reasoningEffort} reasoning · {packet.effort.outputDetail} output</p>
-    <p className="mt-1.5 text-muted">Next: {packet.nextAction}</p>
-    {coordinatorNote && <p className="mt-1.5 text-muted" role="status">{coordinatorNote}</p>}
-    <div className="mt-2 flex gap-2">
-      <button disabled={busy} onClick={() => void checkCoordinator()} className="rounded border border-border/60 px-2 py-1 text-text hover:bg-surface2 disabled:opacity-50">Refresh now</button>
-      {requiresSignIn && <button disabled={busy} onClick={() => void signIn()} className="rounded border border-accent/50 px-2 py-1 text-accent hover:bg-accent/10 disabled:opacity-50">Sign in to Memex</button>}
-      <button onClick={resume} className="rounded border border-border/60 px-2 py-1 text-text hover:bg-surface2">Resume preserved Gauntlet</button>
-      {packet.status === "cancelled" && <button onClick={() => window.dispatchEvent(new CustomEvent("chat:prefill", { detail: "Start fresh: " }))} className="rounded border border-border/60 px-2 py-1 text-muted hover:bg-surface2">Start fresh</button>}
-    </div>
+  return <section className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/40 pt-2 text-xs text-muted" aria-label="Gauntlet checkpoint">
+    <span className="font-medium text-text">Gauntlet</span>
+    <span aria-label={`Gauntlet status: ${packet.status}, ${packet.phase}`}>{packet.status} · {packet.phase}</span>
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() => void checkCoordinator()}
+      title="Refresh coordinator status"
+      aria-label="Refresh coordinator status"
+      className="inline-flex h-5 w-5 items-center justify-center rounded text-muted hover:bg-surface2 hover:text-text disabled:opacity-50"
+    >
+      <svg viewBox="0 0 16 16" aria-hidden="true" className={busy ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} fill="none" stroke="currentColor" strokeWidth="1.5">
+        <path d="M13 4.5V1.8m0 0h-2.7M13 1.8A5.8 5.8 0 1 0 13.6 9" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+    {(packet.status === "blocked" || packet.status === "cancelled" || packet.status === "needs_input") && <button onClick={resume} className="text-accent hover:underline">Resume preserved Gauntlet</button>}
+    {requiresSignIn && <button disabled={busy} onClick={() => void signIn()} className="text-accent hover:underline disabled:opacity-50">Sign in to Memex</button>}
+    {packet.status === "cancelled" && <button onClick={() => window.dispatchEvent(new CustomEvent("chat:prefill", { detail: "Start fresh: " }))} className="hover:text-text">Start fresh</button>}
+    {coordinatorNote && <span className="basis-full text-[11px] text-muted" role="status">{coordinatorNote}</span>}
   </section>;
 }

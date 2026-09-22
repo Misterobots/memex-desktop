@@ -7,6 +7,7 @@ export interface AgentWork {
   name: string;
   role?: string;
   task?: string;
+  parentId?: string;
   state: AgentState;
   events: MessageEvent[];
 }
@@ -47,6 +48,7 @@ export function agentWorkFromEvents(events: MessageEvent[]): AgentWork[] {
       name: text(candidate.pioneer_name ?? candidate.agent_name ?? candidate.name) ?? prior?.name ?? text(candidate.role) ?? "Worker",
       role: text(candidate.role) ?? prior?.role,
       task: text(candidate.task ?? candidate.current_task ?? candidate.phase_name) ?? prior?.task,
+      parentId: text(candidate.parent_worker_id ?? candidate.parentWorkerId ?? candidate.parent_id) ?? prior?.parentId,
       state: stateFor(candidate.status ?? candidate.state ?? candidate.event_type ?? prior?.state),
       events: prior?.events ?? [],
     };
@@ -86,6 +88,32 @@ export function AgentWorkTrace({ events, active }: { events: MessageEvent[]; act
   const agents = agentWorkFromEvents(events);
   if (!agents.length) return null;
   const working = agents.filter((agent) => agent.state === "working").length;
+  const knownIds = new Set(agents.map((agent) => agent.id));
+  const childrenOf = (parentId: string) => agents.filter((agent) => agent.parentId === parentId);
+  const renderAgent = (agent: AgentWork, depth: number, ancestry: Set<string>): React.ReactNode => {
+    // A malformed runtime event must not create an infinite render loop.
+    const nextAncestry = new Set(ancestry).add(agent.id);
+    const children = nextAncestry.size > agents.length ? [] : childrenOf(agent.id).filter((child) => !nextAncestry.has(child.id));
+    return (
+      <details key={agent.id} className={`group pl-1 ${depth > 0 ? "ml-3 border-l border-border/60" : ""}`} open={active && agent.state === "working"}>
+        <summary className="flex cursor-pointer list-none items-center gap-2 py-1 text-text/90 hover:text-text">
+          <span aria-label={agent.state} className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot[agent.state]}`} />
+          <span className="font-medium">{agent.name}</span>
+          {agent.role && <span className="text-muted">· {agent.role}</span>}
+          <span className="ml-auto text-muted transition-transform group-open:rotate-90">›</span>
+        </summary>
+        {agent.task && <p className="ml-3.5 pb-1 text-muted">{agent.task}</p>}
+        <ol className="ml-3.5 border-l border-border/60 pl-2.5 pb-1.5 text-muted">
+          {agent.events.slice(-12).map((event, index) => (
+            <li key={index} className="py-0.5 leading-5">{event.content || "Worker status updated."}</li>
+          ))}
+          {agent.events.length === 0 && <li className="py-0.5">Awaiting its first work update.</li>}
+        </ol>
+        {children.length > 0 && <div className="mt-1 space-y-1">{children.map((child) => renderAgent(child, depth + 1, nextAncestry))}</div>}
+      </details>
+    );
+  };
+  const roots = agents.filter((agent) => !agent.parentId || !knownIds.has(agent.parentId));
 
   return (
     <details className="mt-3 border-t border-border/60 pt-2 text-xs" open={active}>
@@ -95,23 +123,7 @@ export function AgentWorkTrace({ events, active }: { events: MessageEvent[]; act
         <span className="ml-auto text-muted">›</span>
       </summary>
       <div className="mt-2 space-y-1.5">
-        {agents.map((agent) => (
-          <details key={agent.id} className="group pl-1" open={active && agent.state === "working"}>
-            <summary className="flex cursor-pointer list-none items-center gap-2 py-1 text-text/90 hover:text-text">
-              <span aria-label={agent.state} className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot[agent.state]}`} />
-              <span className="font-medium">{agent.name}</span>
-              {agent.role && <span className="text-muted">· {agent.role}</span>}
-              <span className="ml-auto text-muted transition-transform group-open:rotate-90">›</span>
-            </summary>
-            {agent.task && <p className="ml-3.5 pb-1 text-muted">{agent.task}</p>}
-            <ol className="ml-3.5 border-l border-border/60 pl-2.5 pb-1.5 text-muted">
-              {agent.events.slice(-12).map((event, index) => (
-                <li key={index} className="py-0.5 leading-5">{event.content || "Worker status updated."}</li>
-              ))}
-              {agent.events.length === 0 && <li className="py-0.5">Awaiting its first work update.</li>}
-            </ol>
-          </details>
-        ))}
+        {roots.map((agent) => renderAgent(agent, 0, new Set()))}
       </div>
     </details>
   );

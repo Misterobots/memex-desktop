@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { CODE_MODES, InputBar } from "../../components/layout/InputBar";
 import { SessionList } from "../../components/sidebar/SessionList";
 import { DiffReviewModal } from "../../components/shared/DiffReviewModal";
+import { CommandPalette } from "../../components/shared/CommandPalette";
 import { ShortcutCapture } from "../../components/settings/ShortcutCapture";
 import { MessageOutputs } from "../../components/chat/MessageOutputs";
 import { ScheduledTasks } from "../../components/scheduled/ScheduledTasks";
@@ -81,6 +82,16 @@ describe("desktop parity interaction contracts (mocked runtime)", () => {
     expect(request.sessionId).toBe(siteSession?.id);
   });
 
+  it("keeps ordinary Routines prompts on the conversational route", async () => {
+    const user = userEvent.setup();
+    render(<InputBar experience="goals" lockMode="chat" lockModeLabel="Routine" />);
+    await user.type(screen.getByRole("textbox"), "Prepare a repeatable checklist{enter}");
+    expect(vi.mocked(streamChat).mock.calls[0][0]).toMatchObject({
+      skill: "general",
+      mode: "chat",
+    });
+  });
+
   it("keeps Shift+Enter as a newline and allows another send after stream failure", async () => {
     const user = userEvent.setup();
     render(<InputBar />);
@@ -93,6 +104,16 @@ describe("desktop parity interaction contracts (mocked runtime)", () => {
     act(() => request.onError(new Error("Test transport failure")));
     await user.type(input, "Retry explicitly{enter}");
     expect(streamChat).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps unsent Code drafts isolated when switching projects", async () => {
+    const user = userEvent.setup();
+    const view = render(<InputBar experience="code" workspaceKey="C:/alpha" />);
+    await user.type(screen.getByRole("textbox"), "alpha draft");
+    view.rerender(<InputBar experience="code" workspaceKey="C:/beta" />);
+    expect(screen.getByRole("textbox")).toHaveProperty("value", "");
+    view.rerender(<InputBar experience="code" workspaceKey="C:/alpha" />);
+    await waitFor(() => expect(screen.getByRole("textbox")).toHaveProperty("value", "alpha draft"));
   });
 
   it("switches only scoped sessions without cancelling another thread's stream", async () => {
@@ -132,6 +153,38 @@ describe("desktop parity interaction contracts (mocked runtime)", () => {
     await userEvent.setup().click(button);
     fireEvent.keyDown(button, { key: "j", ctrlKey: true, shiftKey: true });
     expect(change).toHaveBeenCalledWith("Control+Shift+J");
+  });
+
+  it("supports keyboard navigation and exposes the active command", async () => {
+    const user = userEvent.setup();
+    render(<CommandPalette />);
+    const input = screen.getByRole("textbox", { name: "Search commands" });
+    const options = screen.getAllByRole("option");
+    expect(options[0].getAttribute("aria-selected")).toBe("true");
+    await user.keyboard("{ArrowDown}{End}");
+    expect(screen.getAllByRole("option").at(-1)?.getAttribute("aria-selected")).toBe("true");
+    await user.keyboard("{Home}");
+    expect(screen.getAllByRole("option")[0].getAttribute("aria-selected")).toBe("true");
+    await user.clear(input);
+    await user.type(input, "Open Code");
+    await user.keyboard("{Enter}");
+    expect(useStore.getState().activeTab).toBe("dev");
+    expect(useStore.getState().commandPaletteOpen).toBe(false);
+  });
+
+  it("returns focus to the palette opener when dismissed", async () => {
+    const opener = document.createElement("button");
+    opener.setAttribute("aria-label", "Open commands");
+    document.body.appendChild(opener);
+    opener.focus();
+    useStore.setState({ commandPaletteOpen: true });
+    function PaletteHarness() {
+      return useStore((state) => state.commandPaletteOpen) ? <CommandPalette /> : null;
+    }
+    render(<PaletteHarness />);
+    await userEvent.setup().keyboard("{Escape}");
+    expect(document.activeElement).toBe(opener);
+    opener.remove();
   });
 
   it("switches generated HTML between preview/source and expands its pane", async () => {

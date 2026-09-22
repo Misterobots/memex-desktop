@@ -69,6 +69,64 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
   );
 }
 
+function AppearanceLayoutSection() {
+  const { uiScale, uiDensity, setUiScale, setUiDensity } = useStore();
+  const [resetNotice, setResetNotice] = useState("");
+
+  const resetLayout = () => {
+    if (!window.confirm("Reset saved panel sizes and Agent Dock state for every workspace?")) return;
+    const keys = Object.keys(window.localStorage);
+    keys.filter((key) => key.startsWith("memex.layout.")).forEach((key) => window.localStorage.removeItem(key));
+    setResetNotice("Saved panel sizes reset. Reloading…");
+    window.setTimeout(() => window.location.reload(), 150);
+  };
+
+  return (
+    <Section title="Appearance & layout">
+      <Row label="Text scale">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Text scale">
+          {[0.9, 1, 1.1, 1.25].map((scale) => (
+            <button
+              key={scale}
+              aria-pressed={uiScale === scale}
+              onClick={() => setUiScale(scale)}
+              className={`px-3 py-1 rounded-lg text-sm border transition-colors ${uiScale === scale
+                ? "border-accent/50 bg-accent/10 text-accent"
+                : "border-border/40 bg-surface2/40 text-muted hover:text-text"}`}
+            >{Math.round(scale * 100)}%</button>
+          ))}
+        </div>
+      </Row>
+      <p className="text-xs text-muted -mt-1">Scales the app chrome, including menus, controls, and stream text. Generated files and previews keep their own sizing.</p>
+      <Row label="UI density">
+        <div className="flex gap-2" role="group" aria-label="UI density">
+          {(["comfortable", "compact"] as const).map((density) => (
+            <button
+              key={density}
+              aria-pressed={uiDensity === density}
+              onClick={() => setUiDensity(density)}
+              className={`px-3 py-1 rounded-lg text-sm border capitalize transition-colors ${uiDensity === density
+                ? "border-accent/50 bg-accent/10 text-accent"
+                : "border-border/40 bg-surface2/40 text-muted hover:text-text"}`}
+            >{density}</button>
+          ))}
+        </div>
+      </Row>
+      <div className="rounded-lg border border-border/40 bg-surface2/30 px-3 py-2.5 text-xs text-muted space-y-1">
+        <p className="text-text/80">Resizable panels</p>
+        <p>Explorer, bottom tools, Pioneers, and Agent Dock can be dragged at their edges. Their sizes and dock mode are remembered independently for each workspace.</p>
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={resetLayout}
+          className="px-3 py-1.5 rounded-lg bg-surface2 border border-border/60 text-sm hover:bg-surface2/80"
+        >Reset saved layout</button>
+        {resetNotice && <span className="text-xs text-accent">{resetNotice}</span>}
+      </div>
+    </Section>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Profile editor
 // ---------------------------------------------------------------------------
@@ -202,6 +260,7 @@ function WebSettings() {
 
   return (
     <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5 max-w-2xl">
+      <AppearanceLayoutSection />
       <Section title="Account">
         {idStatus === "loading" && <p className="text-sm text-muted">Loading identity…</p>}
         {idStatus === "error"   && <p className="text-sm text-muted">Identity unavailable.</p>}
@@ -439,6 +498,8 @@ export function SettingsView() {
 
   return (
     <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5 max-w-2xl">
+
+      <AppearanceLayoutSection />
 
       {/* ── Routing ── */}
       <Section title="Routing">
