@@ -157,7 +157,10 @@ export function streamChat(opts: StreamOptions): () => void {
 
   const enhancedMessages = [...opts.messages];
   if (opts.currentProjectId) {
-    const ctx = `You are an AI coding assistant working in the project directory: ${opts.currentProjectId}\nUse this absolute path as the workspace root for any file operations.`;
+    const ctx = `You are an AI software engineering assistant working on the project located at "${opts.currentProjectId}".
+Inside your execution sandbox, this project directory is mounted directly at "/workspace" as the root.
+All project files, source code, and repositories are located in "/workspace".
+For file operations and shell commands, use paths relative to "/workspace" or starting with "/workspace/". Do not search for "${opts.currentProjectId}" on the Linux filesystem.`;
     const sysIdx = enhancedMessages.findIndex(m => m.role === "system");
     if (sysIdx >= 0) enhancedMessages[sysIdx] = { ...enhancedMessages[sysIdx], content: `${enhancedMessages[sysIdx].content}\n\n${ctx}` };
     else enhancedMessages.unshift({ role: "system", content: ctx });
@@ -297,7 +300,7 @@ export function streamChat(opts: StreamOptions): () => void {
       opts.onDone();
     };
     const cancel = bridge.api.stream(streamId, {
-      url: `${getAgentRuntime()}/v1/chat/completions`,
+      url: (() => { let b = getAgentRuntime().trim().replace(/\/$/, ""); if (b.endsWith("/v1/chat/completions") || b.endsWith("/chat/completions")) return b; if (b.endsWith("/v1")) return `${b}/chat/completions`; return `${b}/v1/chat/completions`; })(),
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
@@ -350,7 +353,7 @@ export function streamChat(opts: StreamOptions): () => void {
     };
   }
 
-  fetch(`${getAgentRuntime()}/v1/chat/completions`, {
+  fetch((() => { let b = getAgentRuntime().trim().replace(/\/$/, ""); if (b.endsWith("/v1/chat/completions") || b.endsWith("/chat/completions")) return b; if (b.endsWith("/v1")) return `${b}/chat/completions`; return `${b}/v1/chat/completions`; })(), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body,
