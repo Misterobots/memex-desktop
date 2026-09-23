@@ -116,19 +116,57 @@ Default is **one model for the entire run** — the one the user selected. Multi
 The user approved the whole set, so this is a work list rather than an option menu:
 
 1. **Single model is the default.** A run uses the model the user selected for *every* role. Multi-model remains selectable, but on the shared/live connection it requires authorisation: only `misterobots` today, anyone else by explicit approval — the stated reason is the danger of a fan-out evicting other users' resident models. Implement as the `for_role` snapshot change above plus an admin/approval check, and **do not** express the approval as a plain `FEATURES` key (see the default-True trap).
-2. **Stop the eviction churn** — `OLLAMA_MAX_LOADED_MODELS` and/or keeping `nomic-embed-text` resident, so `/api/embed` stops displacing the generation model on a box with 32 GB and one slot.
-3. **Measure `vram_mb`** in `inference/node_health.py` instead of the hardcoded `16384`/`8192`, so routing and reporting see the real 2 × 16311 MiB.
+2. **Stop the eviction churn** — `OLLAMA_MAX_LOADED_MODELS` and/or keeping `nomic-embed-text` resident, so `/api/embed` stops displacing the generation model on a box with 32 GB and one slot. **Applied 2026-09-23** in `execution_plane/docker-compose.yml`: the `ollama` service now declares `OLLAMA_MAX_LOADED_MODELS=2` and lost its lapsed GPU-0 pin (`CUDA_VISIBLE_DEVICES` + `device_ids: ['0']`), so `qwen3.8:27b` and `qwen3.8-flash` can split across both cards. Recreated with `docker compose up -d ollama` and verified on the live container: empty `CUDA_VISIBLE_DEVICES`, `OLLAMA_MAX_LOADED_MODELS:2`, both `CUDA0`/`CUDA1` at 15.9 GiB, and Ollama's own `vram-based default context total_vram="31.9 GiB"`. Note for the record that the pin had *already* lapsed in practice — the running container predated the compose edit that declared it, the bind-mount drift this repo's own AGENTS.md warns about.
+3. **Measure `vram_mb`** in `inference/node_health.py` instead of the hardcoded `16384`/`8192`, so the number the runtime reports is real. **Done 2026-09-23** — see "Item 3 result" below; measurement turned out to be impossible in the serving container, so the capacity now comes from the deployment and the field says where it came from.
+
+### Item 3 result (2026-09-23) — and a correction to the two claims above
+
+Two premises in the note below were wrong, and one of them was mine.
+
+- **"Everything routing on that number believes the box is half its size" is false.** `vram_mb` feeds no routing decision and no visible display. Routing is `_get_preferred_host()` → `_model_can_run_on_turing()`, a name-marker allowlist (`_TURING_MODEL_MARKERS`) with no size arithmetic in it; and its own docstring already states the true topology ("Lovelace (2× RTX 5060 Ti, 32 GB)"). The only consumers of the field are `GET /api/v1/health/nodes` → `get_all_statuses()`, where the desktop reads `healthy` and nothing else (`electron/health.ts`), and an unused `vram_mb: number` type declaration at `ui/src/types/chat.ts:481`. So the stale literal misled a human reading the file — me — and nothing else. It was still worth removing, because a wrong integer in a health payload is indistinguishable from a measured one.
+- **"`pynvml` is already imported by `gpu_queue.py`" is false.** `pynvml` is imported by `agents/gpu_allocator.py`, which is not importable in the runtime image at all (`ModuleNotFoundError: No module named 'gpu_allocator'`).
+
+**Measurement is not possible in `agent_runtime`.** Verified live in the serving container: `HostConfig.DeviceRequests = null` (no GPU injected), `import pynvml` succeeds but `nvmlInit()` raises `NVMLError_LibraryNotFound: NVML Shared Library Not Found`, `which nvidia-smi` → nothing, `/dev` has no `nvidia*` entries, and there is no `docker` CLI. The Ollama HTTP API offers no escape hatch: `/api/version` returns only `version`, and `/api/ps` returns per-model `size`/`size_vram`, never a device total. So a `pynvml`-based "fix" here would have silently fallen back forever — a change that looks like a fix and does nothing.
+
+What was implemented instead (`agents/inference/node_health.py`):
+
+- `_resolve_node_vram(name, host)` returns `(vram_mb, source)` with `source` ∈ `configured | measured | unknown`. Precedence is explicit config → a real measurement → unknown.
+- `_measure_visible_vram_mb()` tries NVML, then `nvidia-smi --query-gpu=memory.total` (the idiom already used in `agents/training/preflight.py:125`), cached for the process lifetime. It attributes a measurement only to a **loopback** node (`_host_is_local`); `http://ollama:11434` is a sibling container on the same machine, and nothing here can prove it shares the cards, so measuring for it would be a guess.
+- Unknown is `None`, not a default. That is the point of the change: the failure mode was a plausible integer.
+- `get_all_statuses()` now emits `vram_source` beside `vram_mb`.
+- `execution_plane/docker-compose.yml` sets `LOVELACE_VRAM_MB=32622` on `agent_runtime` (2 × 16311 MiB) — the deployment is the only party that knows the hardware, and this file already takes its hostnames from env, so hardcoding the size next to them was the actual inconsistency.
+
+Verified: `tests/test_node_vram_reporting.py` — 17 cases, all pass in 0.47s on the workstation (`python -m pytest C:\Users\panca\Documents\Github\Memex_Core\tests\test_node_vram_reporting.py -q`). Includes a source-text guard that fails if either literal returns. The code path was then exercised **inside the live container** against the bind-mounted file: with no env it reports `Lovelace: vram_mb=None source='unknown'`, with `-e LOVELACE_VRAM_MB=32622` it reports `vram_mb=32622 source='configured'` and `_measure_visible_vram_mb()` returns `None`, confirming the container-side prediction.
+
+**Not yet live:** the running `uvicorn` has no `--reload`, and the compose env entry needs `agent_runtime` recreated. Both are actions on the shared runtime and were **not** taken — the restart authorisation in this thread covered the `ollama` service only. `GET /api/v1/health/nodes` will keep returning `16384` until that restart.
+
 
 Still needed from the user before 1 can be written: what "Memex Live" is as a signal. It appears nowhere in the runtime or the client config — the desktop profiles are `memex-anywhere`, `home-lan`, `localhost` plus one user-added id. Until that's named, the approval gate risks keying on the wrong axis.
 
 ### Still worth noting
 
 
-- `inference/node_health.py:52-66` **hardcodes** `vram_mb=16384` for Lovelace and `8192` for Turing. Lovelace is actually 2 × 16311 MiB. Everything routing on that number believes the box is half its size, and it is what made me misdiagnose this as a VRAM shortage. Measure it (`pynvml` is already imported by `gpu_queue.py`) rather than correcting the literal.
+- ~~`inference/node_health.py:52-66` **hardcodes** `vram_mb=16384` for Lovelace and `8192` for Turing. Lovelace is actually 2 × 16311 MiB.~~ **Fixed 2026-09-23 — see "Item 3 result" above, which also retracts two claims this bullet made:** the number routed nothing (only `healthy` is read downstream), and `pynvml` belongs to `gpu_allocator.py`, not `gpu_queue.py`. What the literal did cost was a misdiagnosis, by me, of a fan-out as a VRAM shortage.
 - `OLLAMA_NUM_PARALLEL=1` with no `OLLAMA_MAX_LOADED_MODELS`, while `/api/embed` ran 31 times against 14 `/api/chat` calls in 25 minutes. One slot plus a 2048-vs-32768 context mismatch is the eviction churn; a single-model Collective still pays it.
 - The container sets `CONV_MODEL`/`COORDINATOR_MODEL`/`ARCHITECT_MODEL`/`LIBRARIAN_MODEL`/`ROUTER_MODEL` but not the three research-side roles, so the fan-out comes from `config.py` defaults rather than any deliberate choice.
 
 
+
+## Uncommitted in `Memex_Core` — needs a commit by someone with git access here
+
+The desktop agent that made these changes is blocked from running git outside its own repository, so everything below sits in the working tree of `C:\Users\panca\Documents\Github\Memex_Core` awaiting `git add` + commit:
+
+| File | Change | Requested by |
+| --- | --- | --- |
+| `execution_plane/docker-compose.yml` | `ollama`: `OLLAMA_MAX_LOADED_MODELS=2`, GPU-0 pin removed; `agent_runtime`: `LOVELACE_VRAM_MB=32622` | work-list items 2 and 3 |
+| `agents/inference/node_health.py` | capacity from deployment / measurement / unknown instead of two hardcoded literals | work-list item 3 |
+| `tests/test_node_vram_reporting.py` | new, 17 cases | work-list item 3 |
+| `tests/test_gauntlet_critic_gate.py` | `ollama`, `prometheus_client` added to `_ALLOWED_ABSENT` | Gauntlet test collection |
+| `tests/test_gauntlet_routing.py` | same `_ALLOWED_ABSENT` addition | Gauntlet test collection |
+
+`python -m pytest tests/test_gauntlet_critic_gate.py tests/test_gauntlet_routing.py tests/test_node_vram_reporting.py` → 60 passed on the workstation.
+
+A `docker compose up -d agent_runtime` is also still needed for the `LOVELACE_VRAM_MB` entry and the `node_health.py` change to reach the running process (no `--reload`). Not performed: it interrupts other users of the shared runtime, and the restart approval in this thread covered `ollama` only.
 
 ## Why the Gauntlet gap matters more than the routing clause
 
