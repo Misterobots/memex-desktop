@@ -141,7 +141,58 @@ Verified: `tests/test_node_vram_reporting.py` — 17 cases, all pass in 0.47s on
 **Not yet live:** the running `uvicorn` has no `--reload`, and the compose env entry needs `agent_runtime` recreated. Both are actions on the shared runtime and were **not** taken — the restart authorisation in this thread covered the `ollama` service only. `GET /api/v1/health/nodes` will keep returning `16384` until that restart.
 
 
-Still needed from the user before 1 can be written: what "Memex Live" is as a signal. It appears nowhere in the runtime or the client config — the desktop profiles are `memex-anywhere`, `home-lan`, `localhost` plus one user-added id. Until that's named, the approval gate risks keying on the wrong axis.
+### Decided 2026-09-23 — the surface is an explicit user choice, not an implicit precedence
+
+"Memex Live" was clarified as **Memex Anywhere** (the `memex-anywhere` profile) — the connection on
+which multi-model is restricted. And the open question "does an explicit composer selection override
+a saved Team Builder role model?" is dissolved rather than answered: the user picks the source.
+Default is **single model**; `Team Builder assignments` is an opt-in the user can see and change.
+Quoting the decision: *"we should either surface a decision to the user or have a toggle in the
+modes, that use those assignments, between 'single model' and 'Team Builder assignments'."*
+
+### Correction: the change is bigger than "populate the snapshot"
+
+The section above claims `RoleModelSnapshot.for_role` is the single decision point and that "no other
+call site needs to know." Verified false on 2026-09-23, three ways:
+
+1. **The selected model never reaches the session.** `CoordinatorSession.__init__`
+   (`coordination/session.py:64-66`) takes `session_id, owner_id, coordination_id, context_profile` —
+   no model. `_load_or_create_role_snapshot` then calls `snapshot_role_models(self.owner_id,
+   requested_context_profile)` (`:122`), and `snapshot_role_models(uid, context_profile)`
+   (`role_model_resolver.py:197`) resolves every role from Team Builder → `_SWARM_ROLE_ENV_MAP` →
+   `ARCHITECT_MODEL`. The request's `model` has to be threaded `main.py` → `church.py` → session →
+   resolver. `for_role` cannot invent a model it was never given.
+2. **The checkpoint would silently override the choice.** `_load_or_create_role_snapshot` returns a
+   restored `00_role_model_snapshot_<owner-digest>.json` whenever `restored.owner_id == self.owner_id
+   and restored.models` — it compares neither the incoming model nor the requested source. A later
+   Collective that opts back into single model would inherit the previous run's multi-model map. The
+   chosen source, and the model bound to it, must live *inside* the serialised snapshot and be
+   validated on restore — not merely applied at build time.
+3. **There is no server-side signal for "this is Memex Anywhere."** Grep for `anywhere`,
+   `PUBLIC_DEPLOYMENT`, `IS_PUBLIC`, `memex.shivelymedia` across `*.py` returns only
+   `_is_public_image_url` (`main.py:5780`, unrelated — an image URL allow-list) and a forward-auth
+   comment. So "multi-model needs approval on the shared connection" is enforceable client-side today
+   and **not** enforceable in this runtime without adding a deployment flag. Client-side is advisory:
+   a hand-built request body can still ask for fan-out, so the UI should say what it is gating rather
+   than implying a guarantee.
+
+### Where the toggle goes on the client
+
+There is an exact precedent. `runPreferences` is a per-workspace persisted preference object
+(`src/lib/store.ts` → `defaultRunPreferences`, `workspaceRunPreferences[sessionScopeKey(experience,
+workspaceKey)]`), read at `InputBar.tsx:258`, and `reasoningEffort === "high"` already becomes a
+flattened wire flag at `InputBar.tsx:450`:
+
+```ts
+modeFlags: { ...MODE_FLAGS[mode], ...extraFlags, ...(runPreferences.reasoningEffort === "high" ? { ultrathink_mode: true } : {}) },
+```
+
+So a `roleModels: "selected" | "team_builder"` preference is one more ternary there: it persists per
+workspace for free and keeps the flags-are-the-contract rule intact. One extra obligation: the
+Gauntlet handoff packet snapshots the effort settings (`InputBar.tsx:409`, `:444-446`), so the
+model-source choice has to join `effort` there, or a Gauntlet resumed after the plan-approval pause
+can come back with a different role map than the one the user approved.
+
 
 ### Still worth noting
 
@@ -158,7 +209,7 @@ The desktop agent that made these changes is blocked from running git outside it
 
 | File | Change | Requested by |
 | --- | --- | --- |
-| `execution_plane/docker-compose.yml` | `ollama`: `OLLAMA_MAX_LOADED_MODELS=2`, GPU-0 pin removed; `agent_runtime`: `LOVELACE_VRAM_MB=32622` | work-list items 2 and 3 |
+| `execution_plane/docker-compose.yml` | `ollama`: `OLLAMA_MAX_LOADED_MODELS=2`, GPU-0 pin removed, `memory: 6g → 8g`; `ollama_friday`: GPU-1 pin removed (Friday is leaving Lovelace); `agent_runtime`: `LOVELACE_VRAM_MB=32622` | work-list items 2 and 3, plus the Friday decision |
 | `agents/inference/node_health.py` | capacity from deployment / measurement / unknown instead of two hardcoded literals | work-list item 3 |
 | `tests/test_node_vram_reporting.py` | new, 17 cases | work-list item 3 |
 | `tests/test_gauntlet_critic_gate.py` | `ollama`, `prometheus_client` added to `_ALLOWED_ABSENT` | Gauntlet test collection |
@@ -167,6 +218,38 @@ The desktop agent that made these changes is blocked from running git outside it
 `python -m pytest tests/test_gauntlet_critic_gate.py tests/test_gauntlet_routing.py tests/test_node_vram_reporting.py` → 60 passed on the workstation.
 
 A `docker compose up -d agent_runtime` is also still needed for the `LOVELACE_VRAM_MB` entry and the `node_health.py` change to reach the running process (no `--reload`). Not performed: it interrupts other users of the shared runtime, and the restart approval in this thread covered `ollama` only.
+
+## A second embedder instance explains the residual "reloads even after unloading" (2026-09-23)
+
+The duplicate-row display bug was fixed and shipped in 0.1.109, but that only accounted for *three
+rows from one daemon*. The behaviour that motivated the question — unloading `nomic-embed-text` and
+watching it come back — had a second, real cause, found while checking Friday's lane:
+
+- `ollama_friday` was **running** (started `2026-09-23T17:08:03Z`, ~851 MiB of its 6 GiB cap), contrary
+  to the expectation that Friday was stopped.
+- `docker exec ollama_friday ollama ps` → `nomic-embed-text:latest  323 MB  100% GPU  2048  Forever`.
+  Its env carries `OLLAMA_KEEP_ALIVE=-1`, so that copy never idles out.
+- `docker logs --since 45m` on each daemon shows a **30-second `/api/embed` heartbeat hitting both of
+  them** — continuously on `ollama_gpu` (18:46→19:04), and on `ollama_friday` until 18:26, after which
+  it stopped arriving there.
+
+So there are two independent Ollama daemons holding the embedder, and unloading one leaves the other
+standing. The panel's "unload" acts on one host, which is why it looked like the model respawned.
+
+Still open, stated as open: **the caller of that heartbeat is not identified.** Both daemons log the
+same source IP, `172.18.0.1` — the bridge gateway for `execution_net` — which says only "not a
+container on this network". Since `ollama_friday` publishes no host port at all, a host process
+cannot be the caller either, so the client is a container reached via container DNS from a *different*
+docker network. Earlier ruled out: the desktop (only calls `/api/ps` and `/api/generate`) and
+MemPalace's `/health` (a bare `SELECT 1`). Enumerating the docker networks and grepping their
+containers' env for an embedding base URL would settle it.
+
+**Memory ceiling chain, for whoever tunes the lane next:** 32 GB host RAM → 12 GB WSL2 VM
+(`~/.wslconfig`, `memory=12GB`, deliberately lowered from 16 GB on 2026-06-08 so Windows keeps room
+for VRAM management and driver page tables; `autoMemoryReclaim=dropcache`) → per-container caps. The
+VM reports `MemTotal 11.68 GiB`, `MemAvailable 7.26 GiB`. The shared `ollama` cap was raised 6g→8g to
+clear the `disabling mmap … host memory pressure` log line; if a 27B-class load still spills, the
+lever is the WSL2 cap, and raising it reverses a documented decision.
 
 ## Why the Gauntlet gap matters more than the routing clause
 
