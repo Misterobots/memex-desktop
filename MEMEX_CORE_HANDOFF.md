@@ -77,7 +77,60 @@ Two items. **Item 1 is optional hardening — one clause. Item 2 is a real, sile
 
 ---
 
-## Why item 2 matters more than item 1
+## Follow-on: Collective must run one model by default (2026-09-23)
+
+Reported from a live request: a Collective selected `qwen3.8:27b` and Ollama swapped between it, `gemma4`, `qwen3:14b` and `nomic-embed-text`. Cause is not capacity — Lovelace has **two RTX 5060 Ti, 16311 MiB each (~32 GB)** and the load log shows successful multi-GPU splitting (`CUDA0 7103 MiB + CUDA1 7686 MiB`). Cause is role fan-out:
+
+| Role | Resolved model | Why |
+|---|---|---|
+| coordinator | `qwen3:14b` | container env `COORDINATOR_MODEL` |
+| researcher ← technical/ethical/scientific/regulatory/policy/environmental/social | `gemma4:26b` | `RESEARCHER_MODEL` **unset** → `config.py:102` default |
+| analyst ← economic/end_user | `gemma4:26b` | `ANALYST_MODEL` **unset** → `config.py:103` default |
+| verifier | `qwen3:14b` | `VERIFIER_MODEL` **unset** → `config.py:104` default |
+
+`_ROLE_ALIASES` (`role_model_resolver.py:48-59`) is what turns "perspectives" into "several models". The selected model survives only as `RoleModelBinding.requested_model`.
+
+### Required behaviour
+
+Default is **one model for the entire run** — the one the user selected. Multi-model is an opt-in, and on the shared/live runtime **administrator-only unless separately approved**, because a fan-out on a 16 GB-per-card box evicts everyone else's resident models.
+
+### Where it should go
+
+`RoleModelSnapshot.for_role` (`role_model_resolver.py:95-102`) is the single decision point: it returns the role's bound model and only falls back to `_SWARM_ROLE_ENV_MAP` when a role is unmapped. So the change is to **populate the snapshot with the selected model for every role** unless multi-model is granted — no other call site needs to know. The snapshot is already serialised (`to_dict`/`from_dict`, and `00_role_model_snapshot_*.json` appears in each run's scratchpad), so the bindings persist across the Gauntlet approval pause in item 2 for free.
+
+### The trap: do not add this to `FEATURES`
+
+`user_permissions._normalize` builds every listed feature as `bool(supplied.get(key, True))` — **default-True** — and `feature_allowed` returns False only for *unlisted* keys. Adding a `multi_model` key to `FEATURES` would therefore hand multi-model to every user until someone writes a policy row, which is the inverse of the requirement. Either gate it outside the `FEATURES` map with an explicit deny-by-default, or add a second map of opt-in-only capabilities.
+
+### The precedent to copy
+
+`permission_mode == "bypass"` is already admin-only, in both the approval service and the replay policy, with the same message and a non-admin rejection:
+
+- `dev_harness/approval_service.py:125-126` → `raise PermissionError("administrator authorization required")`
+- `dev_harness/replay_policy.py:53-54` → `return False, "bypass replay requires administrator authorization"`
+
+`_request_is_admin()` (`main.py:767`) already feeds `is_admin` into the coordinator context (`church.py:1306`, `:1348`), so the grant check has a place to live and a per-user audit hook already exists.
+
+### Decided 2026-09-23 — scope accepted for all three
+
+The user approved the whole set, so this is a work list rather than an option menu:
+
+1. **Single model is the default.** A run uses the model the user selected for *every* role. Multi-model remains selectable, but on the shared/live connection it requires authorisation: only `misterobots` today, anyone else by explicit approval — the stated reason is the danger of a fan-out evicting other users' resident models. Implement as the `for_role` snapshot change above plus an admin/approval check, and **do not** express the approval as a plain `FEATURES` key (see the default-True trap).
+2. **Stop the eviction churn** — `OLLAMA_MAX_LOADED_MODELS` and/or keeping `nomic-embed-text` resident, so `/api/embed` stops displacing the generation model on a box with 32 GB and one slot.
+3. **Measure `vram_mb`** in `inference/node_health.py` instead of the hardcoded `16384`/`8192`, so routing and reporting see the real 2 × 16311 MiB.
+
+Still needed from the user before 1 can be written: what "Memex Live" is as a signal. It appears nowhere in the runtime or the client config — the desktop profiles are `memex-anywhere`, `home-lan`, `localhost` plus one user-added id. Until that's named, the approval gate risks keying on the wrong axis.
+
+### Still worth noting
+
+
+- `inference/node_health.py:52-66` **hardcodes** `vram_mb=16384` for Lovelace and `8192` for Turing. Lovelace is actually 2 × 16311 MiB. Everything routing on that number believes the box is half its size, and it is what made me misdiagnose this as a VRAM shortage. Measure it (`pynvml` is already imported by `gpu_queue.py`) rather than correcting the literal.
+- `OLLAMA_NUM_PARALLEL=1` with no `OLLAMA_MAX_LOADED_MODELS`, while `/api/embed` ran 31 times against 14 `/api/chat` calls in 25 minutes. One slot plus a 2048-vs-32768 context mismatch is the eviction churn; a single-model Collective still pays it.
+- The container sets `CONV_MODEL`/`COORDINATOR_MODEL`/`ARCHITECT_MODEL`/`LIBRARIAN_MODEL`/`ROUTER_MODEL` but not the three research-side roles, so the fan-out comes from `config.py` defaults rather than any deliberate choice.
+
+
+
+## Why the Gauntlet gap matters more than the routing clause
 
 The desktop enforces the quality bar in its own composer (`src/components/layout/InputBar.tsx`
 refuses to send Gauntlet without one, and `electron/gauntlet-handoff-store.ts` keeps a durable
