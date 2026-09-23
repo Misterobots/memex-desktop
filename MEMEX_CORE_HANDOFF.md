@@ -1,9 +1,9 @@
 # Memex_Core runtime handoff — mode contract, Collective/Perspectives, and the Gauntlet gap
 
-Date: 2026-09-22. Origin: `memex-desktop` branch `fix/pioneers`, commits `29990ad`..`2b27f7e`.
+Date: 2026-09-22. Origin: `memex-desktop` branch `fix/pioneers`, commits `29990ad`..`4f69191`; installer `0.1.108`.
 Audience: whoever works in `C:\Users\panca\Documents\Github\Memex_Core` (branch `fix-sse-events` at the time of writing).
 
-Two items. **Item 1 is optional hardening. Item 2 is a real, silent functional gap and needs a decision, not just a patch.**
+Two items. **Item 1 is optional hardening — one clause. Item 2 is a real, silent functional gap that needs porting, and the decision behind it is already made: this tree is the live, actively-developed runtime and `Agent_Swarm` is the incomplete split, so Gauntlet moves here rather than this deployment moving there.**
 
 ---
 
@@ -32,11 +32,19 @@ Two items. **Item 1 is optional hardening. Item 2 is a real, silent functional g
 > anywhere in `agents/`. Net behaviour: a Gauntlet run from the desktop silently becomes an
 > ordinary Collective build, the quality bar the user typed is discarded, and the completion
 > record at `electron/gauntlet-handoff-store.ts` on the client implies a critic loop that never
-> ran. Note this repo's history contains two Gauntlet commits ("route Gauntlet through Pioneer
-> Collective", "dedicate GPU lane for Gauntlet coordination") while `Agent_Swarm` contains
-> fifteen including the bar validation, the handoff binding and the critic/repair loop — so this
-> looks like a lineage split rather than an unfinished feature. **Decide explicitly which tree is
-> authoritative and port or repoint. Do not "fix" item 2 by deleting the client fields.**
+> ran. This is a lineage split, not an unfinished feature: `Agent_Swarm` carries the complete
+> implementation and this tree carries the field declaration only. **The decision on which tree
+> is authoritative has been made — this tree is the one under active development, and `Agent_Swarm`
+> is the incomplete split. So the job is to port Gauntlet *into* this tree.** The port is a
+> semantic merge across five files, not a file copy: all five differ between the trees already.
+> The per-file inventory is below ("Item 2 port brief"). **Do not "fix" this by deleting the
+> client's quality-bar fields** — the client contract is already shipped and correct.
+>
+> Before writing anything, check for in-flight work here: this repo's own reflog contains
+> `wip: gauntlet routing + perspective research groundwork`, which suggests an earlier attempt at
+> exactly this may exist on a branch or in a stash. Confirm with `git log --all --oneline -i
+> --grep=gauntlet` and `git status --short` / `git stash list` first, and build on it rather than
+> duplicating it.
 >
 > Constraints: preserve legacy wire values (`swarm_mode`, the `swarm` model sentinel, `/swarm`,
 > `/build`, `/plan`, `/collective` prefixes) and saved-session `mode` strings — clients store
@@ -75,6 +83,44 @@ Verification is cheap and non-destructive once `agent_runtime` restarts against 
 send a Gauntlet turn with a distinctive bar, then grep the container's captured request body for
 `gauntlet_bar`. Present-and-used is the pass; present-but-unread is today's fail.
 
+## Item 2 port brief
+
+Measured 2026-09-22 by counting gauntlet-bearing lines in each tree (same five files, both sides):
+
+| File | `Memex_Core` | `Agent_Swarm` | Both trees' copies already differ? |
+| --- | --- | --- | --- |
+| `agents/main.py` | 2 lines | 39 lines | yes |
+| `agents/church.py` | 0 | 2 | yes |
+| `agents/handlers/coordinate.py` | 0 | 2 | yes |
+| `agents/coordination/orchestrator.py` | 0 | 27 | yes |
+| `agents/swarm_run_store.py` | 0 | 13 | yes |
+
+Every one of the five already differs between the trees, so a file copy would silently revert
+unrelated work in this tree — including the `research_mode` path this client depends on. Treat it
+as transplanting behaviours onto this side's versions. The specific anchors to move (verify them in
+the file before use; line numbers will have moved after commit `9c9ce26`):
+
+- **Request surface** — `gauntlet_bar`/`gauntlet_handoff` fields on `ChatRequest`, `_gauntlet_prompt()`,
+  the missing-bar `422`, and the `gauntlet_handoff.id` shape guard (`re.fullmatch(r"[A-Za-z0-9_-]{8,128}")`).
+- **Precedence** — Gauntlet must outrank the DevHarness branch, and now also outranks a plain
+  coordinator request; in `Agent_Swarm` that is `_routes_to_dev_harness()`. This tree expresses the
+  same intent through `_is_swarm_turn`, so fold it there rather than importing a second gate.
+- **Plumbing** — `chat_swarm(gauntlet_bar=...)` → `ctx["gauntlet_bar"]` → `handle_coordinate` →
+  `coordinate_task(gauntlet_bar=...)`.
+- **Critic and repair** — the independent-critic block, `VERDICT: PASS` parsing, the repair pass with
+  its re-check, and the completion gate on a persisted verdict.
+- **Persistence** — `swarm_runs.gauntlet_bar`, the `swarm_gauntlet_reviews` table, `record_gauntlet_review()`,
+  and the restart reconciliation that treats a run with a bar as resumable rather than failed.
+
+**The persistence item is a live schema change, not just code.** It adds a column and a table to
+Postgres on startup via `IF NOT EXISTS` DDL, so it is additive and safe on paper — but it lands on
+a shared database at the same moment the container restarts. Sequence it deliberately and check
+existing `swarm_runs` rows still reconcile afterwards.
+
+Test to bring across: `Agent_Swarm/tests/test_gauntlet_handoff_contract.py` (handoff contract, bar
+visibility in the prompt, critic-verdict gating). Its source-text assertions will need re-aiming at
+this tree's wording.
+
 ## Verified state this was written against
 
 | Claim | Evidence |
@@ -85,7 +131,8 @@ send a Gauntlet turn with a distinctive bar, then grep the container's captured 
 | No Gauntlet implementation | grep `agents/` for `gauntlet_bar\|gauntlet_handoff\|quality_bar\|record_gauntlet_review` → 0; `gauntlet` → 2 hits, both `main.py` |
 | Perspective mode is intact here | `agents/church.py:1158-1161` then `agents/coordination/orchestrator.py:607`; `handlers/coordinate.py:27` reads `ctx["research_mode"]` |
 | `swarm` is not an entitlement in this tree | `agents/user_permissions.py:18-31` (`FEATURES` has no `swarm`) and live `GET /api/v1/permissions` |
-| Lineage split, not unfinished work | `.git/logs/HEAD`: this tree 2 Gauntlet commits vs `Agent_Swarm` 15 |
+| Lineage split, not unfinished work | `.git/logs/HEAD` gauntlet-bearing commit messages: this tree 3 (incl. `wip: gauntlet routing + perspective research groundwork`), `Agent_Swarm` 15, with only `feat: dedicate GPU lane for Gauntlet coordination` shared — so the split sits immediately after that commit |
+| This tree is the active one, not the stale one | of the 54 `agents/` files that differ between the trees, 47 have a newer mtime here; `coordination/frameworks.py` (48 KB) and `coordination/debate.py` (26 KB) exist only here, both written 2026-09-22 |
 
 Unverified, stated as such: no perspective matrix has been observed end to end from either
 workspace; the 8 behavioural tests in `Agent_Swarm/tests/test_dev_harness_routing.py` skip off
