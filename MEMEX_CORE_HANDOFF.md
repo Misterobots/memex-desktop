@@ -5,6 +5,11 @@ Audience: whoever works in `C:\Users\panca\Documents\Github\Memex_Core` (branch 
 
 Two items. **Item 1 is optional hardening — one clause. Item 2 is a real, silent functional gap that needs porting, and the decision behind it is already made: this tree is the live, actively-developed runtime and `Agent_Swarm` is the incomplete split, so Gauntlet moves here rather than this deployment moving there.**
 
+**Status 2026-09-23 — both items are done in source, neither is live.** Item 1 became `_routes_to_dev_harness()` (`agents/main.py:2466`, with `and not request.research_mode` at `:2497`, used at `:2546`). Item 2 landed on `fix-sse-events` at `10d3c128` (fast-forward merge of `worktree-keen-elm-b2e5f3`): the `422`-without-bar and handoff-id guard, `_gauntlet_prompt`, the immutable contract block, `create_run` before streaming, `gauntlet_bar` through `church.py` → `handlers/coordinate.py` → the coordinator, the critic verdict with `VERDICT: PASS` parsing plus the repair and re-check passes, and the `swarm_runs.gauntlet_bar` column, `swarm_gauntlet_reviews` table and `record_gauntlet_review()` writer. `tests/test_gauntlet_critic_gate.py` and `tests/test_gauntlet_routing.py` add 43 cases. Two things remain open, recorded in full in the desktop plan's `Mode contract fix` checkpoint:
+
+1. **The tests do not collect on a bare workstation.** Their `_ALLOWED_ABSENT` frozenset lists 12 container-only modules but the chain needs 14 — `ollama` (via `coordination/decomposer.py`) and `prometheus_client` (via `agents/metrics.py`) are missing, so collection aborts. Adding exactly those two names makes all 43 pass in 2.9s (verified by supplying them from outside the repo, without editing the tree).
+2. **Nothing is running.** Docker Desktop is down — `docker inspect` cannot reach its named pipe and `:8008` refuses on loopback and on `192.168.2.101` — and uvicorn has no `--reload`, so the port only picks the work up when the container comes back.
+
 ---
 
 ## Copy-paste prompt
