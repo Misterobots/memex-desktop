@@ -38,6 +38,7 @@ import type { HooksStore }             from "./hooks-store";
 import type { PermissionStore }        from "./permission-store";
 import type { WorktreeManager }        from "./worktree-manager";
 import type { GauntletHandoffStore }   from "./gauntlet-handoff-store";
+import { collectResidentModels, type OllamaPsModel } from "./ollama-residency";
 import { fireHooks }                   from "./hooks-runner";
 import { runOpenScad, type RenderParams } from "./openscad-runner";
 import { autoWireStore }                  from "./ipc-autowire";
@@ -627,31 +628,16 @@ export function registerAllIpc(ctx: IpcContext): void {
         "http://192.168.2.101:11434",
         "http://192.168.2.103:11434",
       ]));
-      const results: Array<{ name: string; model: string; sizeGb: number; vramGb: number; host: string; expiresAt?: string }> = [];
-      const seen = new Set<string>();
-
+      const reports: Array<{ base: string; models: OllamaPsModel[] }> = [];
       for (const base of hosts) {
         try {
           const res = await fetch(`${base}/api/ps`, { signal: AbortSignal.timeout(2500) });
           if (!res.ok) continue;
-          const data = await res.json() as { models?: Array<{ name: string; model: string; size: number; size_vram?: number; expires_at?: string }> };
-          for (const m of data.models ?? []) {
-            const key = `${m.name}@${base}`;
-            if (!seen.has(key)) {
-              seen.add(key);
-              results.push({
-                name: m.name,
-                model: m.model ?? m.name,
-                sizeGb: +((m.size || 0) / 1e9).toFixed(1),
-                vramGb: +(((m.size_vram ?? m.size) || 0) / 1e9).toFixed(1),
-                host: base,
-                expiresAt: m.expires_at,
-              });
-            }
-          }
+          const data = await res.json() as { models?: OllamaPsModel[] };
+          reports.push({ base, models: data.models ?? [] });
         } catch {}
       }
-      return results;
+      return collectResidentModels(reports);
     } catch {
       return [];
     }
