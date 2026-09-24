@@ -307,6 +307,38 @@ describe("flattening onto the run style", () => {
     expect(result.routing.routing[DEFAULT_SLOT].model).toBe("qwen3-coder:30b");
   });
 
+  it("carries an assertion onto the flattened slots when the pin names that same model", () => {
+    // The llama.cpp lane is exactly the case where an engine answers nothing, so the
+    // file's assertion is the only capability statement that exists. Dropping it here
+    // would throw it away on the one style that needs it.
+    const asserted = SINGLE({
+      [DEFAULT_SLOT]: { engine: "llama-local", model: "qwen3-coder:30b", capabilities: ["tools", "completion"] },
+      "code":         { engine: "llama-local", model: "qwen3:14b" },
+    });
+    const { routing, pinned, overridden } = flattenForRunStyle(asserted);
+
+    expect(overridden).toEqual(["code"]);
+    expect(pinned).toEqual({ engine: "llama-local", model: "qwen3-coder:30b", capabilities: ["tools", "completion"] });
+    for (const target of Object.values(routing.routing)) {
+      expect(target.model).toBe("qwen3-coder:30b");
+      expect(target.capabilities).toEqual(["tools", "completion"]);
+    }
+  });
+
+  it("will not move an assertion onto a different model than the one it describes", () => {
+    // `default` names something-else:1b; the lane is pinned to qwen3-coder:30b. The
+    // assertion is about the first pair, so the flattened slot gets no claim at all —
+    // inventing one by copying it across would say something nobody said.
+    const mismatched = SINGLE({
+      [DEFAULT_SLOT]: { engine: "llama-local", model: "something-else:1b", capabilities: ["vision"] },
+    });
+    const { routing, pinned } = flattenForRunStyle(mismatched);
+
+    expect(pinned).toEqual({ engine: "llama-local", model: "qwen3-coder:30b" });
+    expect(routing.routing[DEFAULT_SLOT].model).toBe("qwen3-coder:30b");
+    expect(routing.routing[DEFAULT_SLOT].capabilities).toBeUndefined();
+  });
+
   it("reports nothing rather than invent a model when single has no pin", () => {
     const noPin = {
       runStyle: "single" as const,

@@ -204,8 +204,20 @@ export function pinnedTarget(routing: RoutingConfig): { engineId: string; target
     ? preferred.engine
     : ids.length === 1 ? ids[0]! : null;
   if (engineId === null) return null;
-  const model = (routing.engines[engineId]?.pinnedModel ?? "").trim() || (preferred?.model ?? "").trim();
-  return model ? { engineId, target: { engine: engineId, model } } : null;
+  const pinned = (routing.engines[engineId]?.pinnedModel ?? "").trim();
+  const model = pinned || (preferred?.model ?? "").trim();
+  if (!model) return null;
+  // A capability assertion describes exactly one (engine, model) pair, so it may only
+  // travel with that pair. `default`'s assertion says something about the model it
+  // names; carrying it onto a different pinned model would state something nobody
+  // claimed, and dropping it when the pin *is* that model would throw away the one
+  // answer a silent engine never gave. Either the pair matches or nothing is asserted.
+  const describesThePin = !!preferred && (!pinned || preferred.model === pinned);
+  const assertion = describesThePin ? (preferred?.capabilities ?? []).filter(Boolean) : [];
+  return {
+    engineId,
+    target: assertion.length ? { engine: engineId, model, capabilities: [...assertion] } : { engine: engineId, model },
+  };
 }
 
 /**
