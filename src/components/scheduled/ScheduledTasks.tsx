@@ -3,6 +3,7 @@ import {
   listTriggers, createTrigger, pauseTrigger, resumeTrigger, deleteTrigger,
   type Trigger, type TriggerType,
 } from "../../lib/trigger-api";
+import { useStore } from "../../lib/store";
 
 /**
  * Settings section for the Memex runtime trigger scheduler (agents/trigger_scheduler.py).
@@ -46,12 +47,13 @@ function NewTriggerForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
   const [swarmMode, setSwarmMode] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const selectedModel = useStore((s) => s.selectedModel);
 
   const handleCreate = async () => {
     if (!name.trim() || !prompt.trim()) { setError("Name and prompt are required"); return; }
     setError("");
     setSaving(true);
-    const task_config = { prompt, swarm_mode: swarmMode, research_mode: swarmMode };
+    const task_config = { prompt, model: selectedModel, swarm_mode: swarmMode, research_mode: swarmMode };
     const body =
       type === "cron"     ? { name, trigger_type: type, task_config, cron: { hour: +hour, minute: +minute } } :
       type === "interval" ? { name, trigger_type: type, task_config, interval_seconds: +intervalSeconds } :

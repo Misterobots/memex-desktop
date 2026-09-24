@@ -270,7 +270,7 @@ describe("desktop parity interaction contracts (mocked runtime)", () => {
     await user.click(screen.getByRole("checkbox", { name: "Run in Collective mode" }));
     await user.click(screen.getByRole("button", { name: "Create" }));
     expect(createTrigger).toHaveBeenCalledWith(expect.objectContaining({
-      task_config: { prompt: "Test prompt", swarm_mode: true, research_mode: true },
+      task_config: { prompt: "Test prompt", model: useStore.getState().selectedModel, swarm_mode: true, research_mode: true },
     }));
   });
 
