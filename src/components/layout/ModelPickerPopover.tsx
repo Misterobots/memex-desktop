@@ -4,6 +4,9 @@ import { desktop, type RuntimeProfile, type LoadedOllamaModel } from "../../lib/
 import { getAgentRuntime } from "../../lib/runtime-urls";
 import { useStore } from "../../lib/store";
 import { getMyPermissions } from "../../lib/user-permissions";
+// Shared with the main process rather than mirrored: the picker must not hold its
+// own idea of how a slot resolves. See the header of electron/routing-config.ts.
+import { resolveRoute, DEFAULT_SLOT, type ResolvedRoute } from "../../../electron/routing-config";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -56,11 +59,19 @@ export function ModelPickerPopover() {
   const [loadedModels, setLoadedModels] = useState<LoadedOllamaModel[]>([]);
   const [unloading, setUnloading] = useState(false);
   const [loadingModel, setLoadingModel] = useState(false);
+  // Why a pick did not reach config.json. Without this a refusal looks like success
+  // and the choice quietly reverts on the next launch.
+  const [writeNotice, setWriteNotice] = useState("");
+  /** The routing table's answer for the picker, plus the engine name it came from.
+   * Stored together so the label can never describe a different table than the
+   * model does. Null when there is no routing block to ask. */
+  const [routed, setRouted] = useState<{ route: ResolvedRoute; engineLabel: string } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Model choice follows the routing profile.  A remote profile might favour a
-  // responsive hosted default while a LAN profile can retain a larger local
-  // model; switching profiles must never silently carry the prior choice over.
+  // Model choice follows the routing profile — and, once there is a routing table,
+  // the table: `routing.default` names the model, and the profile's own
+  // `defaultModel` is the field it used to be decided from. Switching profiles must
+  // never silently carry the prior choice over.
   useEffect(() => {
     const bridge = desktop();
     if (!bridge) return;
@@ -68,7 +79,24 @@ export function ModelPickerPopover() {
     const applyProfile = async (raw: unknown) => {
       const profile = raw as RuntimeProfile;
       if (!alive || !profile?.id) return;
-      const model = profile.defaultModel || useStore.getState().selectedModel;
+
+      let resolved: { route: ResolvedRoute; engineLabel: string } | null = null;
+      try {
+        const state = bridge.routing ? await bridge.routing.get() : null;
+        if (state && alive) {
+          const route = resolveRoute(state.routing, DEFAULT_SLOT);
+          const engineLabel = route.target
+            ? (state.routing.engines[route.target.engine]?.label ?? route.target.engine)
+            : "";
+          resolved = route.target ? { route, engineLabel } : null;
+        }
+      } catch {
+        resolved = null; // a routing table that cannot be read is the old state, not a reason to hide the picker
+      }
+      if (!alive) return;
+      setRouted(resolved);
+
+      const model = resolved?.route.target?.model || profile.defaultModel || useStore.getState().selectedModel;
       if (model !== useStore.getState().selectedModel) setSelectedModel(model);
       // Upgrade older profiles lazily so their current explicit selection is
       // captured once and becomes independent of other profiles thereafter.
@@ -100,9 +128,23 @@ export function ModelPickerPopover() {
         return;
       }
 
+      // The two branches below are two different facts, which is why they do not
+      // share an outcome. Reaching this line means an *internal* profile — the
+      // harness on the user's own box — so:
+      //   · it answered: honour `model_selection`. An explicit false hides the
+      //     picker exactly as before; a real deny must never be degraded into
+      //     silence about a permission the runtime actually withheld.
+      //   · it did not answer (stopped, unreachable, or it answered without a
+      //     readable policy, which is what `getMyPermissions` throws on): allowed.
+      //     Choosing a model here is a local act against the user's own engine, and
+      //     a turn cannot be sent to a runtime that is not replying anyway — the
+      //     dead orchestrator hiding a live local picker was the symptom that
+      //     survived D1.
+      // Only this entitlement, and only on internal profiles; every other feature
+      // check in the app still reads the policy as authoritative.
       getMyPermissions()
         .then((policy) => { if (alive) setCanSelectModels(Boolean(policy.features.model_selection)); })
-        .catch(() => { if (alive) setCanSelectModels(false); })
+        .catch(() => { if (alive) setCanSelectModels(true); })
         .finally(() => { if (alive) setAccessResolved(true); });
     };
 
@@ -290,7 +332,7 @@ export function ModelPickerPopover() {
     !query || `${m.label ?? ""} ${m.id} ${m.engineLabel ?? ""}`.toLowerCase().includes(query.toLowerCase())
   );
 
-  const chooseModel = async (model: string) => {
+  const chooseModel = async (model: string, engineId?: string) => {
     setSelectedModel(model);
     const bridge = desktop();
     if (bridge) {
@@ -301,6 +343,38 @@ export function ModelPickerPopover() {
         // The local store is still persisted, so selection remains stable even
         // if the native profile write is temporarily unavailable.
       }
+      // The routing table — not the profile — is what this picker follows on the next
+      // load, so a choice that never reaches config.json is silently reverted. In
+      // "single" style every slot resolves to the engine's pin, so there the choice
+      // *is* the pinned model. A refused write says so instead of looking accepted.
+      let refused = false;
+      try {
+        const table = (await bridge.routing?.get?.())?.routing;
+        const engine = engineId ?? table?.routing?.default?.engine ?? Object.keys(table?.engines ?? {})[0];
+        if (table && engine && table.engines[engine]) {
+          const target = { engine, model };
+          const next = table.runStyle === "single"
+            ? {
+                ...table,
+                engines: { ...table.engines, [engine]: { ...table.engines[engine], pinnedModel: model } },
+                routing: { ...table.routing, default: target },
+              }
+            : { ...table, routing: { ...table.routing, default: target } };
+          const result = await bridge.routing?.set?.(next);
+          if (result && result.ok === false) {
+            refused = true;
+            setWriteNotice(result.issues.map((issue) => `${issue.path}: ${issue.message}`).join(" · ")
+              || "The routing table refused this model, so it will not survive a restart.");
+          } else {
+            setWriteNotice("");
+          }
+        }
+      } catch {
+        refused = true;
+        setWriteNotice("The routing table could not be updated — this selection may not survive a restart.");
+      }
+      // Closing on a refusal would hide the only place the reason is shown.
+      if (refused) return;
     }
     setOpen(false);
     setQuery("");
@@ -314,6 +388,12 @@ export function ModelPickerPopover() {
   const hasLoadedModels = loadedModels.length > 0;
   const totalVramGb = loadedModels.reduce((sum, m) => sum + (m.vramGb || m.sizeGb || 0), 0);
 
+  // Which slot this model came from, spelled the way the user would edit it. Named
+  // because a routing table can answer a slot with another slot's model, and the
+  // picker showing that model without saying so is the silent substitution D2's
+  // `resolveRoute` exists to make visible.
+  const routingNote = routed?.route.slot ? `routed from routing.${routed.route.slot} on ${routed.engineLabel}` : "";
+
   return (
     <div ref={ref} className="relative">
       {/* Trigger button */}
@@ -322,11 +402,11 @@ export function ModelPickerPopover() {
         className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs transition-colors
           ${open ? "bg-surface2 text-text" : "text-muted hover:text-text hover:bg-surface2/60"}`}
         title={
-          isSelectedLoaded
+          `${isSelectedLoaded
             ? `${shortName(selectedModel)} is resident in VRAM`
             : hasLoadedModels
             ? `${shortName(selectedModel)} (idle) — ${loadedModels.map((m) => shortName(m.name)).join(", ")} in VRAM`
-            : `${shortName(selectedModel)} (idle)`
+            : `${shortName(selectedModel)} (idle)`}${routingNote ? ` — ${routingNote}` : ""}`
         }
       >
         {isSelectedLoaded && (
@@ -347,6 +427,9 @@ export function ModelPickerPopover() {
       {/* Popover */}
       {open && (
         <div className="absolute bottom-full mb-2 left-0 w-80 bg-canvas border border-border/60 rounded-2xl shadow-2xl z-50 overflow-hidden">
+          {writeNotice && (
+            <div className="px-3 py-2 text-[11px] text-amber-400 bg-amber-500/10 border-b border-border/60">{writeNotice}</div>
+          )}
           {/* VRAM Status Banner */}
           {hasLoadedModels ? (
             <div className="p-2.5 bg-emerald-500/5 border-b border-border/60">
@@ -477,6 +560,16 @@ export function ModelPickerPopover() {
             </div>
           )}
 
+          {routingNote && (
+            <div className="px-3 py-1.5 border-b border-border/40 bg-surface/40">
+              {/* One text node, so the engine name in this line cannot be read as a
+                  row's own engine chip. */}
+              <span className="block text-[10px] font-mono text-muted truncate" title={routingNote}>
+                {routingNote}
+              </span>
+            </div>
+          )}
+
           <div className="p-2 border-b border-border/40">
             <input
               value={query}
@@ -502,7 +595,7 @@ export function ModelPickerPopover() {
                 <button
                   key={`${m.engineId ?? ""}:${m.id}`}
                   disabled={m.available === false}
-                  onClick={() => { void chooseModel(m.id); }}
+                  onClick={() => { void chooseModel(m.id, m.engineId); }}
                   title={m.engineLabel ? `${m.id} — on ${m.engineLabel}` : m.id}
                   className={`w-full text-left flex items-center justify-between gap-2 px-3 py-2 transition-colors disabled:opacity-45 disabled:cursor-not-allowed
                     ${m.id === selectedModel ? "bg-accent/10 text-text" : "text-text/80 hover:bg-surface2/60"}`}

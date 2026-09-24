@@ -4,7 +4,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ModelPickerPopover } from "./ModelPickerPopover";
 import { useStore } from "../../lib/store";
-import type { EngineDescriptor, EngineModel, RuntimeProfile } from "../../lib/desktop";
+import type { EngineDescriptor, EngineModel, RoutingConfig, RuntimeProfile } from "../../lib/desktop";
 
 // Every runtime URL is refused: this is the machine state where the user's own
 // engine is up and the orchestrator is down. A picker that still asks the
@@ -45,6 +45,21 @@ function useLocalEngines(models: (engineId: string) => Promise<EngineModel[]>, d
   window.memex!.config.getActive = vi.fn().mockResolvedValue(LOCAL_PROFILE);
   window.memex!.engines = { list: async () => descriptors, models };
 }
+
+/** The D2 table this install routes by, as the main process would hand it over. */
+function useRouting(routing: RoutingConfig) {
+  window.memex!.routing = {
+    get:      async () => ({ routing, errors: [] }),
+    set:      async () => ({ ok: true, routing, issues: [] }),
+    validate: async () => [],
+  };
+}
+
+const OLLAMA_ONLY = (model: string): RoutingConfig => ({
+  runStyle: "multi",
+  engines: { ollama: { kind: "ollama", baseUrl: OLLAMA.baseUrl, label: "Ollama" } },
+  routing: { default: { engine: "ollama", model } },
+});
 
 describe("ModelPickerPopover", () => {
   beforeEach(() => {
@@ -200,5 +215,130 @@ describe("ModelPickerPopover", () => {
 
     await waitFor(() => expect(apiFetch).toHaveBeenCalled());
     expect(screen.queryByTitle("qwen3:14b — on Ollama")).toBeNull();
+  });
+
+  // D2's entitlement change, both directions. Whether the picker *exists* on an
+  // internal profile used to hinge on the same answer either way, so a stopped
+  // orchestrator hid a control that only ever touches the user's own engine.
+  it("lists the engine's models for an internal profile whose runtime never answered", async () => {
+    // Rejection is "nothing answered": `getMyPermissions` throws for a connection
+    // that failed as well as for a runtime that answered without a readable policy.
+    // Neither is a deny, and only a deny may hide the picker.
+    getMyPermissions.mockRejectedValue(new TypeError("fetch failed"));
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b")]);
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 8b/i }));
+
+    await waitFor(() => expect(screen.getByTitle("qwen3:14b — on Ollama")).toBeTruthy());
+    expect(screen.queryByText("Memex default")).toBeNull();
+  });
+
+  it("stays hidden when the runtime answered and withheld model_selection", async () => {
+    const models = vi.fn(async () => [engineRow(OLLAMA, "qwen3:14b")]);
+    useLocalEngines(models);
+    getMyPermissions.mockResolvedValue({ features: { model_selection: false } });
+
+    render(<ModelPickerPopover />);
+
+    // An explicit false is a decision, not an outage: the picker stays closed and the
+    // engine is never even asked — failing open here would be the same bug wearing
+    // the other direction.
+    await waitFor(() => expect(screen.getByText("Memex default")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /qwen3 8b/i })).toBeNull();
+    expect(models).not.toHaveBeenCalled();
+  });
+
+  it("follows routing.default and names the slot the model came from", async () => {
+    // The profile's own legacy default and the routing table disagree on purpose:
+    // once the file declares a route, the file decides.
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b"), engineRow(OLLAMA, "qwen2.5:7b")]);
+    useRouting({
+      ...OLLAMA_ONLY("qwen2.5:7b"),
+      routing: { default: { engine: "ollama", model: "qwen2.5:7b" }, code: { engine: "ollama", model: "qwen3:14b" } },
+    });
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    const trigger = await screen.findByRole("button", { name: /qwen2\.5 7b/i });
+    expect(useStore.getState().selectedModel).toBe("qwen2.5:7b");
+
+    await user.click(trigger);
+    // The substitution has to be visible, not just correct: a model that arrived
+    // through the table should say which slot sent it, and on what engine.
+    await waitFor(() => expect(screen.getByText('routed from routing.default on Ollama')).toBeTruthy());
+    expect(trigger.title).toContain("routed from routing.default");
+  });
+
+  /** A routing stub that records what the picker tried to write and answers with it,
+   * so a later render can be seeded with the result — a restart, not a re-assert. */
+  function captureRouting(initial: RoutingConfig) {
+    const written: RoutingConfig[] = [];
+    let current = initial;
+    window.memex!.routing = {
+      get:      async () => ({ routing: current, errors: [] }),
+      set:      async (next: unknown) => { written.push(next as RoutingConfig); current = next as RoutingConfig; return { ok: true, routing: current, issues: [] }; },
+      validate: async () => [],
+    };
+    return { written, current: () => current };
+  }
+
+  it("writes a pick into routing.default, so the next launch still means it", async () => {
+    // The picker follows routing.default on load. If a click only reaches the profile's
+    // legacy defaultModel, the table re-asserts on the next start and the choice quietly
+    // reverts — the silent substitution this whole layer exists to make impossible.
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b"), engineRow(OLLAMA, "qwen2.5:7b")]);
+    const routing = captureRouting(OLLAMA_ONLY("qwen2.5:7b"));
+
+    const user = userEvent.setup();
+    const view = render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen2\.5 7b/i }));
+    await user.click(await screen.findByTitle("qwen3:14b — on Ollama"));
+
+    await waitFor(() => expect(routing.written.length).toBe(1));
+    expect(routing.written[0].routing.default).toEqual({ engine: "ollama", model: "qwen3:14b" });
+    expect(routing.written[0].engines).toEqual(OLLAMA_ONLY("qwen2.5:7b").engines);
+
+    view.unmount();
+    useStore.setState({ selectedModel: "qwen2.5:7b" });
+    render(<ModelPickerPopover />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /qwen3 14b/i })).toBeTruthy());
+  });
+
+  it("moves the pin in single style, because every slot resolves to it anyway", async () => {
+    // In "single" the table is flattened onto the engine's pinned model, so writing
+    // only routing.default would be a note about a choice that never takes effect.
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b"), engineRow(OLLAMA, "qwen2.5:7b")]);
+    const routing = captureRouting({
+      runStyle: "single",
+      engines: { ollama: { kind: "ollama", baseUrl: OLLAMA.baseUrl, label: "Ollama", pinnedModel: "qwen2.5:7b" } },
+      routing: { default: { engine: "ollama", model: "qwen2.5:7b" } },
+    });
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen2\.5 7b/i }));
+    await user.click(await screen.findByTitle("qwen3:14b — on Ollama"));
+
+    await waitFor(() => expect(routing.written.length).toBe(1));
+    expect(routing.written[0].engines.ollama.pinnedModel).toBe("qwen3:14b");
+    expect(routing.written[0].routing.default.model).toBe("qwen3:14b");
+  });
+
+  it("says so when the table refuses the write, instead of looking accepted", async () => {
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b")]);
+    window.memex!.routing = {
+      get:      async () => ({ routing: OLLAMA_ONLY("qwen2.5:7b"), errors: [] }),
+      set:      async () => ({ ok: false, routing: OLLAMA_ONLY("qwen2.5:7b"), issues: [{ path: "routing.default.engine", message: "names no engine" }] }),
+      validate: async () => [],
+    };
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen2\.5 7b/i }));
+    await user.click(await screen.findByTitle("qwen3:14b — on Ollama"));
+
+    await waitFor(() => expect(screen.getByText(/routing\.default\.engine: names no engine/)).toBeTruthy());
   });
 });

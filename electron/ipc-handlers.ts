@@ -40,6 +40,7 @@ import type { WorktreeManager }        from "./worktree-manager";
 import type { GauntletHandoffStore }   from "./gauntlet-handoff-store";
 import { collectResidentModels, type OllamaPsModel } from "./ollama-residency";
 import { discoverEngineModels, engineDescriptors } from "./engine-registry";
+import { validateRouting } from "./routing-config";
 import { fireHooks }                   from "./hooks-runner";
 import { runOpenScad, type RenderParams } from "./openscad-runner";
 import { autoWireStore }                  from "./ipc-autowire";
@@ -574,11 +575,12 @@ export function registerAllIpc(ctx: IpcContext): void {
 
   // ── Engine registry ───────────────────────────────────────────────────────
   // The desktop owns model routing, so the renderer asks this process which
-  // engines the active profile runs and what each one holds. Deliberately
-  // descriptor-based: callers name an engine id, never `profile.ollama`.
+  // engines the routing table runs and what each one holds. Deliberately
+  // descriptor-based: callers name an engine id, never `profile.ollama`, and the
+  // ids are the `engines` keys the user wrote in config.json (routing-config.ts).
   ipcMain.handle("engines:list", async () => {
     try {
-      return engineDescriptors(config.getActive());
+      return engineDescriptors(config.getRouting().engines);
     } catch {
       return [];
     }
@@ -587,10 +589,20 @@ export function registerAllIpc(ctx: IpcContext): void {
   // An engine that is down answers with an empty list, never an error — the
   // picker must still show whatever the other engine has.
   ipcMain.handle("engines:models", async (_e, engineId: string) => {
-    const engine = engineDescriptors(config.getActive()).find((d) => d.id === engineId);
+    const engine = engineDescriptors(config.getRouting().engines).find((d) => d.id === engineId);
     if (!engine) return [];
     return discoverEngineModels(engine);
   });
+
+  // ── Routing table (D2) ────────────────────────────────────────────────────
+  // The file is hand-editable this round; the wizard (D3) is what will own editing.
+  // `get` carries the errors with the table because a table the user cannot trust is
+  // the state a picker has to say out loud rather than resolve quietly.
+  ipcMain.handle("routing:get", () => config.getRoutingState());
+  // Refused writes return the issues and change nothing — see ConfigStore.saveRouting.
+  ipcMain.handle("routing:set", (_e, next: unknown) => config.saveRouting(next));
+  // Checked against the pure validator only: this channel cannot write.
+  ipcMain.handle("routing:validate", (_e, next: unknown) => validateRouting(next));
 
   // ── Ollama model list ─────────────────────────────────────────────────────
   // No renderer call site remains — the picker reads `engines:models` now. Left

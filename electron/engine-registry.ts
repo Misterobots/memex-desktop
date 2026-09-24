@@ -22,6 +22,7 @@
  * profile-migration.ts): every function takes a descriptor and an injectable
  * fetch, so the whole module is testable without a main process.
  */
+import type { EngineConfig } from "./routing-config";
 
 export type EngineKind = "ollama" | "llama.cpp";
 
@@ -49,34 +50,31 @@ export interface EngineModel {
 
 export type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
-/** Mirrors the fallback `ConfigStore.getUrls()` applies when a profile names no
- * Ollama daemon, so the registry reports what the old handler would have probed. */
-export const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
-
 const PROBE_TIMEOUT_MS = 4000;
 
-/** The slice of a routing profile the registry reads. D2 replaces `ollama` and
- * `llamaCpp` with a full `engines` map; because callers go through descriptors,
- * that swap lands here and nowhere else. */
-export interface ProfileEngineUrls {
-  ollama?: string;
-  llamaCpp?: string;
-}
-
-export function engineDescriptors(profile: ProfileEngineUrls | null | undefined): EngineDescriptor[] {
-  const engines: EngineDescriptor[] = [];
-  const ollama = baseUrl(profile?.ollama, DEFAULT_OLLAMA_BASE_URL);
-  if (ollama) engines.push({ id: "ollama", kind: "ollama", baseUrl: ollama, label: "Ollama" });
-  const llamaCpp = baseUrl(profile?.llamaCpp);
-  if (llamaCpp) engines.push({ id: "llama.cpp", kind: "llama.cpp", baseUrl: llamaCpp, label: "llama.cpp" });
-  return engines;
-}
-
-/** A hand-edited config.json is expected to carry these URLs, so trailing
- * slashes and stray whitespace must not produce `//api/tags`. */
-function baseUrl(raw: string | undefined, fallback = ""): string {
-  const trimmed = (raw ?? "").trim().replace(/\/+$/, "");
-  return trimmed || fallback;
+/**
+ * One descriptor per entry of the `engines` map, in the order the file lists them.
+ *
+ * This is where D2's swap landed: the map used to be two profile fields
+ * (`ollama`, `llamaCpp`) invented here, and it is now the routing table's own keys,
+ * decided in routing-config.ts. Callers name an engine id and never a profile field,
+ * which is the only reason the swap stopped here.
+ *
+ * An entry with no usable `baseUrl` is left out rather than probed at `""` — a
+ * half-edited line is common in a hand-edited file, and `validateRouting` is what
+ * tells the user about it. A recognised `kind` is not filtered here: a kind this
+ * build cannot speak still gets a row so the picker's engine list matches the file,
+ * and discovery answers it with an empty list.
+ */
+export function engineDescriptors(engines: Record<string, EngineConfig> | null | undefined): EngineDescriptor[] {
+  const descriptors: EngineDescriptor[] = [];
+  for (const [id, engine] of Object.entries(engines ?? {})) {
+    if (!engine) continue;
+    const baseUrl = (engine.baseUrl ?? "").trim().replace(/\/+$/, "");
+    if (!baseUrl) continue;
+    descriptors.push({ id, kind: engine.kind, baseUrl, label: engine.label ?? id });
+  }
+  return descriptors;
 }
 
 export async function discoverEngineModels(engine: EngineDescriptor, fetchFn: FetchLike = fetch): Promise<EngineModel[]> {

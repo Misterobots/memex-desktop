@@ -1,0 +1,329 @@
+import { describe, expect, it } from "vitest";
+import {
+  DEFAULT_OLLAMA_BASE_URL,
+  DEFAULT_SLOT,
+  deriveRoutingFromProfile,
+  flattenForRunStyle,
+  migrateToRouting,
+  pinnedTarget,
+  readRoutingBlock,
+  resolveRoute,
+  validateRouting,
+  type RoutingConfig,
+  type EngineConfig,
+} from "../routing-config";
+
+/** D2's example table, the shape the user is told to write. */
+const D2: RoutingConfig = {
+  runStyle: "multi",
+  engines: {
+    "ollama-local": { kind: "ollama", baseUrl: "http://[::1]:11434" },
+    "llama-local":  { kind: "llama.cpp", baseUrl: "http://127.0.0.1:8080", pinnedModel: "qwen3-coder:30b" },
+  },
+  routing: {
+    [DEFAULT_SLOT]:              { engine: "ollama-local", model: "qwen3:14b" },
+    "code":                      { engine: "ollama-local", model: "qwen3.8:27b" },
+    "collective.coordinator":    { engine: "ollama-local", model: "qwen3.8:27b" },
+    "collective.critic":         { engine: "ollama-local", model: "qwen3:14b" },
+    "embedding":                 { engine: "ollama-local", model: "nomic-embed-text:latest" },
+  },
+};
+
+/** The same box, run as one pinned model. */
+const SINGLE = (routing: RoutingConfig["routing"]): RoutingConfig => ({
+  runStyle: "single",
+  engines: { "llama-local": { kind: "llama.cpp", baseUrl: "http://127.0.0.1:8080", pinnedModel: "qwen3-coder:30b" } },
+  routing,
+});
+
+const paths = (issues: ReturnType<typeof validateRouting>) => issues.map((i) => i.path);
+
+describe("resolving a slot", () => {
+  it("answers a slot the table names, and says it did not fall back", () => {
+    const route = resolveRoute(D2, "code");
+    expect(route).toEqual({ requested: "code", slot: "code", target: D2.routing.code, usedFallback: false });
+  });
+
+  it("falls back to routing.default and reports that it did, plus the slot that answered", () => {
+    // A box with no critic entry still has to say *which* model the critic gets:
+    // the point of the fallback chain being observable is that the UI can name the
+    // origin instead of presenting default's model as if it were picked for this.
+    const table = { ...D2, routing: { default: D2.routing.default, code: D2.routing.code } };
+    const route = resolveRoute(table, "collective.critic");
+    expect(route.slot).toBe("default");
+    expect(route.usedFallback).toBe(true);
+    expect(route.target).toEqual({ engine: "ollama-local", model: "qwen3:14b" });
+  });
+
+  it("resolves to nothing when neither the slot nor the fallback exists", () => {
+    // D2's own table has a default, so asking it for a slot it never named is the
+    // fallback case above. Without a default entry there is no answer at all, and
+    // `slot: null` is what lets the UI say so instead of showing a stale model.
+    const noDefault = { ...D2, routing: { code: D2.routing.code } };
+    expect(resolveRoute(noDefault, "image")).toEqual({
+      requested: "image", slot: null, target: null, usedFallback: false,
+    });
+  });
+
+  it("tolerates a table that is absent altogether", () => {
+    expect(resolveRoute(null, DEFAULT_SLOT).target).toBeNull();
+    expect(resolveRoute(undefined, "code").usedFallback).toBe(false);
+  });
+});
+
+describe("validating a hand-edited table", () => {
+  it("accepts D2's example, dotted slot names and all", () => {
+    expect(validateRouting(D2)).toEqual([]);
+  });
+
+  it("rejects a slot naming an engine that is not in engines, by path", () => {
+    const broken = structuredClone(D2);
+    broken.routing.code = { engine: "ollma-loca", model: "qwen3.8:27b" };
+    const issues = validateRouting(broken);
+    expect(paths(issues)).toEqual(["routing.code.engine"]);
+    // Names the offender and the alternatives: the file is open in an editor, and a
+    // message that cannot be matched to a line is a second read of the whole thing.
+    expect(issues[0].message).toContain('"ollma-loca"');
+    expect(issues[0].message).toContain("ollama-local");
+    expect(issues[0].message).toContain("llama-local");
+  });
+
+  it("rejects a runStyle outside the two values", () => {
+    expect(paths(validateRouting({ ...D2, runStyle: "swarm" as RoutingConfig["runStyle"] }))).toEqual(["runStyle"]);
+    expect(paths(validateRouting({ engines: D2.engines, routing: D2.routing }))).toEqual(["runStyle"]);
+  });
+
+  it("rejects an empty or non-http baseUrl, and a blank one that only looks present", () => {
+    const broken = structuredClone(D2);
+    broken.engines["ollama-local"].baseUrl = "  ";
+    broken.engines["llama-local"].baseUrl = "ftp://router:21/api";
+    const issues = validateRouting(broken);
+    expect(paths(issues).sort()).toEqual(["engines.llama-local.baseUrl", "engines.ollama-local.baseUrl"]);
+    expect(issues.find((i) => i.path === "engines.ollama-local.baseUrl")!.message).toContain("empty");
+  });
+
+  it("rejects a slot target with no model", () => {
+    const broken = structuredClone(D2);
+    broken.routing["collective.critic"] = { engine: "ollama-local", model: "  " };
+    expect(paths(validateRouting(broken))).toEqual(["routing.collective.critic.model"]);
+  });
+
+  it("rejects a kind this build cannot speak, rather than discovering nothing forever", () => {
+    const broken = structuredClone(D2);
+    broken.engines["llama-local"].kind = "trt-llm" as EngineConfig["kind"];
+    expect(paths(validateRouting(broken))).toEqual(["engines.llama-local.kind"]);
+  });
+
+  it("reports every problem at once, one path each", () => {
+    // One pass with all the paths, because the alternative — fix, reload, discover
+    // the next error — is one restart per typo in a file meant to be edited freely.
+    const issues = validateRouting({
+      runStyle: "both",
+      engines: {
+        good:  { kind: "ollama", baseUrl: "http://[::1]:11434" },
+        bad:   { kind: "ollama", baseUrl: "localhost:11434" },
+      },
+      routing: {
+        [DEFAULT_SLOT]: { engine: "nope", model: "" },
+        code:           "qwen3:14b" as unknown as RoutingConfig["routing"]["code"],
+      },
+    });
+    expect(paths(issues).sort()).toEqual([
+      "engines.bad.baseUrl", "routing.code", "routing.default.engine", "routing.default.model", "runStyle",
+    ]);
+  });
+
+  it("judges the shape it was handed, not the shape it wishes it had", () => {
+    expect(paths(validateRouting(null))).toEqual(["(root)"]);
+    expect(paths(validateRouting("http://[::1]:11434"))).toEqual(["(root)"]);
+    expect(paths(validateRouting([]))).toEqual(["(root)"]);
+    expect(paths(validateRouting({ runStyle: "multi", engines: [], routing: {} }))).toEqual(["engines"]);
+  });
+
+  it("keeps the usable view from hiding a nonsense table from the validator", () => {
+    // `readRoutingBlock` stands in a default for anything it cannot read, so callers
+    // always hold a RoutingConfig — which is exactly why the validator must be given
+    // the stored keys as written, not that filled-in copy.
+    const candidate = { runStyle: "multi", engines: {}, routing: "qwen3:8b" };
+    expect(paths(validateRouting(candidate))).toEqual(["routing"]);
+    expect(readRoutingBlock(candidate)!.routing).toEqual({});
+  });
+
+  it("leaves an unrecognised slot name alone, because the slot set is open", () => {
+    // D2's example lists five slots, its prose names more (research, image); a
+    // slot this build does not consume yet must not be an error in the user's file.
+    expect(validateRouting({ ...D2, routing: { ...D2.routing, image: { engine: "ollama-local", model: "qwen2.5-vl:7b" } } }))
+      .toEqual([]);
+  });
+
+  it("rejects a single-style box with nothing to pin", () => {
+    const unpinnable = {
+      runStyle: "single" as const,
+      engines: { a: { kind: "ollama" as const, baseUrl: "http://127.0.0.1:11434" }, b: { kind: "ollama" as const, baseUrl: "http://127.0.0.1:11435" } },
+      routing: {},
+    };
+    expect(paths(validateRouting(unpinnable))).toEqual(["runStyle"]);
+
+    // One engine, so the engine is unambiguous — but its model was never declared,
+    // and a pin invented here is a model the user did not choose.
+    const noPin: RoutingConfig = {
+      runStyle: "single",
+      engines: { "llama-local": { kind: "llama.cpp", baseUrl: "http://127.0.0.1:8080" } },
+      routing: {},
+    };
+    expect(paths(validateRouting(noPin))).toEqual(["engines.llama-local.pinnedModel"]);
+    expect(validateRouting(noPin)[0].message).toContain("single");
+  });
+});
+
+describe("flattening onto the run style", () => {
+  it("multi leaves the table exactly as written — same reference, nothing rewritten", () => {
+    const result = flattenForRunStyle(D2);
+    expect(result.routing).toBe(D2);
+    expect(result.overridden).toEqual([]);
+    expect(result.pinned).toBeNull();
+  });
+
+  it("single resolves every slot to the pinned model and returns the slots it overrode", () => {
+    const perSlot = SINGLE({
+      [DEFAULT_SLOT]:           { engine: "llama-local", model: "qwen3-coder:30b" },
+      "code":                   { engine: "llama-local", model: "qwen3.8:27b" },
+      "collective.coordinator": { engine: "llama-local", model: "qwen3.8:27b" },
+      "collective.critic":      { engine: "llama-local", model: "qwen3:14b" },
+    });
+    const { routing, pinned, overridden } = flattenForRunStyle(perSlot);
+
+    // Exactly the slots that differed — and only those. Reporting the ones that
+    // already matched would train the user to ignore the list.
+    expect(overridden).toEqual(["code", "collective.coordinator", "collective.critic"]);
+    expect(pinned).toEqual({ engine: "llama-local", model: "qwen3-coder:30b" });
+    expect(Object.values(routing.routing).every((t) => t.model === "qwen3-coder:30b")).toBe(true);
+    expect(routing.runStyle).toBe("single");
+  });
+
+  it("prefers the engine's pinnedModel over the default slot, because the pin is what is loaded", () => {
+    const result = flattenForRunStyle(SINGLE({ [DEFAULT_SLOT]: { engine: "llama-local", model: "something-else:1b" } }));
+    expect(result.pinned).toEqual({ engine: "llama-local", model: "qwen3-coder:30b" });
+    expect(result.overridden).toEqual([DEFAULT_SLOT]);
+    expect(result.routing.routing[DEFAULT_SLOT].model).toBe("qwen3-coder:30b");
+  });
+
+  it("reports nothing rather than invent a model when single has no pin", () => {
+    const noPin = {
+      runStyle: "single" as const,
+      engines: { one: { kind: "ollama" as const, baseUrl: "http://127.0.0.1:11434" } },
+      routing: { code: { engine: "one", model: "a:1" } },
+    };
+    const result = flattenForRunStyle(noPin);
+    expect(result.pinned).toBeNull();
+    expect(result.overridden).toEqual([]);
+    expect(result.routing.routing.code.model).toBe("a:1"); // unchanged: validation says why, this does not guess
+  });
+});
+
+describe("deriving a table from the profile that exists today", () => {
+  it("turns ollama + defaultModel into the config that routes the same box", () => {
+    expect(deriveRoutingFromProfile({ ollama: "http://[::1]:11434", defaultModel: "qwen3:14b" })).toEqual({
+      runStyle: "multi",
+      engines: { ollama: { kind: "ollama", baseUrl: "http://[::1]:11434", label: "Ollama" } },
+      routing: { [DEFAULT_SLOT]: { engine: "ollama", model: "qwen3:14b" } },
+    });
+  });
+
+  it("adds the llama.cpp lane only when the profile names one", () => {
+    const both = deriveRoutingFromProfile({ ollama: "http://[::1]:11434", llamaCpp: "http://127.0.0.1:8011/" });
+    expect(Object.keys(both.engines)).toEqual(["ollama", "llama.cpp"]);
+    expect(both.engines["llama.cpp"]).toEqual({ kind: "llama.cpp", baseUrl: "http://127.0.0.1:8011", label: "llama.cpp" });
+
+    expect(Object.keys(deriveRoutingFromProfile({ llamaCpp: "http://127.0.0.1:8011" }).engines))
+      .toEqual(["ollama", "llama.cpp"]); // Ollama stays, as it did before the table existed
+  });
+
+  it("falls back to the loopback daemon and omits a slot it has no model for", () => {
+    const empty = deriveRoutingFromProfile({ ollama: "   " });
+    expect(empty.engines.ollama.baseUrl).toBe(DEFAULT_OLLAMA_BASE_URL);
+    // An entry with no model would be a validation failure; a profile that never
+    // recorded one is not.
+    expect(empty.routing).toEqual({});
+  });
+
+  it("derives a valid table from every profile shape an install can hold", () => {
+    for (const profile of [
+      {},
+      null,
+      { ollama: "http://[::1]:11434" },
+      { defaultModel: "qwen3:14b" },
+      { ollama: "http://[::1]:11434", llamaCpp: "http://127.0.0.1:8011", defaultModel: "qwen3-coder:30b" },
+    ]) {
+      expect(validateRouting(deriveRoutingFromProfile(profile))).toEqual([]);
+    }
+  });
+});
+
+describe("migrating a stored config", () => {
+  // Typed as the parsed shape it actually arrives as: JSON.parse hands `load()` an
+  // `AppConfig` by assertion, and the keys it does not recognise are the point.
+  const preD2: Record<string, unknown> = {
+    activeProfileId: "home-lan",
+    profiles: [
+      { id: "localhost", name: "Localhost", ollama: "http://[::1]:11434", defaultModel: "qwen3:8b" },
+      { id: "home-lan",  name: "Home LAN",  ollama: "http://192.168.2.101:11434", defaultModel: "qwen3:14b" },
+    ],
+    allowedExtensionIds: ["abc"],
+  };
+
+  it("adds the block and keeps a key it has never heard of", () => {
+    const { config, changed } = migrateToRouting(preD2);
+    expect(changed).toBe(true);
+    expect(config.allowedExtensionIds).toEqual(["abc"]);
+    // Derived from the *active* route, not whichever came first in the array.
+    expect(config.routing).toEqual({ [DEFAULT_SLOT]: { engine: "ollama", model: "qwen3:14b" } });
+    expect(config.engines).toEqual({ ollama: { kind: "ollama", baseUrl: "http://192.168.2.101:11434", label: "Ollama" } });
+    expect(config.runStyle).toBe("multi");
+  });
+
+  it("is idempotent: the second pass is the same object, and changes nothing", () => {
+    const first = migrateToRouting(preD2);
+    const second = migrateToRouting(first.config);
+    expect(second.changed).toBe(false);
+    expect(second.config).toBe(first.config);
+    expect(second.config).toEqual(first.config);
+  });
+
+  it("leaves an existing engines map alone even when it is nonsense", () => {
+    // Repairing here would delete the evidence validation is meant to report: a
+    // half-finished edit comes back as the user's own, with paths to fix.
+    const half = { ...preD2, runStyle: "multi", engines: { typo: { kind: "ollama", baseUrl: "not-a-url" } }, routing: {} };
+    const { config, changed } = migrateToRouting(half);
+    expect(changed).toBe(false);
+    expect(config).toBe(half);
+    expect(paths(validateRouting(readRoutingBlock(config)))).toEqual(["engines.typo.baseUrl"]);
+  });
+
+  it("recognises a stored block only through the engines key", () => {
+    expect(readRoutingBlock({ runStyle: "single", routing: {} })).toBeNull();
+    expect(readRoutingBlock({ engines: {}, runStyle: "multi" })).toEqual({ runStyle: "multi", engines: {}, routing: {} });
+  });
+
+  it("derives something usable from a config with no profiles at all", () => {
+    const { config } = migrateToRouting({ activeProfileId: "gone", profiles: [], allowedExtensionIds: [] });
+    expect(validateRouting(readRoutingBlock(config))).toEqual([]);
+    expect(resolveRoute(readRoutingBlock(config), "code").target).toBeNull();
+  });
+});
+
+describe("the pin a single-style box serves", () => {
+  it("is the default slot's engine when the table names several", () => {
+    const table: RoutingConfig = {
+      ...D2,
+      runStyle: "single",
+      routing: { [DEFAULT_SLOT]: { engine: "llama-local", model: "qwen3:14b" } },
+    };
+    expect(pinnedTarget(table)).toEqual({ engineId: "llama-local", target: { engine: "llama-local", model: "qwen3-coder:30b" } });
+  });
+
+  it("needs exactly one engine when there is no default to point at one", () => {
+    expect(pinnedTarget(SINGLE({}))).toEqual({ engineId: "llama-local", target: { engine: "llama-local", model: "qwen3-coder:30b" } });
+    expect(pinnedTarget({ ...D2, runStyle: "single", routing: {} })).toBeNull();
+  });
+});

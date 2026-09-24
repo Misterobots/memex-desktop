@@ -9,6 +9,20 @@ import { readFileSync, writeFileSync, existsSync } from "fs";
 import { randomUUID } from "crypto";
 import { safeStorage } from "electron";
 import { LOCAL_DEFAULT_PROFILE_ID, migrateLocalOnlyProfiles } from "./profile-migration";
+import {
+  DEFAULT_OLLAMA_BASE_URL,
+  deriveRoutingFromProfile,
+  migrateToRouting,
+  readRoutingBlock,
+  validateRouting,
+  type RoutingConfig,
+  type RoutingIssue,
+  type RoutingResult,
+  type RoutingState,
+  type RunStyle,
+  type EngineConfig,
+  type RouteTarget,
+} from "./routing-config";
 
 export type ProviderType = "internal" | "external";
 
@@ -20,10 +34,12 @@ export interface RuntimeProfile {
   mempalace:    string;
   ollama?:      string;
   /** Optional llama.cpp (`llama-server`) lane, which runs alongside Ollama rather
-   * than instead of it. Read by engine-registry.ts; D2 replaces this pair with a
-   * full `engines` map, so nothing outside the registry should name this field. */
+   * than instead of it. Superseded by the `engines` map in routing-config.ts, which
+   * is what the registry reads now; kept because a persisted profile still carries
+   * it, and it is the source the routing block is derived from on first load. */
   llamaCpp?:    string;
-  /** Last model deliberately selected for this routing profile. */
+  /** Last model deliberately selected for this routing profile. Kept in step with
+   * the picker by `ModelPickerPopover`; the routing table outranks it. */
   defaultModel?: string;
   /** Optional local companion services configured by Local LLM setup. */
   localServices?: { openWebUi?: string; comfyUi?: string };
@@ -78,6 +94,13 @@ export interface AppConfig {
   wizardComplete?:     boolean;
   shortcuts?:          Partial<ShortcutConfig>;
   trayHintShown?:      boolean;
+  /** D2 routing block — see electron/routing-config.ts for the schema and the
+   * reason it is stored as three top-level keys. All optional: absent means the
+   * effective table is derived from the active profile, so an install predating D2
+   * routes on unchanged behaviour. */
+  runStyle?: RunStyle;
+  engines?:  Record<string, EngineConfig>;
+  routing?:  Record<string, RouteTarget>;
 }
 
 function defaultShortcuts(): ShortcutConfig {
@@ -127,55 +150,128 @@ const SEED_PROFILES: RuntimeProfile[] = [
 // this machine; there is no hosted profile left to sign into.
 const DEFAULT_ACTIVE = LOCAL_DEFAULT_PROFILE_ID;
 
+/**
+ * The config with a routing block, when it does not already carry one.
+ * `migrateToRouting` is idempotent and copies unknown keys through, so this is safe
+ * to call on every read; a stored block — even an unfinished one — is left as the
+ * user wrote it and reported on by `validateRouting` instead.
+ */
+function withRouting<T extends AppConfig>(config: T): T {
+  const routed = migrateToRouting(config as unknown as Record<string, unknown>);
+  return routed.changed ? (routed.config as unknown as T) : config;
+}
+
+/** The stored block as the file has it, or null when it has never been written. */
+function storedRouting(config: AppConfig): RoutingConfig | null {
+  return readRoutingBlock(config as unknown as Record<string, unknown>);
+}
+
+/**
+ * The three stored keys, passed to the validator un-coerced.
+ *
+ * `storedRouting` above yields a usable view and so stands in a default for a value
+ * it cannot read; validating *that* would swallow a `"routing": "qwen3:8b"` line
+ * without a word. This is the same object with nothing filled in, so every nonsense
+ * value in the file reaches `validateRouting` and comes back as a path.
+ */
+function routingCandidate(config: AppConfig): Record<string, unknown> | null {
+  if (config.engines === undefined) return null; // no block at all; the derived table is what gets validated
+  return { runStyle: config.runStyle, engines: config.engines, routing: config.routing };
+}
+
+function reason(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 export class ConfigStore {
   private configPath: string;
   private config:     AppConfig;
+  /** Why the file on disk could not be read, when it could not. See `persist()`. */
+  private fileError:  string | null = null;
+  /** What is wrong with the stored routing block, as reported on load. Never repaired. */
+  private routingIssues: RoutingIssue[] = [];
 
   constructor(userData: string) {
     this.configPath = join(userData, "config.json");
     this.config     = this.load();
+    this.refreshRoutingIssues();
+  }
+
+  /** What is wrong with the routing, recomputed from the stored keys as written (or
+   * from the derived table when the file declares none). */
+  private refreshRoutingIssues(): void {
+    this.routingIssues = validateRouting(routingCandidate(this.config) ?? this.getRouting());
   }
 
   private load(): AppConfig {
-    if (existsSync(this.configPath)) {
-      try {
-        const raw = JSON.parse(readFileSync(this.configPath, "utf-8")) as AppConfig;
-        raw.profiles = decryptProfilesFromDisk(raw.profiles as unknown as LegacyPersistedProfile[]);
-        // Memex Anywhere was retired on 2026-09-24 (see profile-migration.ts).
-        // Removing its seed is not enough: a config written while it existed
-        // still carries the profile, so drop it on load and re-point the active
-        // route if that profile was the one in use.
-        const migrated = migrateLocalOnlyProfiles(raw.profiles, raw.activeProfileId);
-        raw.profiles        = migrated.profiles;
-        raw.activeProfileId = migrated.activeProfileId;
-        // Ensure seed profiles are always present (add if missing from stored config)
-        for (const seed of SEED_PROFILES) {
-          if (!raw.profiles.find((p) => p.id === seed.id)) {
-            raw.profiles.unshift(seed);
-          }
-        }
-        // Repair the original localhost seed on existing installs. It pointed
-        // to IPv4-only loopback and a memory service that is not local on this
-        // workstation, so a working harness was displayed as three failures.
-        const localhostSeed = SEED_PROFILES.find((p) => p.id === "localhost")!;
-        const localhost = raw.profiles.find((p) => p.id === "localhost");
-        if (localhost && localhost.readonly && localhost.agentRuntime === "http://localhost:8008") {
-          Object.assign(localhost, localhostSeed);
-          this.persist(raw);
-        }
-        // Persisted once, after the back-fills, so the retired profile cannot
-        // come back on the next load.
-        if (migrated.changed) this.persist(raw);
-        return raw;
-      } catch {}
+    if (!existsSync(this.configPath)) {
+      // First run — there is nothing on disk to lose, so write the seeds.
+      const config = withRouting({ activeProfileId: DEFAULT_ACTIVE, profiles: [...SEED_PROFILES], allowedExtensionIds: [] });
+      this.persist(config);
+      return config;
     }
-    // First run — write seeds
-    const config: AppConfig = { activeProfileId: DEFAULT_ACTIVE, profiles: [...SEED_PROFILES], allowedExtensionIds: [] };
-    this.persist(config);
-    return config;
+
+    let raw: AppConfig;
+    try {
+      raw = JSON.parse(readFileSync(this.configPath, "utf-8")) as AppConfig;
+    } catch (e) {
+      return this.unreadable(`could not be parsed (${reason(e)})`);
+    }
+
+    try {
+      raw.profiles = decryptProfilesFromDisk(raw.profiles as unknown as LegacyPersistedProfile[]);
+      // Memex Anywhere was retired on 2026-09-24 (see profile-migration.ts).
+      // Removing its seed is not enough: a config written while it existed
+      // still carries the profile, so drop it on load and re-point the active
+      // route if that profile was the one in use.
+      const migrated = migrateLocalOnlyProfiles(raw.profiles, raw.activeProfileId);
+      raw.profiles        = migrated.profiles;
+      raw.activeProfileId = migrated.activeProfileId;
+      // Ensure seed profiles are always present (add if missing from stored config)
+      for (const seed of SEED_PROFILES) {
+        if (!raw.profiles.find((p) => p.id === seed.id)) {
+          raw.profiles.unshift(seed);
+        }
+      }
+      // Repair the original localhost seed on existing installs. It pointed
+      // to IPv4-only loopback and a memory service that is not local on this
+      // workstation, so a working harness was displayed as three failures.
+      const localhostSeed = SEED_PROFILES.find((p) => p.id === "localhost")!;
+      const localhost = raw.profiles.find((p) => p.id === "localhost");
+      const repairedSeed = !!(localhost && localhost.readonly && localhost.agentRuntime === "http://localhost:8008");
+      if (repairedSeed) Object.assign(localhost, localhostSeed);
+
+      // D2: a config written before the routing block existed gets one derived from
+      // the profile that is active *after* the migrations above, so the engines it
+      // names are the ones the route in use actually runs. Together with the seed
+      // repair this is the only place a read writes, and it writes once.
+      const routed = withRouting(raw);
+      if (migrated.changed || repairedSeed || routed !== raw) this.persist(routed);
+      return routed;
+    } catch (e) {
+      // The file parsed, but it is not a config this build can migrate (a missing
+      // `profiles` array is the usual hand-edit). Same rule as a syntax error.
+      return this.unreadable(`could not be read (${reason(e)})`);
+    }
+  }
+
+  /**
+   * A file that exists but cannot be read is left exactly as it is.
+   *
+   * The old shape of this method fell through to the first-run write, so a stray
+   * comma in a hand-edit replaced the user's config with seeds — the file became
+   * the thing that needed migrating, and the mistake that proved it was unreadable
+   * was gone. An in-memory default keeps the app running; `fileError` disables every
+   * further write for the session (see `persist()`) so a later unrelated save cannot
+   * clobber it either, and the errors reach the renderer via `routing:get`.
+   */
+  private unreadable(reason: string): AppConfig {
+    this.fileError = reason;
+    return withRouting({ activeProfileId: DEFAULT_ACTIVE, profiles: [...SEED_PROFILES], allowedExtensionIds: [] });
   }
 
   private persist(config: AppConfig): void {
+    if (this.fileError) return; // see unreadable(): never overwrite a file we could not read
     try {
       const toWrite = { ...config, profiles: encryptProfilesForDisk(config.profiles) };
       writeFileSync(this.configPath, JSON.stringify(toWrite, null, 2), "utf-8");
@@ -261,13 +357,72 @@ export class ConfigStore {
     return engine;
   }
 
+  // ── Routing table (D2) ────────────────────────────────────────────────────
+
+  /** The effective table: what the file declares, or what the active profile
+   * implies when the file declares nothing yet. Never validated-then-repaired — an
+   * invalid stored block comes back as it was written, with `getRoutingErrors()`
+   * saying what is wrong, because the user's file is the source of truth and a
+   * "helpful" fix here is what they would then never find out about. */
+  getRouting(): RoutingConfig {
+    return storedRouting(this.config) ?? deriveRoutingFromProfile(this.getActive());
+  }
+
+  /** Everything wrong with the routing, in one pass, each with a path. A file that
+   * could not be read at all is reported here too — it is the same hand-edit, only
+   * further from being a routing table. */
+  getRoutingErrors(): RoutingIssue[] {
+    if (this.fileError) {
+      return [{
+        path: "config.json",
+        message: `config.json ${this.fileError}. It was left untouched and will not be written this session — repair it and restart.`,
+      }];
+    }
+    return this.routingIssues;
+  }
+
+  /** The stored block and its problems together, which is what the renderer needs:
+   * a table it can resolve against plus a reason to say it is not trustworthy. */
+  getRoutingState(): RoutingState {
+    return { routing: this.getRouting(), errors: this.getRoutingErrors() };
+  }
+
+  /**
+   * Persist a routing table, or refuse.
+   *
+   * Rejection is the whole point: an invalid table writes nothing at all — not an
+   * empty one, not a partial one — so the file keeps the routing that was working
+   * before the edit. `validateRouting` reports every problem in one pass, which is
+   * also what makes the file worth hand-editing.
+   */
+  saveRouting(next: unknown): RoutingResult {
+    const current = this.getRouting();
+    if (this.fileError) {
+      return {
+        ok: false,
+        routing: current,
+        issues: this.getRoutingErrors(),
+      };
+    }
+    const issues = validateRouting(next);
+    if (issues.length) return { ok: false, routing: current, issues };
+
+    const block = next as RoutingConfig;
+    this.config.runStyle = block.runStyle;
+    this.config.engines  = block.engines;
+    this.config.routing  = block.routing;
+    this.save();
+    this.refreshRoutingIssues();
+    return { ok: true, routing: this.getRouting(), issues: [] };
+  }
+
   /** Convenience: URLs for the active profile (used in main.ts) */
   getUrls(): { agentRuntime: string; mempalace: string; ollama: string } {
     const p = this.getActive();
     return {
       agentRuntime: p.agentRuntime,
       mempalace:    p.mempalace,
-      ollama:       p.ollama ?? "http://localhost:11434",
+      ollama:       p.ollama ?? DEFAULT_OLLAMA_BASE_URL,
     };
   }
 }

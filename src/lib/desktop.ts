@@ -4,6 +4,12 @@
  * Gracefully no-ops when not running in Electron.
  */
 import type { RunRecord, RunEvent, EvalCase, EvalResult, ConnectionStatus } from "../types/memex";
+// The D2 routing types are re-exported rather than mirrored here, because the
+// renderer resolves routes with the main process's own `resolveRoute` from
+// electron/routing-config.ts. Two copies of the shape would mean two copies of the
+// fallback rules; a pure, Electron-free module is what makes one copy possible.
+import type { RoutingConfig, RoutingIssue, RoutingResult, RoutingState } from "../../electron/routing-config";
+export type { RoutingConfig, RoutingIssue, RoutingResult, RoutingState };
 export type { RunRecord, RunEvent, EvalCase, EvalResult };
 
 export type PermissionMode = "trusted" | "workspace" | "ask";
@@ -171,7 +177,10 @@ export interface RuntimeProfile {
   mempalace:    string;
   ollama?:      string;
   /** Optional llama.cpp (`llama-server`) lane, alongside Ollama rather than
-   * instead of it. Owned by the engine registry — see electron/engine-registry.ts. */
+   * instead of it. Superseded by the routing table's `engines` map, which is what
+   * the registry reads; kept because a stored profile still carries it and the
+   * table is derived from it when a config predates D2 — see
+   * electron/routing-config.ts. */
   llamaCpp?:    string;
   /** Last model deliberately selected for this routing profile. */
   defaultModel?: string;
@@ -346,6 +355,14 @@ export interface MemexBridge {
   engines: {
     list:   () => Promise<EngineDescriptor[]>;
     models: (engineId: string) => Promise<EngineModel[]>;
+  };
+
+  /** D2 — the routing table `config.json` carries, plus what is wrong with it.
+   * `set` refuses without writing when the table is invalid. */
+  routing: {
+    get:      () => Promise<RoutingState>;
+    set:      (next: RoutingConfig) => Promise<RoutingResult>;
+    validate: (next: unknown) => Promise<RoutingIssue[]>;
   };
 
   ollama: {
