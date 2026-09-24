@@ -4,7 +4,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ModelPickerPopover } from "./ModelPickerPopover";
 import { useStore } from "../../lib/store";
-import type { EngineDescriptor, EngineModel, RoutingConfig, RuntimeProfile } from "../../lib/desktop";
+import type { CapabilityReport, EngineDescriptor, EngineModel, RoutingConfig, RuntimeProfile } from "../../lib/desktop";
 
 // Every runtime URL is refused: this is the machine state where the user's own
 // engine is up and the orchestrator is down. A picker that still asks the
@@ -40,13 +40,31 @@ const LOCAL_PROFILE: RuntimeProfile = {
   defaultModel: "qwen3:8b",
 };
 
+/** The D4 answer for a fixture that was never asked: `unknown`, never an empty set
+ * wearing `reported`, because the picker's own contract is that these two read
+ * differently. */
+export const SILENT: CapabilityReport = {
+  capabilities: [], source: "unknown", contextLength: null, detail: "fixture engine did not answer /api/show",
+};
+
+/** A live Ollama's answer, from the payloads recorded in electron/model-capabilities.ts. */
+export const reportedAs = (capabilities: string[], contextLength: number | null = null): CapabilityReport => ({
+  capabilities, source: "reported", contextLength, detail: `/api/show reported: ${capabilities.join(", ")}`,
+});
+
 /** Swaps the bridge to a local-engine install; the runtime stays unreachable. */
-function useLocalEngines(models: (engineId: string) => Promise<EngineModel[]>, descriptors = [OLLAMA]) {
+function useLocalEngines(
+  models: (engineId: string) => Promise<EngineModel[]>,
+  descriptors = [OLLAMA],
+  capabilities: (lane: { id: string; model: string }) => Promise<CapabilityReport> = async () => SILENT,
+) {
   window.memex!.config.getActive = vi.fn().mockResolvedValue(LOCAL_PROFILE);
   // `modelsFor` takes `{ id }` and main resolves it to a stored lane before probing,
   // so a fixture that ignores the lookup would hide a missing lane; delegating keeps
   // the two channels answering the same question.
-  window.memex!.engines = { list: async () => descriptors, models, modelsFor: async ({ id }) => models(id) };
+  window.memex!.engines = {
+    list: async () => descriptors, models, modelsFor: async ({ id }) => models(id), capabilities,
+  };
 }
 
 /** The D2 table this install routes by, as the main process would hand it over. */
@@ -212,6 +230,7 @@ describe("ModelPickerPopover", () => {
       list: async () => [OLLAMA],
       models: async () => rows,
       modelsFor: async () => rows,
+      capabilities: async () => SILENT,
     };
 
     const user = userEvent.setup();
@@ -345,5 +364,73 @@ describe("ModelPickerPopover", () => {
     await user.click(await screen.findByTitle("qwen3:14b — on Ollama"));
 
     await waitFor(() => expect(screen.getByText(/routing\.default\.engine: names no engine/)).toBeTruthy());
+  });
+
+  // D4 — the picker must say what a model cannot do, and must still list it. The
+  // capability arrays below are the ones measured from `POST /api/show` on this
+  // machine (see the header of electron/model-capabilities.ts). The verdict sentences
+  // come from main's module through the component's own bridge call; nothing here
+  // re-implements the matrix.
+  it("marks the embedding-only model with the capability it lacks, and keeps the row listed and clickable", async () => {
+    useLocalEngines(
+      async () => [engineRow(OLLAMA, "qwen3:14b"), engineRow(OLLAMA, "nomic-embed-text:latest")],
+      [OLLAMA],
+      async ({ model }) => reportedAs(
+        model === "nomic-embed-text:latest" ? ["embedding"] : ["completion", "tools", "thinking"],
+        model === "nomic-embed-text:latest" ? 2048 : 40960,
+      ),
+    );
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 8b/i }));
+
+    // Stated, not filtered: the row is there, it names the missing capability, and it
+    // quotes what the engine actually reported.
+    const row = await screen.findByTitle("nomic-embed-text:latest — on Ollama");
+    expect(row.hasAttribute("disabled")).toBe(false);
+    await waitFor(() => expect(screen.getByText(/needs completion/)).toBeTruthy());
+    expect(screen.getByText(/reports embedding/)).toBeTruthy();
+    // Exactly one row is marked: the capable model beside it carries no such line.
+    expect(document.querySelectorAll("[data-capability='missing']")).toHaveLength(1);
+
+    // And it is still assignable — the app's authority here is the sentence, not the gate.
+    await user.click(row);
+    expect(useStore.getState().selectedModel).toBe("nomic-embed-text:latest");
+  });
+
+  it("says it cannot verify, rather than assuming parity, when the engine stays silent", async () => {
+    useLocalEngines(
+      async () => [engineRow(OLLAMA, "qwen3:14b")],
+      [OLLAMA],
+      async () => SILENT,
+    );
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 8b/i }));
+
+    await waitFor(() => expect(screen.getByText(/cannot verify/)).toBeTruthy());
+    // "cannot verify" is not a refusal: nothing on the row claims the model is unusable.
+    expect(screen.queryByText(/needs completion/)).toBeNull();
+    expect(document.querySelectorAll("[data-capability='missing']")).toHaveLength(0);
+    expect(document.querySelectorAll("[data-capability='unknown']")).toHaveLength(1);
+  });
+
+  it("marks nothing when the preload predates the matrix, which is not the same as everything passing", async () => {
+    const bridge = window.memex!;
+    bridge.config.getActive = vi.fn().mockResolvedValue(LOCAL_PROFILE);
+    bridge.engines = {
+      list: async () => [OLLAMA],
+      models: async () => [engineRow(OLLAMA, "qwen3:14b")],
+      modelsFor: async () => [engineRow(OLLAMA, "qwen3:14b")],
+    } as unknown as typeof bridge.engines;
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 8b/i }));
+
+    await waitFor(() => expect(screen.getByTitle("qwen3:14b — on Ollama")).toBeTruthy());
+    expect(document.querySelectorAll("[data-capability]").length).toBe(0);
   });
 });

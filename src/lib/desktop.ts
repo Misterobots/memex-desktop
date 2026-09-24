@@ -14,8 +14,10 @@ import type {
 // Re-exported rather than mirrored, same reason as the routing types above: the
 // discovery verdict is one shape decided in electron/engine-discovery.ts.
 import type { EngineDiscovery } from "../../electron/engine-discovery";
+import type { CapabilityReport } from "../../electron/model-capabilities";
 export type {
   RoutingConfig, RoutingIssue, RoutingResult, RoutingRow, RoutingState, RuneRole, RunStyle, EngineDiscovery,
+  CapabilityReport,
 };
 export type { RunRecord, RunEvent, EvalCase, EvalResult };
 
@@ -367,10 +369,17 @@ export interface MemexBridge {
     /** Candidates for a lane the wizard has discovered but not stored. `{ id }`
      * only, and the same `EngineModel` rows as `models` — a model is not treated as
      * universally qualified for per-role work here, so no capability field exists on
-     * it (that is D4's job, not this bridge's). Main resolves the id against the
-     * stored `engines` map and probes the address in the file, so this cannot be
-     * pointed at a renderer-supplied URL. */
+     * a row. D4 answers that separately, one call per `engineId`/`model` pair. */
     modelsFor: (lane: { id: string }) => Promise<EngineModel[]>;
+    /** D4 — what the engine reports about one model, for the feature the user is
+     * choosing it for. `{ id, model }` resolved against the stored `engines` map, and
+     * the address probed is the one the file holds; main issues the `POST /api/show`
+     * because a renderer fetch cannot leave the active profile's URLs.
+     *
+     * `source` is `"reported"` or `"unknown"`, never a guess: an engine that stayed
+     * silent must read as unverifiable in the UI, not as a pass. Answers are cached in
+     * main per `engineId:model`, so this is cheap enough to call once per visible row. */
+    capabilities: (lane: { id: string; model: string }) => Promise<CapabilityReport>;
   };
 
   /** D2 — the routing table `config.json` carries, plus what is wrong with it.

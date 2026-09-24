@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { SetupWizard } from "./SetupWizard";
 import { validateRouting } from "../../../electron/routing-config";
 import type {
-  EngineDiscovery, EngineModel, LocalLlmInspection, RoutingConfig, RoutingResult, RunStyle, RuntimeProfile,
+  CapabilityReport, EngineDiscovery, EngineModel, LocalLlmInspection, RoutingConfig, RoutingResult, RunStyle, RuntimeProfile,
 } from "../../lib/desktop";
 
 /**
@@ -64,6 +64,11 @@ function mount(options: {
    * named here answers empty — the unreachable case, which the rows report differently
    * from "running and has nothing". */
   catalogue?: Record<string, string[]>;
+  /** D4's answer for a candidate, keyed by the lane the row resolved to. Deliberately
+   * absent by default: no `capabilities` on the bridge is the older-preload case, and
+   * every existing test in this file runs that way — a row with no verdict is not a
+   * row that passed. */
+  capabilities?: (lane: { id: string; model: string }) => Promise<CapabilityReport>;
 } = {}) {
   const written: RoutingConfig[] = [];
   const activated: Array<Record<string, string>> = [];
@@ -104,6 +109,7 @@ function mount(options: {
           engineId: id, engineKind: "ollama", engineLabel: id, model,
         }));
       },
+      ...(options.capabilities ? { capabilities: options.capabilities } : {}),
     },
     localLlm: {
       inspect: async () => scanned,
@@ -524,5 +530,115 @@ describe("SetupWizard step 1 — assignments", () => {
     // did not go and re-read the store to find that out.
     await waitFor(async () => expect((await modelPick("devops")).value).toBe("qwen3:14b"));
     expect(storeReads()).toBe(reads);
+  });
+
+  // D4 — a role row must say what its model cannot do, in the row itself, and must
+  // still accept the assignment. The capability arrays are the ones measured from
+  // `POST /api/show` on this machine (electron/model-capabilities.ts, header).
+  const MEASURED: Record<string, string[]> = {
+    "qwen3:14b": ["completion", "tools", "thinking"],
+    "nomic-embed-text:latest": ["embedding"],
+    "minicpm-v:latest": ["completion", "vision"],
+  };
+  const MEASURED_CTX: Record<string, number> = {
+    "qwen3:14b": 40960, "nomic-embed-text:latest": 2048, "minicpm-v:latest": 32768,
+  };
+  const measured = async ({ model }: { id: string; model: string }): Promise<CapabilityReport> => ({
+    capabilities: MEASURED[model] ?? [],
+    source: MEASURED[model] ? "reported" : "unknown",
+    contextLength: MEASURED_CTX[model] ?? null,
+    detail: MEASURED[model] ? `/api/show reported: ${MEASURED[model].join(", ")}` : "fixture: /api/show did not answer",
+  });
+  const THREE_MODELS = ["qwen3:14b", "nomic-embed-text:latest", "minicpm-v:latest"];
+
+  it("names the missing capability on the embedding row, and says nothing on a row the model does satisfy", async () => {
+    mount({ scanned: TWO_LANES(), catalogue: { ollama: THREE_MODELS, "llama.cpp": [] }, capabilities: measured });
+    render(<SetupWizard onComplete={vi.fn()} />);
+    await assign("multi");   // routing.default = qwen3:14b, which every unfilled row falls back to
+
+    // qwen3:14b reports completion/tools/thinking — never `embedding`. EMBED_MODEL is
+    // what this row writes, so the row has to say so rather than look satisfied. One
+    // paragraph in the whole step, and it is that row's.
+    const paragraph = await waitFor(() => {
+      const nodes = document.querySelectorAll("p[data-capability='missing']");
+      expect(nodes.length).toBe(1);
+      return nodes[0] as HTMLElement;
+    });
+    expect(paragraph.textContent).toMatch(/needs embedding/);
+    expect(paragraph.textContent).toMatch(/reports completion, thinking, tools/);
+    // The Coder row stays quiet — this model does report tools. The only other mark in
+    // the step is the researcher row's, and it is an admission, not a verdict: how many
+    // perspectives answer at once is a property of the machine, not of a model.
+    expect(document.querySelectorAll("p[data-capability='missing']")).toHaveLength(1);
+    const unknowns = document.querySelectorAll("p[data-capability='unknown']");
+    expect(unknowns).toHaveLength(1);
+    expect(unknowns[0].textContent).toMatch(/Research \/ Perspectives/);
+    expect(unknowns[0].textContent).toMatch(/lanes/);
+    expect(unknowns[0].textContent).toMatch(/Not assumed either way/);
+
+    // The dropdown marks each candidate too, so the limit shows before the choice
+    // rather than after it. `option.value` stays the bare tag; only the label carries it.
+    const coder = await modelPick("Coder");
+    const labels = [...coder.options].map((option) => option.text);
+    expect(labels).toContain("minicpm-v:latest — needs tools");
+    expect(labels).toContain("nomic-embed-text:latest — needs tools");
+    // The hint is the row's own requirement, so the same model reads differently on a
+    // different row — the embedder lacks `tools` here and `completion` on `default`.
+    expect(labels.some((text) => text.startsWith("qwen3:14b —"))).toBe(false);
+    const embeddings = await modelPick("Embeddings");
+    expect([...embeddings.options].map((option) => option.text)).toContain("qwen3:14b — needs embedding");
+  });
+
+  it("states that an assigned vision model has no tools, and still writes the row", async () => {
+    const { written } = mount({
+      scanned: TWO_LANES(), catalogue: { ollama: THREE_MODELS, "llama.cpp": [] }, capabilities: measured,
+    });
+    render(<SetupWizard onComplete={vi.fn()} />);
+    const user = await assign("multi");
+
+    const coder = await modelPick("Coder");
+    await user.selectOptions(coder, "minicpm-v:latest");
+
+    // minicpm-v really is a completion model — and it really does not report tools, so
+    // it cannot drive the DevHarness round-trips this row is for.
+    const marked = await waitFor(() => {
+      const node = document.querySelector("p[data-capability='missing']");
+      expect(node).not.toBeNull();
+      return node as HTMLElement;
+    });
+    expect(marked.textContent).toMatch(/Code \/ DevHarness/);
+    expect(marked.textContent).toMatch(/needs tools; this model reports completion, vision/);
+    // Stated, not blocked: the assignment landed, and the control is not disabled.
+    await waitFor(() => expect(written.length).toBe(2));
+    expect(written[1].routing.code).toEqual({ engine: "ollama", model: "minicpm-v:latest" });
+    expect((await modelPick("Coder")).disabled).toBe(false);
+  });
+
+  it("says it cannot verify when the lane reports nothing about a model", async () => {
+    mount({
+      scanned: TWO_LANES(),
+      catalogue: { ollama: THREE_MODELS, "llama.cpp": [] },
+      capabilities: async () => ({ capabilities: [], source: "unknown", contextLength: null, detail: "/props reports no capability list" }),
+    });
+    render(<SetupWizard onComplete={vi.fn()} />);
+    await assign("multi");
+
+    const unknowns = await waitFor(() => {
+      const nodes = document.querySelectorAll("[data-capability='unknown']");
+      expect(nodes.length).toBeGreaterThan(0);
+      return nodes;
+    });
+    expect(unknowns[0].textContent).toMatch(/cannot verify/);
+    expect(unknowns[0].textContent).toMatch(/Not assumed either way/);
+    // An engine that stayed silent is never rendered as a model that fails a check.
+    expect(document.querySelectorAll("[data-capability='missing']").length).toBe(0);
+  });
+
+  it("carries no verdict at all on a preload older than the matrix — which is not a pass either", async () => {
+    mount({ scanned: TWO_LANES(), catalogue: { ollama: THREE_MODELS, "llama.cpp": [] } });
+    render(<SetupWizard onComplete={vi.fn()} />);
+    await assign("multi");
+    await modelPick("Coder");   // the step is up and its rows are filled
+    expect(document.querySelectorAll("[data-capability]").length).toBe(0);
   });
 });

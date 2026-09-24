@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "../../lib/api-fetch";
-import { desktop, type RuntimeProfile, type LoadedOllamaModel } from "../../lib/desktop";
+import { desktop, type CapabilityReport, type EngineModel, type RuntimeProfile, type LoadedOllamaModel } from "../../lib/desktop";
 import { getAgentRuntime } from "../../lib/runtime-urls";
 import { useStore } from "../../lib/store";
 import { getMyPermissions } from "../../lib/user-permissions";
 // Shared with the main process rather than mirrored: the picker must not hold its
 // own idea of how a slot resolves. See the header of electron/routing-config.ts.
 import { resolveRoute, DEFAULT_SLOT, type ResolvedRoute } from "../../../electron/routing-config";
+// Also shared, for the same reason: the matrix is decided in main's module, and a
+// renderer copy of it would be a second set of claims about what a model can do.
+import { capabilityCacheKey, evaluateFeature, FEATURE_REQUIREMENTS, isUnverifiable } from "../../../electron/model-capabilities";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -62,6 +65,10 @@ export function ModelPickerPopover() {
   // Why a pick did not reach config.json. Without this a refusal looks like success
   // and the choice quietly reverts on the next launch.
   const [writeNotice, setWriteNotice] = useState("");
+  /** D4 — what the engine reported, keyed `engineId:model`. A row with no entry was
+   * never probed, which is not the same as a row that passed: the mark is simply
+   * absent, and `cannot verify` is reserved for an entry whose source is `unknown`. */
+  const [capabilityReports, setCapabilityReports] = useState<Record<string, CapabilityReport>>({});
   /** The routing table's answer for the picker, plus the engine name it came from.
    * Stored together so the label can never describe a different table than the
    * model does. Null when there is no routing block to ask. */
@@ -160,6 +167,29 @@ export function ModelPickerPopover() {
     };
   }, []);
 
+  /** D4 — ask the engine about each row once, after the list exists. Main caches per
+   * `engineId:model`, so re-opening the picker costs nothing for rows already asked
+   * about; a row whose engine stayed silent is stored as `unknown` and marked. */
+  const probeCapabilities = useCallback(async (rows: EngineModel[]) => {
+    const capabilities = desktop()?.engines?.capabilities;
+    // No bridge method means a preload older than the matrix. Nothing is marked then,
+    // which is deliberately different from marking every row as passing.
+    if (!capabilities) return;
+    const answers = await Promise.all(rows.map(async (row) => {
+      try {
+        const report = await capabilities({ id: row.engineId, model: row.model });
+        return [capabilityCacheKey(row.engineId, row.model), report] as const;
+      } catch {
+        return null; // one row the main process could not ask about stays unmarked
+      }
+    }));
+    const merged: Record<string, CapabilityReport> = {};
+    for (const answer of answers) if (answer) merged[answer[0]] = answer[1];
+    if (Object.keys(merged).length) {
+      setCapabilityReports((current) => ({ ...current, ...merged }));
+    }
+  }, []);
+
   const load = useCallback(async () => {
     if (!canSelectModels) return;
 
@@ -187,11 +217,13 @@ export function ModelPickerPopover() {
             return []; // one unanswerable engine must not empty the list
           }
         }));
-        setModels(perEngine.flat().map((row) => ({
+        const rows = perEngine.flat();
+        setModels(rows.map((row) => ({
           id: row.model,
           engineId: row.engineId,
           engineLabel: row.engineLabel,
         })));
+        void probeCapabilities(rows);
       } catch (e) {
         setModels([{ id: `Engine Error: ${e instanceof Error ? e.message : String(e)}`, label: "Error" }]);
       }
@@ -230,7 +262,7 @@ export function ModelPickerPopover() {
     } catch (e) {
       setModels([{ id: `Fetch Error: ${e instanceof Error ? e.message : String(e)}`, label: "Error" }]);
     }
-  }, [canSelectModels]);
+  }, [canSelectModels, probeCapabilities]);
 
   const fetchLoadedModels = useCallback(async () => {
     const bridge = desktop();
@@ -571,6 +603,13 @@ export function ModelPickerPopover() {
           )}
 
           <div className="p-2 border-b border-border/40">
+            {/* Names what the marks below are marks *about*. A row reading "needs a
+                model that can complete instructions" without saying which feature was
+                checked is its own small version of the ambiguity this slice removes. */}
+            <p className="px-1 pb-1.5 text-[10px] text-muted">
+              Checked against {FEATURE_REQUIREMENTS.chat.label.toLowerCase()} — this picker writes
+              routing.{DEFAULT_SLOT}.
+            </p>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -591,6 +630,13 @@ export function ModelPickerPopover() {
             )}
             {filtered.map((m) => {
               const isLoaded = loadedModels.some((lm) => matchesModel(lm.name, m.id));
+              // The picker writes `routing.default` — the slot every feature falls back
+              // to — so the claim it can check a row against is `chat`'s. Rows with no
+              // report are left unmarked rather than shown as passing.
+              const report = capabilityReports[capabilityCacheKey(m.engineId ?? "", m.id)];
+              const verdict = report ? evaluateFeature("chat", report) : null;
+              const limitation = verdict && !verdict.ok ? verdict.reason : "";
+              const unverified = verdict && isUnverifiable(verdict) ? verdict.reason : "";
               return (
                 <button
                   key={`${m.engineId ?? ""}:${m.id}`}
@@ -617,6 +663,21 @@ export function ModelPickerPopover() {
                     <div className="text-[10px] text-muted truncate">
                       {m.description ?? m.id}
                     </div>
+                    {/* Stated, not filtered: the row stays listed and stays clickable.
+                        An embedding-only model has to remain discoverable, because for
+                        the embedding slot it is the correct answer — what changes is
+                        that the reason it cannot chat is now on screen before the
+                        request rather than inside the transcript after it. */}
+                    {limitation && (
+                      <div className="text-[10px] text-red-400" data-capability="missing">
+                        {limitation}
+                      </div>
+                    )}
+                    {unverified && (
+                      <div className="text-[10px] text-muted" data-capability="unknown">
+                        {unverified}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {m.available === false && <span className="text-[10px] text-muted">Setup required</span>}

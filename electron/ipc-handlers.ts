@@ -40,6 +40,7 @@ import type { WorktreeManager }        from "./worktree-manager";
 import type { GauntletHandoffStore }   from "./gauntlet-handoff-store";
 import { collectResidentModels, type OllamaPsModel } from "./ollama-residency";
 import { discoverEngineModels, engineDescriptors, enginesModelsFor } from "./engine-registry";
+import { enginesCapabilitiesFor, type CapabilityReport } from "./model-capabilities";
 import { validateRouting } from "./routing-config";
 import { fireHooks }                   from "./hooks-runner";
 import { runOpenScad, type RenderParams } from "./openscad-runner";
@@ -603,6 +604,20 @@ export function registerAllIpc(ctx: IpcContext): void {
   // rather than taking a descriptor (plan D3a).
   ipcMain.handle("engines:modelsFor", (_e, arg: unknown) =>
     enginesModelsFor(config.getRouting().engines, arg));
+
+  // D4 — "can this model do the thing I am choosing it for?" Answered here because
+  // `/api/show` is a POST to a path the active profile does not name, and renderer
+  // fetches are confined to those URLs by `prepareApiRequest` above. Same id-only
+  // boundary as `engines:modelsFor`: `enginesCapabilitiesFor` reads `id` and `model`
+  // out of the payload and probes the address the *file* holds for that lane.
+  //
+  // The cache is per-process and keyed `engineId:model`. Without it a picker open is a
+  // POST per visible row per render, and a llama.cpp lane answers `/props` for a
+  // model-specific question it cannot answer. Only `reported` answers are stored — see
+  // the note on `enginesCapabilitiesFor`.
+  const capabilityCache = new Map<string, CapabilityReport>();
+  ipcMain.handle("engines:capabilities", (_e, arg: unknown) =>
+    enginesCapabilitiesFor(config.getRouting().engines, arg, fetch, capabilityCache));
 
   // ── Routing table (D2) ────────────────────────────────────────────────────
   // The file is hand-editable this round; the wizard (D3) is what will own editing.

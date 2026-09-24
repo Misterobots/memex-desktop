@@ -24,12 +24,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { desktop } from "../../lib/desktop";
 import type {
-  EngineDiscovery, LocalLlmInspection, RoutingConfig, RoutingIssue, RunStyle, RuntimeProfile,
+  CapabilityReport, EngineDiscovery, LocalLlmInspection, RoutingConfig, RoutingIssue, RunStyle, RuntimeProfile,
 } from "../../lib/desktop";
 import {
   DEFAULT_ENGINE_IDS, DEFAULT_SLOT, ROUTING_ROWS, deriveRoutingFromSetup, pinnedTarget,
   proposeRunStyle, roleTarget, type EngineConfig, type RoutingRow, type RouteTarget,
 } from "../../../electron/routing-config";
+// D4's matrix, imported rather than restated: a role row that carried its own idea of
+// what a coder needs would be a second source of truth about a model, which is the
+// thing this slice exists to remove.
+import {
+  capabilityCacheKey, evaluateFeature, FEATURE_REQUIREMENTS, isUnverifiable, requirementForRoutingRow,
+  type Evaluation,
+} from "../../../electron/model-capabilities";
 
 // ---------------------------------------------------------------------------
 // Shared step layout
@@ -156,11 +163,12 @@ function dedupe(items: string[]): string[] {
  * returned rather than from a transient error.
  */
 function AssignRow({
-  row, table, catalogue, laneIds, busy, onAssign,
+  row, table, catalogue, capabilityReports, laneIds, busy, onAssign,
 }: {
   row: RoutingRow;
   table: RoutingConfig;
   catalogue: Record<string, string[]>;
+  capabilityReports: Record<string, CapabilityReport>;
   laneIds: string[];
   busy: boolean;
   onAssign: (rowKey: string, target: RouteTarget) => void;
@@ -169,6 +177,29 @@ function AssignRow({
   const reported = at.engine ? catalogue[at.engine] : undefined;
   const candidates = dedupe([...(reported ?? []), at.model ?? ""]);
   const unreported = !!at.model && !!reported?.length && !reported.includes(at.model);
+
+  // D4 — this row's own requirement, checked against what the lane reported about the
+  // model it names. `embedding` needs an embedder and `code` needs tools; the role rows
+  // need a completion model. Nothing here blocks a write: a stated limitation is the
+  // deliverable, exactly as `unreported` above states a catalogue miss without refusing
+  // it (D3a-2's rule).
+  const feature = requirementForRoutingRow(row.key);
+  const verdictFor = (model: string | null): Evaluation | null => {
+    if (!model || !at.engine) return null;
+    const report = capabilityReports[capabilityCacheKey(at.engine, model)];
+    return report ? evaluateFeature(feature, report) : null;
+  };
+  const assigned = verdictFor(at.model);
+  const incapable = assigned && !assigned.ok ? assigned.reason : "";
+  const unverifiable = assigned && isUnverifiable(assigned) ? assigned.reason : "";
+  /** Compact, and read out of the table — the row's own requirement, never a guess
+   * about the model. The full sentence appears under the select once it is chosen. */
+  const optionHint = (model: string): string => {
+    const verdict = verdictFor(model);
+    if (!verdict) return "";
+    if (!verdict.ok) return ` — needs ${FEATURE_REQUIREMENTS[feature].requires.join(" + ")}`;
+    return isUnverifiable(verdict) ? " — cannot verify" : "";
+  };
 
   return (
     <div className="rounded-lg bg-canvas/40 p-2 space-y-1">
@@ -194,7 +225,7 @@ function AssignRow({
             className="flex-1 px-1.5 py-1 rounded-lg bg-canvas border border-border/60 text-xs text-text font-mono"
           >
             {!at.model && <option value="">— choose a model —</option>}
-            {candidates.map((model) => <option key={model} value={model}>{model}</option>)}
+            {candidates.map((model) => <option key={model} value={model}>{model}{optionHint(model)}</option>)}
           </select>
           {/* Moves an existing assignment between lanes. A row with no model has
               nothing to carry, and writing `{ engine, model: "" }` would only be
@@ -224,6 +255,19 @@ function AssignRow({
         <p className="text-[11px] text-yellow">
           routing.{row.key} names {at.model}, which {at.engine} does not report — it was saved, and will fail
           until that model exists on the lane.
+        </p>
+      )}
+      {incapable && (
+        // Said, not blocked: the select stays enabled and the write stays possible,
+        // because the app's authority here is the sentence, not the gate.
+        <p className="text-[11px] text-red-400" data-capability="missing">
+          {at.model}: {incapable}. It can still be assigned here, and this desktop will
+          still send it — {FEATURE_REQUIREMENTS[feature].degrade}.
+        </p>
+      )}
+      {unverifiable && (
+        <p className="text-[11px] text-muted" data-capability="unknown">
+          {at.model}: {unverifiable}. Not assumed either way.
         </p>
       )}
       {reported?.length === 0 && (
@@ -277,6 +321,9 @@ export function SetupWizard({ onComplete }: Props) {
   // (`/api/tags`, or `/health` + `/props` + `/v1/models`). Absent until asked, because
   // an engine that is down answers empty and that is a fact worth showing per lane.
   const [catalogue, setCatalogue] = useState<Record<string, string[]>>({});
+  /** D4 — what each lane reported about each candidate, keyed `engineId:model`. Asked
+   * once per model for the whole session (main caches it), never per render. */
+  const [capabilityReports, setCapabilityReports] = useState<Record<string, CapabilityReport>>({});
   const [showAddresses, setShowAddresses] = useState(false);
   const [localUrls, setLocalUrls] = useState({
     harnessUrl: "http://[::1]:8008",
@@ -459,8 +506,26 @@ export function SetupWizard({ onComplete }: Props) {
     if (!ids.length) return;
     let live = true;
     for (const id of ids) {
-      void bridge.engines.modelsFor({ id }).then((models) => {
+      void bridge.engines.modelsFor({ id }).then(async (models) => {
         if (live) setCatalogue((current) => ({ ...current, [id]: models.map((model) => model.model) }));
+        // D4, asked once per candidate. `?.` because a preload older than the matrix
+        // has no such method — and a row then carries no verdict at all, which is not
+        // the same as a row that passed.
+        const capabilities = bridge.engines.capabilities;
+        if (!capabilities) return;
+        const answers = await Promise.all(models.map(async (model) => {
+          try {
+            return [capabilityCacheKey(id, model.model), await capabilities({ id, model: model.model })] as const;
+          } catch {
+            return null; // a lane that would not answer this model stays unmarked
+          }
+        }));
+        if (!live) return;
+        const merged: Record<string, CapabilityReport> = {};
+        for (const answer of answers) if (answer) merged[answer[0]] = answer[1];
+        if (Object.keys(merged).length) {
+          setCapabilityReports((current) => ({ ...current, ...merged }));
+        }
       });
     }
     return () => { live = false; };
@@ -710,6 +775,7 @@ export function SetupWizard({ onComplete }: Props) {
                 {ROUTING_ROWS.map((row) => (
                   <AssignRow
                     key={row.key} row={row} table={storedRouting} catalogue={catalogue}
+                    capabilityReports={capabilityReports}
                     laneIds={laneIds} busy={localBusy} onAssign={assignRow}
                   />
                 ))}

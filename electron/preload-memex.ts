@@ -255,6 +255,11 @@ contextBridge.exposeInMainWorld("memex", {
     // than passed through: the main process reads no other field, and this keeps the
     // bridge from being the one place that could hand it a URL to probe.
     modelsFor: (lane: { id: string }) => ipcRenderer.invoke("engines:modelsFor", { id: lane.id }),
+    // D4 capability check. Rebuilt as `{ id, model }` for the same reason as
+    // `modelsFor`: main reads nothing else, so the bridge cannot be the place that
+    // smuggles a URL into a probe.
+    capabilities: (lane: { id: string; model: string }) =>
+      ipcRenderer.invoke("engines:capabilities", { id: lane.id, model: lane.model }),
   },
 
   // Routing table (D2). Hand-written rather than auto-wired: the channel names are
