@@ -5,10 +5,12 @@ import {
   discoverLlamaCppModels,
   discoverOllamaModels,
   engineDescriptors,
+  enginesModelsFor,
+  resolveStoredEngine,
   type EngineDescriptor,
   type FetchLike,
 } from "../engine-registry";
-import type { EngineConfig } from "../routing-config";
+import { DEFAULT_ENGINE_IDS, type EngineConfig } from "../routing-config";
 
 const ollama: EngineDescriptor = { id: "ollama", kind: "ollama", baseUrl: "http://[::1]:11434", label: "Ollama" };
 const llama: EngineDescriptor = { id: "llama.cpp", kind: "llama.cpp", baseUrl: "http://127.0.0.1:8011", label: "llama.cpp" };
@@ -194,5 +196,109 @@ describe("both engines at once", () => {
     const { fetchFn } = fakeFetch({ "/api/tags": { body: { models: [shared] } } });
     expect((await discoverEngineModels(ollama, fetchFn)).map((m) => m.engineKind)).toEqual(["ollama"]);
     expect(await discoverEngineModels({ ...llama, kind: "trt-llm" as EngineDescriptor["kind"] }, fetchFn)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// engines:modelsFor — candidates for a lane named by id, never by address
+// ---------------------------------------------------------------------------
+
+/**
+ * The stored table is the only source of an address. `lanes` maps each origin main is
+ * allowed to reach to what it serves, and every URL asked for is recorded — so a test
+ * cannot pass by quietly dialling a host the file never named, even though a refused
+ * probe degrades to an empty list inside `probe`.
+ */
+function storedOnly(lanes: Record<string, unknown[]>): { fetchFn: FetchLike; calls: string[] } {
+  const calls: string[] = [];
+  const fetchFn: FetchLike = async (url: string) => {
+    calls.push(url);
+    const models = lanes[new URL(url).origin];
+    if (!models) throw new Error(`refusing to fetch an address no stored lane holds: ${url}`);
+    return new Response(JSON.stringify({ models }), { status: 200 });
+  };
+  return { fetchFn, calls };
+}
+
+const OLLAMA_URL = "http://[::1]:11434";
+const TAGS = [{ name: "qwen3:14b" }, { name: "nomic-embed-text:latest" }];
+
+describe("candidates for a lane named by id", () => {
+  const stored: Record<string, EngineConfig> = {
+    "ollama-local": { kind: "ollama", baseUrl: OLLAMA_URL, label: "Ollama" },
+  };
+
+  it("probes the stored address of an id the file holds", async () => {
+    const { fetchFn, calls } = storedOnly({ [OLLAMA_URL]: TAGS });
+    const models = await enginesModelsFor(stored, { id: "ollama-local" }, fetchFn);
+
+    expect(calls).toEqual([`${OLLAMA_URL}/api/tags`]);
+    expect(models.map((model) => model.model)).toEqual(["qwen3:14b", "nomic-embed-text:latest"]);
+    // The row carries the id the file used, not one invented here.
+    expect(models[0]).toMatchObject({ engineId: "ollama-local", engineKind: "ollama" });
+  });
+
+  it("cannot be pointed at a caller-supplied address", async () => {
+    const { fetchFn, calls } = storedOnly({ [OLLAMA_URL]: TAGS });
+    // A payload that reads like an EngineDescriptor. Every field after `id` must be
+    // ignored, because the renderer may not choose what the main process fetches.
+    const hostile = {
+      id: "ollama-local",
+      baseUrl: "http://attacker.example:9999",
+      url: "http://attacker.example:9999/api/tags",
+      kind: "llama.cpp",
+    };
+
+    const models = await enginesModelsFor(stored, hostile, fetchFn);
+
+    expect(calls).toEqual([`${OLLAMA_URL}/api/tags`]);            // the file's address, once
+    expect(calls.some((url) => url.includes("attacker"))).toBe(false);
+    expect(models).toHaveLength(2);
+  });
+
+  it("cannot be pointed at an address through the id either", async () => {
+    const { fetchFn, calls } = storedOnly({ [OLLAMA_URL]: TAGS });
+    // An id that is actually a URL matches nothing stored — and nothing is fetched.
+    expect(await enginesModelsFor(stored, { id: "http://attacker.example:9999" }, fetchFn)).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
+  it("resolves the id the wizard proposes to the file's one lane of that kind", async () => {
+    // Mid-wizard a lane is proposed as `ollama` while the file may call it anything,
+    // which is the silently-empty case plan D3a names. The fallback is by kind, and it
+    // still probes only what the file holds.
+    const { fetchFn, calls } = storedOnly({ [OLLAMA_URL]: TAGS });
+    const models = await enginesModelsFor(stored, { id: DEFAULT_ENGINE_IDS.ollama }, fetchFn);
+
+    expect(calls).toEqual([`${OLLAMA_URL}/api/tags`]);
+    expect(models).toHaveLength(2);
+  });
+
+  it("refuses to guess which of two lanes was meant, and fetches nothing while it refuses", async () => {
+    const { fetchFn, calls } = storedOnly({ [OLLAMA_URL]: TAGS });
+    const two: Record<string, EngineConfig> = {
+      ...stored,
+      "ollama-second": { kind: "ollama", baseUrl: "http://127.0.0.1:11500" },
+    };
+
+    expect(await enginesModelsFor(two, { id: DEFAULT_ENGINE_IDS.ollama }, fetchFn)).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+
+  it("reads no lane out of a payload that is not an object holding an id", async () => {
+    for (const arg of [undefined, null, "ollama-local", 7, [], { id: "" }, { name: "ollama-local" }]) {
+      const { fetchFn, calls } = storedOnly({ [OLLAMA_URL]: TAGS });
+      expect(await enginesModelsFor(stored, arg, fetchFn)).toEqual([]);
+      expect(calls).toEqual([]);
+    }
+  });
+
+  it("skips a stored lane whose address is blank, rather than probing the empty string", async () => {
+    const { fetchFn, calls } = storedOnly({ [OLLAMA_URL]: TAGS });
+    const halfEdited: Record<string, EngineConfig> = { ollama: { kind: "ollama", baseUrl: "   " } };
+
+    expect(await enginesModelsFor(halfEdited, { id: "ollama" }, fetchFn)).toEqual([]);
+    expect(calls).toEqual([]);
+    expect(resolveStoredEngine(halfEdited, { id: "ollama" })).toBeNull();
   });
 });

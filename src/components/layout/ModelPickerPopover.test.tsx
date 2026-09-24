@@ -43,7 +43,10 @@ const LOCAL_PROFILE: RuntimeProfile = {
 /** Swaps the bridge to a local-engine install; the runtime stays unreachable. */
 function useLocalEngines(models: (engineId: string) => Promise<EngineModel[]>, descriptors = [OLLAMA]) {
   window.memex!.config.getActive = vi.fn().mockResolvedValue(LOCAL_PROFILE);
-  window.memex!.engines = { list: async () => descriptors, models };
+  // `modelsFor` takes `{ id }` and main resolves it to a stored lane before probing,
+  // so a fixture that ignores the lookup would hide a missing lane; delegating keeps
+  // the two channels answering the same question.
+  window.memex!.engines = { list: async () => descriptors, models, modelsFor: async ({ id }) => models(id) };
 }
 
 /** The D2 table this install routes by, as the main process would hand it over. */
@@ -204,9 +207,11 @@ describe("ModelPickerPopover", () => {
   it("keeps an external provider's own model list, which no local engine can answer", async () => {
     // The shared bridge is already providerType "external"; what must NOT happen
     // is the picker inventing local Ollama rows for a third-party API profile.
+    const rows = [engineRow(OLLAMA, "qwen3:14b")];
     window.memex!.engines = {
       list: async () => [OLLAMA],
-      models: async () => [engineRow(OLLAMA, "qwen3:14b")],
+      models: async () => rows,
+      modelsFor: async () => rows,
     };
 
     const user = userEvent.setup();

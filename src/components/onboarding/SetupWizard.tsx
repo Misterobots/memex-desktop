@@ -6,15 +6,20 @@
  *  0. Local engines — what this machine has (with evidence), the run style it
  *     proposes, the routing table that follows from the confirmed answer, and an
  *     Advanced disclosure of the service addresses for whoever detection cannot see.
- *  1. Connection test — probe the harness, memory, Ollama through the main process
- *  2. Workspace root — browse or skip
- *  3. Permission mode — choose Ask / Workspace / Trusted
- *  4. Identity — set uid displayed in X-authentik-uid header
+ *  1. Assignments — which model each Team Builder role gets (D3a-2). `multi` only:
+ *     `single` has one pin and says so, and an unmeasured box says why it is empty.
+ *  2. Connection test — probe the harness, memory, Ollama through the main process
+ *  3. Workspace root — browse or skip
+ *  4. Permission mode — choose Ask / Workspace / Trusted
+ *  5. Identity — set uid displayed in X-authentik-uid header
  *
  * Step 0 is the D3 harness gap: it used to ask the user to type five URLs and to
  * inherit this repository's own development addresses. Now the addresses fall out of
  * what was discovered plus what was confirmed, and the only thing *required* of the
  * user is the decision the app cannot make for them — how this box runs.
+ *
+ * Steps 0 and 1 together are owner decision 5: the wizard's product is a topology
+ * *plus* an assignment set, not a model dropdown.
  */
 import { useCallback, useEffect, useState } from "react";
 import { desktop } from "../../lib/desktop";
@@ -22,7 +27,8 @@ import type {
   EngineDiscovery, LocalLlmInspection, RoutingConfig, RoutingIssue, RunStyle, RuntimeProfile,
 } from "../../lib/desktop";
 import {
-  DEFAULT_ENGINE_IDS, deriveRoutingFromSetup, proposeRunStyle, type EngineConfig,
+  DEFAULT_ENGINE_IDS, DEFAULT_SLOT, ROUTING_ROWS, deriveRoutingFromSetup, pinnedTarget,
+  proposeRunStyle, roleTarget, type EngineConfig, type RoutingRow, type RouteTarget,
 } from "../../../electron/routing-config";
 
 // ---------------------------------------------------------------------------
@@ -113,13 +119,128 @@ function EngineLine({ engine }: { engine: EngineDiscovery }) {
   );
 }
 
+/**
+ * The routing problems this write refused, addressed by their path in the file.
+ * Shown wherever a write was attempted — the refusal is the step's failure, not a
+ * note under a reported success.
+ */
+function IssuePanel({ issues }: { issues: RoutingIssue[] }) {
+  if (!issues.length) return null;
+  return (
+    <div className="space-y-0.5 rounded-lg border border-red/40 bg-red/5 p-2" role="alert">
+      {issues.map((issue) => (
+        <p key={issue.path} className="text-[11px] text-red-400">{issue.path}: {issue.message}</p>
+      ))}
+    </div>
+  );
+}
+
+/** A picker's options: what the lane reports, plus whatever the slot already names,
+ * so a hand-written value is shown and re-selectable rather than dropped from the
+ * list — and never silently rewritten into a model that was reported. */
+function dedupe(items: string[]): string[] {
+  return [...new Set(items.filter(Boolean))];
+}
+
+/**
+ * One row of the assignment step (D3a-2).
+ *
+ * It states which slot *answered*, not only what it answered: a row labelled
+ * "researcher" showing `routing.default`'s model is a substitution, and `resolveRoute`
+ * keeps the origin precisely so this line can name it instead of presenting the
+ * fallback as a choice somebody made for this role.
+ *
+ * A model the lane does not report is warned about and still saved — the file is the
+ * source of truth and an unlisted tag is frequently one the user is about to pull. The
+ * reason stays visible after the write, because it is derived from the table the write
+ * returned rather than from a transient error.
+ */
+function AssignRow({
+  row, table, catalogue, laneIds, busy, onAssign,
+}: {
+  row: RoutingRow;
+  table: RoutingConfig;
+  catalogue: Record<string, string[]>;
+  laneIds: string[];
+  busy: boolean;
+  onAssign: (rowKey: string, target: RouteTarget) => void;
+}) {
+  const at = roleTarget(table, row.key);
+  const reported = at.engine ? catalogue[at.engine] : undefined;
+  const candidates = dedupe([...(reported ?? []), at.model ?? ""]);
+  const unreported = !!at.model && !!reported?.length && !reported.includes(at.model);
+
+  return (
+    <div className="rounded-lg bg-canvas/40 p-2 space-y-1">
+      <div className="flex items-baseline gap-2">
+        <span className="text-sm font-medium text-text">{row.label}</span>
+        {row.env && <span className="text-[10px] font-mono text-faint">{row.env}</span>}
+        {!row.perRoleBindable && (
+          <span className="ml-auto text-[10px] text-muted">not a role binding</span>
+        )}
+      </div>
+
+      {laneIds.length === 0 ? (
+        // No lane to name: the row cannot be filled, so it shows no input rather than
+        // an empty select that looks like a machine with nothing on it.
+        <p className="text-[11px] text-muted">No engine in config.json yet — confirm step 1 to add one.</p>
+      ) : (
+        <div className="flex gap-1.5">
+          <select
+            aria-label={`${row.label} model`}
+            value={at.model ?? ""}
+            disabled={busy || candidates.length === 0}
+            onChange={(e) => onAssign(row.key, { engine: at.engine ?? laneIds[0]!, model: e.target.value })}
+            className="flex-1 px-1.5 py-1 rounded-lg bg-canvas border border-border/60 text-xs text-text font-mono"
+          >
+            {!at.model && <option value="">— choose a model —</option>}
+            {candidates.map((model) => <option key={model} value={model}>{model}</option>)}
+          </select>
+          {/* Moves an existing assignment between lanes. A row with no model has
+              nothing to carry, and writing `{ engine, model: "" }` would only be
+              refused by validateRouting — so the control says why it is off instead
+              of offering a write that cannot land. */}
+          <select
+            aria-label={`${row.label} engine`}
+            value={at.engine ?? laneIds[0]!}
+            disabled={busy || !at.model}
+            onChange={(e) => onAssign(row.key, { engine: e.target.value, model: at.model ?? "" })}
+            className="w-2/5 px-1.5 py-1 rounded-lg bg-canvas border border-border/60 text-xs text-text font-mono"
+          >
+            {laneIds.map((id) => <option key={id} value={id}>{table.engines[id]?.label ?? id}</option>)}
+          </select>
+        </div>
+      )}
+
+      <p className="text-[11px] text-muted">
+        {at.model === null
+          ? "Nothing assigned and no fallback — this role is unassigned."
+          : at.usedFallback
+            ? // The honest version of a fallback: say which slot is answering, in file terms.
+              `Falling back to routing.${at.via} — nothing sets ${row.key} yet.`
+            : `Set in routing.${at.via}.`}
+      </p>
+      {unreported && (
+        <p className="text-[11px] text-yellow">
+          routing.{row.key} names {at.model}, which {at.engine} does not report — it was saved, and will fail
+          until that model exists on the lane.
+        </p>
+      )}
+      {reported?.length === 0 && (
+        <p className="text-[11px] text-muted">{at.engine} reported no models; nothing here can be confirmed against it.</p>
+      )}
+      {row.note && <p className="text-[11px] text-faint">{row.note}</p>}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // SetupWizard
 // ---------------------------------------------------------------------------
 interface Props { onComplete: () => void }
 
-type WizardStep = 0 | 1 | 2 | 3 | 4;
-const TOTAL = 5;
+type WizardStep = 0 | 1 | 2 | 3 | 4 | 5;
+const TOTAL = 6;
 
 /** What each answer costs and buys, in the user's terms. "single" is not a lesser
  * mode — it is the shape of a box with one model in it — so the copy says which box. */
@@ -152,6 +273,10 @@ export function SetupWizard({ onComplete }: Props) {
   const [runStyle, setRunStyle] = useState<RunStyle | null>(null);
   const [storedRouting, setStoredRouting] = useState<RoutingConfig | null>(null);
   const [routingIssues, setRoutingIssues] = useState<RoutingIssue[]>([]);
+  // Step 1's candidate lists, keyed by engine id: what each lane actually reports
+  // (`/api/tags`, or `/health` + `/props` + `/v1/models`). Absent until asked, because
+  // an engine that is down answers empty and that is a fact worth showing per lane.
+  const [catalogue, setCatalogue] = useState<Record<string, string[]>>({});
   const [showAddresses, setShowAddresses] = useState(false);
   const [localUrls, setLocalUrls] = useState({
     harnessUrl: "http://[::1]:8008",
@@ -285,6 +410,62 @@ export function SetupWizard({ onComplete }: Props) {
     } finally { setLocalBusy(false); }
   };
 
+  /** One write of the whole table. Every assignment goes through `routing:set`, so a
+   * refusal still comes back as `validateRouting`'s issue paths and changes nothing;
+   * and the view this step renders is the table the write returned, never a re-read of
+   * the store — `saveRouting` broadcasts no `config:changed`, so a re-read would show
+   * the table from before the write. */
+  const writeTable = async (next: RoutingConfig) => {
+    if (!bridge) return;
+    setLocalBusy(true);
+    try {
+      const result = await bridge.routing.set(next);
+      if (!result.ok) { setRoutingIssues(result.issues); return; }
+      setRoutingIssues([]);
+      setStoredRouting(result.routing);
+    } finally { setLocalBusy(false); }
+  };
+
+  /** One row's assignment. Only that key is replaced, so hand-written slots outside
+   * the presented rows — `collective.critic` above all, which has no row — survive a
+   * role write untouched. */
+  const assignRow = (rowKey: string, target: RouteTarget) => {
+    if (!storedRouting) return;
+    void writeTable({ ...storedRouting, routing: { ...storedRouting.routing, [rowKey]: target } });
+  };
+
+  /** `single` has one answer, so its control is the pin: it moves `routing.default`
+   * and the engine's `pinnedModel` together, which is what `flattenForRunStyle`
+   * resolves every slot onto. Writing one without the other would have the flatten
+   * undo this choice under a different name. */
+  const assignPin = (engineId: string, model: string) => {
+    if (!storedRouting) return;
+    const engine = storedRouting.engines[engineId];
+    if (!engine) return;
+    void writeTable({
+      ...storedRouting,
+      engines: { ...storedRouting.engines, [engineId]: { ...engine, pinnedModel: model } },
+      routing: { ...storedRouting.routing, [DEFAULT_SLOT]: { engine: engineId, model } },
+    });
+  };
+
+  // Candidates for the lanes this table names. `modelsFor` rather than `models`: a
+  // lane this wizard discovered may still be stored under another id (or not at all),
+  // and `engines:models` resolves strictly against the stored key and would answer
+  // empty mid-setup — see plan D3a.
+  useEffect(() => {
+    if (!bridge || step !== 1 || !storedRouting) return;
+    const ids = Object.keys(storedRouting.engines);
+    if (!ids.length) return;
+    let live = true;
+    for (const id of ids) {
+      void bridge.engines.modelsFor({ id }).then((models) => {
+        if (live) setCatalogue((current) => ({ ...current, [id]: models.map((model) => model.model) }));
+      });
+    }
+    return () => { live = false; };
+  }, [bridge, step, storedRouting]);
+
   const handleFinish = useCallback(async () => {
     if (!bridge) { onComplete(); return; }
     if (root.trim()) await bridge.workspace.addRoot(root.trim());
@@ -299,6 +480,18 @@ export function SetupWizard({ onComplete }: Props) {
     ...(localInspection?.recommendations.map((item) => item.model) ?? []),
     localModel,
   ])].filter(Boolean);
+
+  // The lanes a row's engine select can name, in the file's order, and the pin a
+  // `single` box actually serves. Both read `storedRouting` — the in-session view the
+  // last write returned — not a fresh `routing:get`.
+  const laneIds = Object.keys(storedRouting?.engines ?? {});
+  const pinned = storedRouting ? pinnedTarget(storedRouting) : null;
+  // Where an unassigned role's answer actually comes from: that process's own
+  // environment, which this desktop can describe but not override.
+  const hostWords = (() => {
+    try { return new URL(profiles.find((profile) => profile.id === activeId)?.agentRuntime ?? "").host || "the runtime host"; }
+    catch { return "the runtime host"; }
+  })();
 
   return (
     <div className="fixed inset-0 z-50 bg-canvas flex items-center justify-center p-6">
@@ -430,13 +623,7 @@ export function SetupWizard({ onComplete }: Props) {
                     <p className="text-[11px] text-muted">Ollama supplies models. The local Memex harness provides chat, tools, memory, and workspace workflows. If it is not running, continue and test it on the next step.</p>
                   </div>
                 </>}
-                {routingIssues.length > 0 && (
-                  <div className="space-y-0.5 rounded-lg border border-red/40 bg-red/5 p-2">
-                    {routingIssues.map((issue) => (
-                      <p key={issue.path} className="text-[11px] text-red-400">{issue.path}: {issue.message}</p>
-                    ))}
-                  </div>
-                )}
+                <IssuePanel issues={routingIssues} />
                 {localError && <p className="text-xs text-red-400">{localError}</p>}
               </div>
             )}
@@ -448,9 +635,110 @@ export function SetupWizard({ onComplete }: Props) {
           </Step>
         )}
 
-        {/* Step 1: Connection test */}
+        {/* Step 1: the assignment set — decision 5's other half. Step 0 decided the
+            topology; this is which model each role gets. */}
         {step === 1 && (
-          <Step index={1} total={TOTAL} title="Test connection" onNext={next} onBack={back}>
+          <Step index={1} total={TOTAL} title="Assign models to roles" onNext={next} onBack={back}>
+            {runStyle === null && (
+              <div className="space-y-2">
+                <p className="text-sm text-muted">Choose a run style first.</p>
+                <p className="text-[11px] text-muted">
+                  Go back to step 1 and answer how this box runs. Nothing is listed here until then — a lane
+                  list built from a table that has no lanes reads as &ldquo;this machine has no models&rdquo;,
+                  which is a different claim than &ldquo;nothing has been chosen yet&rdquo;.
+                </p>
+              </div>
+            )}
+
+            {runStyle === "single" && (
+              <div className="space-y-2">
+                <p className="text-sm text-muted">One pinned model, served everywhere.</p>
+                {storedRouting && pinned ? (
+                  <div className="rounded-lg bg-canvas/40 p-2 space-y-1">
+                    <div className="text-sm font-medium text-text">Pinned model</div>
+                    <select
+                      aria-label="Pinned model"
+                      value={pinned.target.model}
+                      disabled={localBusy || !(catalogue[pinned.engineId] ?? []).length}
+                      onChange={(e) => assignPin(pinned.engineId, e.target.value)}
+                      className="w-full px-1.5 py-1 rounded-lg bg-canvas border border-border/60 text-xs text-text font-mono"
+                    >
+                      {dedupe([...(catalogue[pinned.engineId] ?? []), pinned.target.model]).map((model) => (
+                        <option key={model} value={model}>{model}</option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-muted">
+                      Engine {pinned.engineId}. Every slot in config.json resolves onto this pin.
+                    </p>
+                    {!(catalogue[pinned.engineId] ?? []).length && (
+                      <p className="text-[11px] text-muted">
+                        {pinned.engineId} reported no models, so there is nothing to choose from — confirm step 1
+                        with the engine running to load its list.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-muted">
+                    This table names no pin, so there is nothing to change here. Go back to step 1 and confirm a
+                    model.
+                  </p>
+                )}
+                <p className="text-[11px] text-muted">
+                  Per-feature assignment is unavailable in this run style: <span className="font-mono">runStyle
+                  &quot;single&quot;</span> resolves every slot onto the pin, so a row per role would be an input
+                  that changes nothing.
+                </p>
+                <p className="text-[11px] text-muted">
+                  Unassigned roles stay on <span className="font-mono">{hostWords}</span>&apos;s own environment
+                  defaults — this desktop cannot override them.
+                </p>
+              </div>
+            )}
+
+            {runStyle === "multi" && storedRouting && (
+              <div className="space-y-2">
+                <p className="text-sm text-muted">
+                  Which model each role runs. The name beside a row is the variable that decides it on the
+                  runtime host today, in that runtime&apos;s spelling.
+                </p>
+                {!laneIds.length && (
+                  <p className="text-[11px] text-yellow">
+                    config.json holds no engines, so nothing here can be assigned. Go back to step 1 and confirm
+                    the setup, which writes the lanes it discovered.
+                  </p>
+                )}
+                {ROUTING_ROWS.map((row) => (
+                  <AssignRow
+                    key={row.key} row={row} table={storedRouting} catalogue={catalogue}
+                    laneIds={laneIds} busy={localBusy} onAssign={assignRow}
+                  />
+                ))}
+                <p className="text-[11px] text-muted">
+                  Unassigned roles stay on <span className="font-mono">{hostWords}</span>&apos;s own environment
+                  defaults — this desktop cannot override them.
+                </p>
+                <p className="text-[11px] text-yellow">
+                  Not on the wire yet: the runtime does not accept a client-supplied role map, so these rows write
+                  config.json and are read by this desktop, while each role keeps reading its own host environment
+                  until that change lands (plan D1c).
+                </p>
+              </div>
+            )}
+
+            {runStyle === "multi" && !storedRouting && (
+              <p className="text-[11px] text-muted">
+                config.json has no routing table to assign against yet. Go back to step 1 and confirm the setup,
+                which writes one.
+              </p>
+            )}
+
+            <IssuePanel issues={routingIssues} />
+          </Step>
+        )}
+
+        {/* Step 2: Connection test */}
+        {step === 2 && (
+          <Step index={2} total={TOTAL} title="Test connection" onNext={next} onBack={back}>
             <p className="text-sm text-muted">
               Verify the desktop app can reach your Memex backend. <span className="text-text/80">agent_runtime</span> is
               required; MemPalace (long-term memory) and Ollama are optional and can be set up later.
@@ -476,9 +764,9 @@ export function SetupWizard({ onComplete }: Props) {
           </Step>
         )}
 
-        {/* Step 2: Workspace root */}
-        {step === 2 && (
-          <Step index={2} total={TOTAL} title="Set workspace root" onNext={next} onBack={back}
+        {/* Step 3: Workspace root */}
+        {step === 3 && (
+          <Step index={3} total={TOTAL} title="Set workspace root" onNext={next} onBack={back}
             nextLabel={root ? "Continue" : "Skip"}>
             <p className="text-sm text-muted">
               The workspace root is the folder the agent can access without extra prompts. Leave empty to configure later.
@@ -501,9 +789,9 @@ export function SetupWizard({ onComplete }: Props) {
           </Step>
         )}
 
-        {/* Step 3: Permission mode */}
-        {step === 3 && (
-          <Step index={3} total={TOTAL} title="Permission mode" onNext={next} onBack={back}>
+        {/* Step 4: Permission mode */}
+        {step === 4 && (
+          <Step index={4} total={TOTAL} title="Permission mode" onNext={next} onBack={back}>
             <p className="text-sm text-muted">
               Controls whether the agent can access files and run commands without prompting.
             </p>
@@ -524,9 +812,9 @@ export function SetupWizard({ onComplete }: Props) {
           </Step>
         )}
 
-        {/* Step 4: Identity */}
-        {step === 4 && (
-          <Step index={4} total={TOTAL} title="Your identity" onNext={handleFinish}
+        {/* Step 5: Identity */}
+        {step === 5 && (
+          <Step index={5} total={TOTAL} title="Your identity" onNext={handleFinish}
             onBack={back} nextLabel="Finish setup">
             <p className="text-sm text-muted">
               This UID is sent as <code className="font-mono">X-authentik-uid</code> on every request,

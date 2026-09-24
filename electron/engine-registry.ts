@@ -23,6 +23,11 @@
  * fetch, so the whole module is testable without a main process.
  */
 import type { EngineConfig } from "./routing-config";
+// A value import, and the only one either module makes of the other
+// (routing-config's `EngineKind` import is type-only and erased), so this adds no
+// runtime cycle. `DEFAULT_ENGINE_IDS` is here because the id fallback below has to
+// agree with the ids the wizard proposes — two spellings of them would drift.
+import { DEFAULT_ENGINE_IDS } from "./routing-config";
 
 export type EngineKind = "ollama" | "llama.cpp";
 
@@ -96,6 +101,68 @@ export async function discoverAllEngineModels(
 ): Promise<EngineModel[]> {
   const lists = await Promise.all(engines.map((engine) => discoverEngineModels(engine, fetchFn).catch(() => [])));
   return lists.flat();
+}
+
+/**
+ * `engines:modelsFor` — the candidate list for a lane the wizard has discovered but
+ * not yet written to `config.json`, resolved **by id and nothing else**.
+ *
+ * `engines:list` and `engines:models` both read the stored table, so mid-wizard a
+ * freshly discovered lane has no id in the file and its list comes back silently
+ * empty (plan D3a names this). The fix is a lookup, not an address: `arg` arrives as
+ * `unknown` because that is what a renderer payload is, and the only field ever read
+ * from it is `id`. The descriptor that gets probed is assembled from the **stored**
+ * `engines` entry, so a payload carrying `baseUrl: "http://attacker.example:9999"`
+ * cannot make the main process fetch that URL — it is discarded without being read.
+ * That is the boundary `prepareApiRequest` enforces in ipc-handlers.ts, and the
+ * reason discovery lives in the main process at all.
+ *
+ * An id that resolves to no stored lane answers `[]` without fetching anything.
+ */
+export async function enginesModelsFor(
+  stored: Record<string, EngineConfig> | null | undefined,
+  arg: unknown,
+  fetchFn: FetchLike = fetch,
+): Promise<EngineModel[]> {
+  const engine = resolveStoredEngine(stored, arg);
+  return engine ? discoverEngineModels(engine, fetchFn) : [];
+}
+
+/** The wizard proposes a lane by the id this build derives for its kind
+ * (`DEFAULT_ENGINE_IDS`), so those two ids can also mean "the file's one lane of that
+ * kind" — see `soleEngineIdOfKind` in routing-config.ts, which does the same job when
+ * writing a table. Anything else is a name this file does not have. */
+const KIND_BY_ENGINE_ID: Record<string, EngineKind> = {
+  [DEFAULT_ENGINE_IDS.ollama]: "ollama",
+  [DEFAULT_ENGINE_IDS["llama.cpp"]]: "llama.cpp",
+};
+
+/** The stored lane a request names, or null when it names nothing stored. */
+export function resolveStoredEngine(
+  stored: Record<string, EngineConfig> | null | undefined,
+  arg: unknown,
+): EngineDescriptor | null {
+  const id = arg && typeof arg === "object" && !Array.isArray(arg)
+    ? text((arg as Record<string, unknown>).id)
+    : "";
+  if (!id) return null;
+
+  const direct = stored?.[id];
+  if (direct) return descriptor(id, direct);
+
+  const kind = KIND_BY_ENGINE_ID[id];
+  if (!kind) return null;
+  const matches = Object.entries(stored ?? {}).filter(([, entry]) => entry?.kind === kind && !!text(entry.baseUrl));
+  // Two lanes of a kind is the file knowing something this lookup does not, so the
+  // answer is nothing rather than a guess about which one the renderer meant.
+  return matches.length === 1 ? descriptor(matches[0][0], matches[0][1]!) : null;
+}
+
+/** Built entirely from the stored entry — no field of the request reaches the URL. */
+function descriptor(id: string, entry: EngineConfig): EngineDescriptor | null {
+  const baseUrl = text(entry.baseUrl).replace(/\/+$/, "");
+  if (!baseUrl) return null; // a half-edited line is `validateRouting`'s business, not a reason to probe ""
+  return { id, kind: entry.kind, baseUrl, label: entry.label ?? id };
 }
 
 /** Ollama `GET /api/tags` → `{ models: [{ name, size?, digest?, details?… }] }`. */

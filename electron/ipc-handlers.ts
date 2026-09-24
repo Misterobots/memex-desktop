@@ -39,7 +39,7 @@ import type { PermissionStore }        from "./permission-store";
 import type { WorktreeManager }        from "./worktree-manager";
 import type { GauntletHandoffStore }   from "./gauntlet-handoff-store";
 import { collectResidentModels, type OllamaPsModel } from "./ollama-residency";
-import { discoverEngineModels, engineDescriptors } from "./engine-registry";
+import { discoverEngineModels, engineDescriptors, enginesModelsFor } from "./engine-registry";
 import { validateRouting } from "./routing-config";
 import { fireHooks }                   from "./hooks-runner";
 import { runOpenScad, type RenderParams } from "./openscad-runner";
@@ -593,6 +593,16 @@ export function registerAllIpc(ctx: IpcContext): void {
     if (!engine) return [];
     return discoverEngineModels(engine);
   });
+
+  // Candidates for a lane the wizard has discovered but not stored yet, so
+  // `engines:models` — which resolves against the stored table — would answer empty
+  // mid-setup. Id-only by construction: `enginesModelsFor` reads `id` out of the
+  // payload and nothing else, and probes the address the *file* holds for that lane,
+  // so no renderer-supplied `baseUrl` can be fetched from here. That is the same
+  // boundary `prepareApiRequest` enforces above, and the reason this stays a lookup
+  // rather than taking a descriptor (plan D3a).
+  ipcMain.handle("engines:modelsFor", (_e, arg: unknown) =>
+    enginesModelsFor(config.getRouting().engines, arg));
 
   // ── Routing table (D2) ────────────────────────────────────────────────────
   // The file is hand-editable this round; the wizard (D3) is what will own editing.

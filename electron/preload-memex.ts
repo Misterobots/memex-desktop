@@ -251,6 +251,10 @@ contextBridge.exposeInMainWorld("memex", {
   engines: {
     list:   () => ipcRenderer.invoke("engines:list"),
     models: (engineId: string) => ipcRenderer.invoke("engines:models", engineId),
+    // Candidates for a lane discovered mid-wizard. Rebuilt as `{ id }` here rather
+    // than passed through: the main process reads no other field, and this keeps the
+    // bridge from being the one place that could hand it a URL to probe.
+    modelsFor: (lane: { id: string }) => ipcRenderer.invoke("engines:modelsFor", { id: lane.id }),
   },
 
   // Routing table (D2). Hand-written rather than auto-wired: the channel names are

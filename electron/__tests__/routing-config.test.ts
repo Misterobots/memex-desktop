@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_OLLAMA_BASE_URL,
   DEFAULT_SLOT,
+  ROUTING_ROWS,
+  RUNE_ROLES,
+  RUNE_ROLE_ENV,
+  UNPRESENTED_ROWS,
   deriveRoutingFromProfile,
   deriveRoutingFromSetup,
   flattenForRunStyle,
@@ -10,8 +14,11 @@ import {
   proposeRunStyle,
   readRoutingBlock,
   resolveRoute,
+  roleTarget,
   validateRouting,
   type RoutingConfig,
+  type RoutingRow,
+  type RuneRole,
   type EngineConfig,
 } from "../routing-config";
 
@@ -526,5 +533,135 @@ describe("writing the table guided setup confirmed", () => {
     expect(table.routing[DEFAULT_SLOT]).toEqual({ engine: "ollama", model: "kept:7b" });
     expect(table.engines.ollama.pinnedModel).toBe("kept:7b");
     expect(table.runStyle).toBe("single");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The runtime's roles, and the rows that assign them (owner decision 4)
+// ---------------------------------------------------------------------------
+
+/** A row the editor is expected to render. Missing is a failure, not a `find` that
+ * quietly returns undefined for the assertion below it. */
+function presented(key: string): RoutingRow {
+  const row = ROUTING_ROWS.find((candidate) => candidate.key === key);
+  if (!row) throw new Error(`no presented row for ${key}`);
+  return row;
+}
+
+describe("the role vocabulary the editor is built on", () => {
+  it("carries the runtime's seven roles, in the runtime's own order", () => {
+    expect(RUNE_ROLES).toEqual([
+      "coordinator", "architect", "coder", "devops", "researcher", "analyst", "verifier",
+    ]);
+  });
+
+  it("names each role's variable as the runtime spells it today", () => {
+    expect(RUNE_ROLE_ENV).toEqual({
+      coordinator: "SWARM_COORDINATOR_MODEL",
+      architect: "SWARM_ARCHITECT_MODEL",
+      coder: "CODER_MODEL",
+      devops: "DEVOPS_MODEL",
+      researcher: "RESEARCHER_MODEL",
+      analyst: "ANALYST_MODEL",
+      verifier: "VERIFIER_MODEL",
+    });
+  });
+
+  it("does not adopt the proposed rename, and does not borrow the other architect variable", () => {
+    const envs = Object.values(RUNE_ROLE_ENV);
+    // SWARM_CODER_MODEL / SWARM_DEVOPS_MODEL are a proposal that has not landed in
+    // Memex_Core; showing them would name variables nothing reads.
+    expect(envs).not.toContain("SWARM_CODER_MODEL");
+    expect(envs).not.toContain("SWARM_DEVOPS_MODEL");
+    // The unsuffixed ARCHITECT_MODEL is a separate live variable on a different code
+    // path. Treating it as architect's binding would report an assignment the
+    // architect worker never receives.
+    expect(envs).not.toContain("ARCHITECT_MODEL");
+  });
+});
+
+describe("the assignment editor's rows", () => {
+  it("is default, then the five roles with no desktop slot, then the two slots that are roles, then embedding", () => {
+    expect(ROUTING_ROWS.map((row) => row.key)).toEqual([
+      "default",
+      "architect", "devops", "researcher", "analyst", "verifier",
+      "code", "collective.coordinator", "embedding",
+    ]);
+  });
+
+  it("gives the critic no row, and says why where the reason is recorded", () => {
+    // Not a row, because a row implies an assignment: the critic loop is not one of the
+    // seven Pioneer roles and no per-role map carries it.
+    expect(ROUTING_ROWS.map((row) => row.key)).not.toContain("collective.critic");
+    expect(UNPRESENTED_ROWS.map((row) => row.key)).toEqual(["collective.critic"]);
+    expect(UNPRESENTED_ROWS[0]).toMatchObject({
+      env: "SWARM_EVALUATOR_MODEL", role: null, perRoleBindable: false,
+    });
+    expect(UNPRESENTED_ROWS[0]!.note).toMatch(/not a Team Builder role/);
+  });
+
+  it("covers every role exactly once, through the row that means it", () => {
+    const roles = ROUTING_ROWS.map((row) => row.role).filter((role): role is RuneRole => !!role);
+    expect([...roles].sort()).toEqual([...RUNE_ROLES].sort());
+    // The collisions must not double up into two answers for one role.
+    expect(ROUTING_ROWS.filter((row) => row.role === "coordinator").map((row) => row.key)).toEqual(["collective.coordinator"]);
+    expect(ROUTING_ROWS.filter((row) => row.role === "coder").map((row) => row.key)).toEqual(["code"]);
+  });
+
+  it("keeps both name collisions visible in the row, not resolved by renaming", () => {
+    // coordinator -> collective.coordinator: same role, one row, under the slot name the
+    // file already uses.
+    expect(presented("collective.coordinator")).toMatchObject({
+      key: "collective.coordinator", role: "coordinator", env: "SWARM_COORDINATOR_MODEL",
+    });
+    // coder -> code: the runtime reads CODER_MODEL for the DevHarness primary as well,
+    // so this row genuinely changes two things at once and says so.
+    const coder = presented("code");
+    expect(coder.key).toBe("code");
+    expect(coder.role).toBe("coder");
+    expect(coder.env).toBe("CODER_MODEL");
+    expect(coder.note).toMatch(/DevHarness primary/);
+  });
+
+  it("marks the rows that bind no role, including embedding's own variable", () => {
+    expect(presented("embedding")).toMatchObject({ role: null, env: "EMBED_MODEL", perRoleBindable: false });
+    expect(presented("default")).toMatchObject({ role: null, env: null, perRoleBindable: false });
+    for (const row of ROUTING_ROWS) {
+      expect(row.perRoleBindable).toBe(row.role !== null);
+      if (row.role) expect(row.env).toBe(RUNE_ROLE_ENV[row.role]);
+    }
+  });
+});
+
+describe("roleTarget", () => {
+  const withResearcher: RoutingConfig = {
+    ...D2,
+    routing: { ...D2.routing, researcher: { engine: "llama-local", model: "qwen3-coder:30b" } },
+  };
+
+  it("answers from the row's own slot and names that slot as the one that answered", () => {
+    expect(roleTarget(withResearcher, "researcher")).toEqual({
+      engine: "llama-local", model: "qwen3-coder:30b", via: "researcher", usedFallback: false,
+    });
+  });
+
+  it("reports a fallback as a fallback, with the slot that is actually answering", () => {
+    // The row is `analyst`; nothing sets it, so `default` answers. A UI that showed the
+    // model without `via` would present another lane's choice as an assignment.
+    expect(roleTarget(D2, "analyst")).toEqual({
+      engine: "ollama-local", model: "qwen3:14b", via: DEFAULT_SLOT, usedFallback: true,
+    });
+  });
+
+  it("says unassigned rather than falling back, when there is nothing to fall back to", () => {
+    const noDefault: RoutingConfig = { ...D2, routing: { code: D2.routing.code } };
+    expect(roleTarget(noDefault, "verifier")).toEqual({ engine: null, model: null, via: null, usedFallback: false });
+    expect(roleTarget(null, "verifier")).toEqual({ engine: null, model: null, via: null, usedFallback: false });
+  });
+
+  it("reads default itself as a slot, not as a fallback of itself", () => {
+    expect(roleTarget(D2, DEFAULT_SLOT)).toEqual({
+      engine: "ollama-local", model: "qwen3:14b", via: DEFAULT_SLOT, usedFallback: false,
+    });
   });
 });

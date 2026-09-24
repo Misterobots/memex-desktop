@@ -548,6 +548,150 @@ function soleEngineIdOfKind(existing: RoutingConfig | null, kind: EngineKind): s
 }
 
 // ---------------------------------------------------------------------------
+// The runtime's roles, and the desktop rows that assign them (owner decision 4)
+// ---------------------------------------------------------------------------
+
+/**
+ * The seven Team Builder roles, in the runtime's own spelling and its own order —
+ * `Memex_Core`'s `_SWARM_ROLES`. These are the things a model gets assigned *to*.
+ * The desktop's slots are a different and smaller set, which is the whole reason
+ * this list exists separately: decision 4 names the map after the roles, not the
+ * slots, because "a map keyed by the slot names would be accepted by a permissive
+ * server and bound to nothing".
+ */
+export type RuneRole =
+  | "coordinator" | "architect" | "coder" | "devops" | "researcher" | "analyst" | "verifier";
+
+export const RUNE_ROLES: readonly RuneRole[] = [
+  "coordinator", "architect", "coder", "devops", "researcher", "analyst", "verifier",
+];
+
+/**
+ * The variable that decides each role's model, spelled the way the runtime spells it
+ * *today*, on the machine that hosts the runtime.
+ *
+ * Not the proposed spelling: a patch suggested renaming `CODER_MODEL` and
+ * `DEVOPS_MODEL` to `SWARM_*`, and until that happens in `Memex_Core` a row showing
+ * `SWARM_CODER_MODEL` would name a variable nothing reads. The proposed names are
+ * absent from this table rather than shown as an alias, so what the UI prints is
+ * what an operator has to set.
+ *
+ * `ARCHITECT_MODEL` — unsuffixed — is a separate live variable answering a different
+ * code path, and it is **not** `architect`'s binding. It is deliberately not in this
+ * map: treating it as the architect's would let the UI report an assignment the
+ * architect worker never receives.
+ */
+export const RUNE_ROLE_ENV: Record<RuneRole, string> = {
+  coordinator: "SWARM_COORDINATOR_MODEL",
+  architect: "SWARM_ARCHITECT_MODEL",
+  coder: "CODER_MODEL",
+  devops: "DEVOPS_MODEL",
+  researcher: "RESEARCHER_MODEL",
+  analyst: "ANALYST_MODEL",
+  verifier: "VERIFIER_MODEL",
+};
+
+/** One row of the assignment editor: a `routing` slot, plus what it means out there. */
+export interface RoutingRow {
+  /** The key written inside `routing`. Slots are open-ended by design (D2), so this
+   * is a slot name, and the two collisions below are where a slot is *also* a role. */
+  key: string;
+  /** What the user reads beside the control — the role's name, not the slot's. */
+  label: string;
+  /** The runtime role this row assigns; null for a slot that is not a role at all. */
+  role: RuneRole | null;
+  /** The runtime variable this row's value answers, where it has one. */
+  env: string | null;
+  /** False when no per-role map carries this row to a runtime role. The row still
+   * binds something real (an embedding engine answers `EMBED_MODEL`), but it binds no
+   * role, so the editor must not present it as though it did. */
+  perRoleBindable: boolean;
+  /** Said in the row itself, because both collisions below are places where renaming
+   * the slot would have hidden what the user is actually changing. */
+  note: string | null;
+}
+
+/**
+ * The rows the assignment editor shows, in the order it shows them: `default`, then
+ * the five roles that have no desktop slot of their own, then the slots that *are*
+ * roles under a different name, then `embedding`.
+ *
+ * Two of these names collide with a role and are not renames:
+ *
+ * - `collective.coordinator` **is** `coordinator` — the same role, one row. It is
+ *   listed under the slot the file already uses rather than given a second row keyed
+ *   `coordinator`, which would put two answers to one question on screen.
+ * - `code` is *not* merely "the coding slot": the runtime reads `CODER_MODEL` for the
+ *   DevHarness primary as well as for the swarm coder, so assigning `code` genuinely
+ *   changes both at once. The rename this row might have had (`coder`) would have
+ *   made that shared effect invisible, which is why the row keeps the slot name and
+ *   states the coupling.
+ *
+ * `collective.critic` is excluded from this list — see `UNPRESENTED_ROWS`.
+ */
+export const ROUTING_ROWS: readonly RoutingRow[] = [
+  {
+    key: DEFAULT_SLOT, label: "Everything else", role: null, env: null, perRoleBindable: false,
+    note: "The slot this desktop falls back to for anything it has no row for. A role left unassigned here is still decided by the runtime host, not by this file.",
+  },
+  ...(["architect", "devops", "researcher", "analyst", "verifier"] as const).map<RoutingRow>((role) => ({
+    key: role, label: role, role, env: RUNE_ROLE_ENV[role], perRoleBindable: true,
+    // Said plainly because it is the load-bearing fact about these five rows: they are
+    // new, and nothing in `routing` held them before this editor existed.
+    note: `No desktop slot has ever written this — until the runtime accepts a client-supplied map, ${role} keeps reading ${RUNE_ROLE_ENV[role]} on its own host.`,
+  })),
+  {
+    key: "code", label: "Coder", role: "coder", env: RUNE_ROLE_ENV.coder, perRoleBindable: true,
+    note: "Shared name, shared effect: the runtime reads CODER_MODEL for the DevHarness primary too, so this row changes both.",
+  },
+  {
+    key: "collective.coordinator", label: "Coordinator", role: "coordinator", env: RUNE_ROLE_ENV.coordinator, perRoleBindable: true,
+    note: "The desktop's slot for the coordinator role — the same role as `coordinator`, listed once.",
+  },
+  {
+    key: "embedding", label: "Embeddings", role: null, env: "EMBED_MODEL", perRoleBindable: false,
+    note: "Not a role. MemPalace's embedder reads EMBED_MODEL; this row changes it and nothing else.",
+  },
+];
+
+/**
+ * Slots that bind something real but get no row. `collective.critic` is here rather
+ * than deleted from the vocabulary: the critic loop is not one of the seven Pioneer
+ * roles, and `SWARM_EVALUATOR_MODEL` is the variable that answers it. A row for it
+ * would imply an assignment that binds no role, so the editor does not offer one —
+ * and `deriveRoutingFromSetup` still carries a hand-written critic slot through
+ * untouched, because the file is allowed to say more than this UI can ask.
+ */
+export const UNPRESENTED_ROWS: readonly RoutingRow[] = [
+  {
+    key: "collective.critic", label: "Critic", role: null, env: "SWARM_EVALUATOR_MODEL", perRoleBindable: false,
+    note: "The Collective's critic loop is not a Team Builder role; SWARM_EVALUATOR_MODEL answers it and the role map does not.",
+  },
+];
+
+/**
+ * What a row actually resolves to, and **which slot answered**.
+ *
+ * `via` is the entry that supplied the target, not the entry that was asked for, so a
+ * row showing `routing.default`'s model can say it is falling back instead of
+ * presenting another lane's model as though someone had chosen it for this role.
+ * Both fields are null when nothing answers at all — an empty table with no
+ * `default` — which is "unassigned", not "falling back".
+ */
+export function roleTarget(
+  routing: RoutingConfig | null | undefined,
+  rowKey: string,
+): { engine: string | null; model: string | null; via: string | null; usedFallback: boolean } {
+  const route = resolveRoute(routing, rowKey);
+  return {
+    engine: route.target?.engine ?? null,
+    model: route.target?.model ?? null,
+    via: route.slot,
+    usedFallback: route.usedFallback,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Small readers — a hand-edited file gets judged on what it actually contains
 // ---------------------------------------------------------------------------
 

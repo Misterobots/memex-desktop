@@ -8,11 +8,15 @@ import type { RunRecord, RunEvent, EvalCase, EvalResult, ConnectionStatus } from
 // renderer resolves routes with the main process's own `resolveRoute` from
 // electron/routing-config.ts. Two copies of the shape would mean two copies of the
 // fallback rules; a pure, Electron-free module is what makes one copy possible.
-import type { RoutingConfig, RoutingIssue, RoutingResult, RoutingState, RunStyle } from "../../electron/routing-config";
+import type {
+  RoutingConfig, RoutingIssue, RoutingResult, RoutingRow, RoutingState, RuneRole, RunStyle,
+} from "../../electron/routing-config";
 // Re-exported rather than mirrored, same reason as the routing types above: the
 // discovery verdict is one shape decided in electron/engine-discovery.ts.
 import type { EngineDiscovery } from "../../electron/engine-discovery";
-export type { RoutingConfig, RoutingIssue, RoutingResult, RoutingState, RunStyle, EngineDiscovery };
+export type {
+  RoutingConfig, RoutingIssue, RoutingResult, RoutingRow, RoutingState, RuneRole, RunStyle, EngineDiscovery,
+};
 export type { RunRecord, RunEvent, EvalCase, EvalResult };
 
 export type PermissionMode = "trusted" | "workspace" | "ask";
@@ -360,6 +364,13 @@ export interface MemexBridge {
   engines: {
     list:   () => Promise<EngineDescriptor[]>;
     models: (engineId: string) => Promise<EngineModel[]>;
+    /** Candidates for a lane the wizard has discovered but not stored. `{ id }`
+     * only, and the same `EngineModel` rows as `models` — a model is not treated as
+     * universally qualified for per-role work here, so no capability field exists on
+     * it (that is D4's job, not this bridge's). Main resolves the id against the
+     * stored `engines` map and probes the address in the file, so this cannot be
+     * pointed at a renderer-supplied URL. */
+    modelsFor: (lane: { id: string }) => Promise<EngineModel[]>;
   };
 
   /** D2 — the routing table `config.json` carries, plus what is wrong with it.
