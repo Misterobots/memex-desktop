@@ -8,6 +8,7 @@ import {
   type EngineDescriptor,
   type FetchLike,
 } from "../engine-registry";
+import type { EngineConfig } from "../routing-config";
 
 const ollama: EngineDescriptor = { id: "ollama", kind: "ollama", baseUrl: "http://[::1]:11434", label: "Ollama" };
 const llama: EngineDescriptor = { id: "llama.cpp", kind: "llama.cpp", baseUrl: "http://127.0.0.1:8011", label: "llama.cpp" };
@@ -40,21 +41,37 @@ const llamaRoutes = {
   "/v1/models": { body: { object: "list", data: [{ name: LLAMA_BLOB, model: LLAMA_BLOB, object: "model" }] } },
 };
 
-describe("engine descriptors from the active profile", () => {
-  it("always offers Ollama and llama.cpp only when the profile names a lane", () => {
-    expect(engineDescriptors({ ollama: "http://[::1]:11434" })).toEqual([ollama]);
-    expect(engineDescriptors({ ollama: "http://[::1]:11434", llamaCpp: "http://127.0.0.1:8011" }))
-      .toEqual([ollama, llama]);
+describe("engine descriptors from the routing table", () => {
+  it("lists one per entry of the engines map, in the order the file has them", () => {
+    expect(engineDescriptors({ ollama: { kind: "ollama", baseUrl: "http://[::1]:11434", label: "Ollama" } })).toEqual([ollama]);
+    expect(engineDescriptors({
+      ollama:      { kind: "ollama", baseUrl: "http://[::1]:11434", label: "Ollama" },
+      "llama.cpp": { kind: "llama.cpp", baseUrl: "http://127.0.0.1:8011", label: "llama.cpp" },
+    })).toEqual([ollama, llama]);
   });
 
-  it("falls back to the loopback daemon and tolerates a hand-edited trailing slash", () => {
-    expect(engineDescriptors({ ollama: "http://192.168.2.101:11434/" })[0].baseUrl).toBe("http://192.168.2.101:11434");
-    expect(engineDescriptors({})[0].baseUrl).toBe("http://localhost:11434");
-    expect(engineDescriptors({ llamaCpp: "  " })).toHaveLength(1); // no second engine from blank config
+  it("carries the ids the user named, with the id standing in for a missing label", () => {
+    // These keys used to be invented here; they are the config's own now, and
+    // routing slots refer to engines by them, so a descriptor must not rename one.
+    expect(engineDescriptors({ "ollama-local": { kind: "ollama", baseUrl: "http://[::1]:11434" } })).toEqual([
+      { id: "ollama-local", kind: "ollama", baseUrl: "http://[::1]:11434", label: "ollama-local" },
+    ]);
   });
 
-  it("survives a profile with nothing configured at all", () => {
-    expect(engineDescriptors(null).map((e) => e.kind)).toEqual(["ollama"]);
+  it("tolerates a hand-edited trailing slash and drops an entry with no usable address", () => {
+    const descriptors = engineDescriptors({
+      tidy:    { kind: "ollama", baseUrl: "http://192.168.2.101:11434/" },
+      half:    { kind: "ollama", baseUrl: "   " },
+      deleted: { kind: "ollama" } as EngineConfig, // a line the user deleted the value from
+    });
+    expect(descriptors.map((d) => d.baseUrl)).toEqual(["http://192.168.2.101:11434"]);
+  });
+
+  it("offers nothing when there is no table, rather than assuming a daemon", () => {
+    // The loopback fallback moved into deriveRoutingFromProfile, so the address the
+    // picker probes is one the file states, not one inferred at the last mile.
+    expect(engineDescriptors({})).toEqual([]);
+    expect(engineDescriptors(null)).toEqual([]);
   });
 });
 
