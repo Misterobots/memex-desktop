@@ -339,31 +339,35 @@ describe("proposing a run style", () => {
     kind, running: true, installed: "yes" as const, models: [] as string[], ...over,
   });
 
-  it("claims nothing when no VRAM could be measured, and says that is why", () => {
+  it("proposes nothing when no VRAM could be measured, and says that is why", () => {
     // An unmeasured card is not a small card: `AdapterRAM` used to read every card of
     // 4 GB or more as 4 GB, which is how a 24 GB box landed in the entry-level tier.
-    const unmeasured = proposeRunStyle([card("RTX 4090", 0)], 64, [engine("ollama", { models: ["a:1", "b:2"] })]);
-    expect(unmeasured.runStyle).toBe("multi");
+    // Nor is it a big one — a CPU-only laptop lands here too, and the two want opposite
+    // styles, so the only honest answer is no answer (plan D3a).
+    const unmeasured = proposeRunStyle([card("RTX 4090", 0)], [engine("ollama", { models: ["a:1", "b:2"] })]);
+    expect(unmeasured.runStyle).toBeNull();
     expect(unmeasured.why).toContain("could not be measured");
     expect(unmeasured.why).toContain("claims nothing");
+    expect(unmeasured.why).toContain("no run style is proposed");
 
-    const headless = proposeRunStyle([], 32, []);
-    expect(headless.runStyle).toBe("multi");
+    const headless = proposeRunStyle([], []);
+    expect(headless.runStyle).toBeNull();
     expect(headless.why).toContain("No graphics card was found");
     expect(headless.why).toContain("could not be measured");
   });
 
   it("proposes one pinned model for a card too small to hold two, quoting the memory it used", () => {
-    const proposal = proposeRunStyle([card("GTX 1650", 8)], 16, [engine("ollama", { models: ["qwen3:8b", "qwen2.5:7b"] })]);
+    const proposal = proposeRunStyle([card("GTX 1650", 8)], [engine("ollama", { models: ["qwen3:8b", "qwen2.5:7b"] })]);
 
     expect(proposal.runStyle).toBe("single");
     expect(proposal.why).toContain("8 GB");
-    expect(proposal.why).toContain("16 GB of system RAM");
     expect(proposal.why).toContain("pins one model");
+    // Nothing in the reason cites a figure that decided no rule.
+    expect(proposal.why).not.toContain("system RAM");
   });
 
   it("proposes multi for 24 GB+ of measured memory with more than one thing to run", () => {
-    const twoCards = proposeRunStyle([card("5060 Ti A", 15.9), card("5060 Ti B", 15.9)], 32, [
+    const twoCards = proposeRunStyle([card("5060 Ti A", 15.9), card("5060 Ti B", 15.9)], [
       engine("ollama", { models: ["qwen3:14b", "qwen3.8:27b", "nomic-embed-text:latest"] }),
       engine("llama.cpp", { models: ["qwen3-coder:30b"] }),
     ]);
@@ -372,10 +376,11 @@ describe("proposing a run style", () => {
     expect(twoCards.why).toContain("2 cards totalling 31.8 GB");
     expect(twoCards.why).toContain("models");
     expect(twoCards.why).toContain("engines");
+    expect(twoCards.why).not.toContain("system RAM");
 
     // One big card qualifies on the total alone, if the inventory says there is
     // something to swap between.
-    const oneBigCard = proposeRunStyle([card("RTX 4090", 24)], 32, [engine("ollama", { models: ["a:1", "b:2"] })]);
+    const oneBigCard = proposeRunStyle([card("RTX 4090", 24)], [engine("ollama", { models: ["a:1", "b:2"] })]);
     expect(oneBigCard.runStyle).toBe("multi");
     expect(oneBigCard.why).toContain("24 GB on one card");
   });
@@ -384,7 +389,7 @@ describe("proposing a run style", () => {
     // A stopped Ollama with a 24 GB card: two things exist (a lane and a pin) but
     // nothing known to swap, so multi would be a promise about a model list nobody
     // saw. The rule reads the evidence, not the optimism.
-    const stopped = proposeRunStyle([card("RTX 4090", 24)], 32, [
+    const stopped = proposeRunStyle([card("RTX 4090", 24)], [
       { kind: "ollama", installed: "inferred", running: false, models: [] },
     ]);
     expect(stopped.runStyle).toBe("single");
@@ -392,7 +397,7 @@ describe("proposing a run style", () => {
   });
 
   it("falls back to single when the box is large but nothing was found to swap", () => {
-    const empty = proposeRunStyle([card("A100", 40)], 64, [
+    const empty = proposeRunStyle([card("A100", 40)], [
       engine("ollama", { running: false, installed: "unknown", models: [] }),
       engine("llama.cpp", { running: false, installed: "unknown", models: [] }),
     ]);
@@ -405,11 +410,14 @@ describe("proposing a run style", () => {
 
   it("gives every rule a reason a user can read", () => {
     const cases = [
-      proposeRunStyle([], 16, []),
-      proposeRunStyle([card("x", 6)], 16, []),
-      proposeRunStyle([card("x", 24)], 32, [engine("ollama", { models: ["a:1", "b:2"] })]),
-      proposeRunStyle([card("x", 16), card("y", 16)], 32, []),
-    ];
+      proposeRunStyle([], []),
+      proposeRunStyle([card("x", 0)], []),
+      proposeRunStyle([card("x", 6)], []),
+      proposeRunStyle([card("x", 24)], [engine("ollama", { models: ["a:1", "b:2"] })]),
+      proposeRunStyle([card("x", 16), card("y", 16)], []),
+    ].filter((proposal) => proposal.runStyle !== null);
+
+    expect(cases.length).toBeGreaterThan(0);
     for (const proposal of cases) {
       expect(proposal.why.trim().length).toBeGreaterThan(30);
       expect(["single", "multi"]).toContain(proposal.runStyle);

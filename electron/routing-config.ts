@@ -388,7 +388,10 @@ export interface RunStyleEvidence {
 }
 
 export interface RunStyleProposal {
-  runStyle: RunStyle;
+  /** null when the evidence supports neither style, which is a decline rather than a
+   * failed answer: the wizard shows both options undecided and asks. A `runStyle` here
+   * is read by the UI as a proposal, so nothing may be put in it when nothing is proposed. */
+  runStyle: RunStyle | null;
   /** One or two sentences the wizard shows verbatim. Every rule states the evidence
    * it used, because "single" is a promise about what the box cannot do and the user
    * has to be able to disagree with a reason. */
@@ -400,9 +403,13 @@ export interface RunStyleProposal {
  *
  * The rules are ordered, and the first match wins:
  *
- * 1. Nothing measurable about VRAM → `multi`. An unmeasured card is not evidence of a
- *    small one (`AdapterRAM` used to make exactly that mistake — see plan D3), so this
- *    step declines to constrain the user at all.
+ * 1. Nothing measurable about VRAM → **no proposal** (`runStyle: null`). An unmeasured
+ *    card is not evidence of a small one (`AdapterRAM` used to make exactly that
+ *    mistake — see plan D3), and it is not evidence of a large one either: a CPU-only
+ *    laptop and a 24 GB card whose counter saturated both land here and want opposite
+ *    styles. Nothing distinguishes them from this side of the probe, so proposing
+ *    either would be a claim dressed as a disclaimer (plan D3a flaw). Declining is the
+ *    answer, and the wizard has to ask.
  * 2. A small card → `single`. One model at a time is the honest shape.
  * 3. Room to hold several models, and more than one thing discovered to run →
  *    `multi`, which is what per-role variety needs.
@@ -410,13 +417,17 @@ export interface RunStyleProposal {
  *
  * A proposal, never a decision: `SetupWizard` must show this and require the user to
  * confirm or change it (plan C1, no silent default).
+ *
+ * System RAM is not an input, and used to be in every `why` string while conditioning
+ * no rule. What a model has to fit in is video memory; RAM changes how slowly a model
+ * runs, not how many fit at once, and quoting a figure that decided nothing made each
+ * explanation read as though it had been part of the decision. The wizard still shows
+ * the user their RAM as a fact about the machine, where it asks nothing of them.
  */
 export function proposeRunStyle(
   gpus: readonly { vramGb: number }[],
-  systemRamGb: number,
   discovered: readonly RunStyleEvidence[],
 ): RunStyleProposal {
-  const ram = `${gb(systemRamGb)} GB of system RAM`;
   // A card that reported 0 GB is present but unmeasured, not a 0 GB card. Its memory
   // is left out of the totals rather than counted as zero, which would flatter a
   // measured box and punish an unmeasured one.
@@ -426,17 +437,17 @@ export function proposeRunStyle(
 
   if (!measured.length) {
     return {
-      runStyle: "multi",
+      runStyle: null,
       why: gpus.length
-        ? `The ${gpus.length === 1 ? "graphics card" : `${gpus.length} graphics cards`} reported no usable memory, so its video memory could not be measured and this step claims nothing about what fits in it. Multi keeps every model available — change it if you know what this box has.`
-        : `No graphics card was found, so video memory could not be measured and this step claims nothing about it. Multi keeps every model available; switch to single if this box runs one model at a time.`,
+        ? `The ${gpus.length === 1 ? "graphics card" : `${gpus.length} graphics cards`} reported no usable memory, so video memory could not be measured and this step claims nothing about what fits in it: no run style is proposed. An unmeasured card is not a small one — choose below, on what you know about this box.`
+        : `No graphics card was found, so video memory could not be measured and this step claims nothing about it: no run style is proposed. If this box holds models in system RAM, or the probe cannot see its card, the choice below is yours to make.`,
     };
   }
 
   if (largest < 10 && total < 16) {
     return {
       runStyle: "single",
-      why: `${gb(largest)} GB on the largest card and ${gb(total)} GB across ${gpus.length === 1 ? "one card" : `${gpus.length} cards`} (${ram}) will not hold two models at once, so Memex pins one model and serves it everywhere instead of swapping on demand.`,
+      why: `${gb(largest)} GB on the largest card and ${gb(total)} GB across ${gpus.length === 1 ? "one card" : `${gpus.length} cards`} will not hold two models at once, so Memex pins one model and serves it everywhere instead of swapping on demand.`,
     };
   }
 
@@ -454,13 +465,13 @@ export function proposeRunStyle(
       : `${gpus.length} cards totalling ${gb(total)} GB`;
     return {
       runStyle: "multi",
-      why: `${room} (${ram}) and ${swapCandidates} model${swapCandidates === 1 ? "" : "s"} across ${engines} engine${engines === 1 ? "" : "s"} discovered — enough to hold more than one, so each role can get its own model and Ollama loads and evicts them on demand.`,
+      why: `${room} and ${swapCandidates} model${swapCandidates === 1 ? "" : "s"} across ${engines} engine${engines === 1 ? "" : "s"} discovered — enough to hold more than one, so each role can get its own model and Ollama loads and evicts them on demand.`,
     };
   }
 
   return {
     runStyle: "single",
-    why: `${gpus.length === 1 ? `One card with ${gb(largest)} GB` : `${gpus.length} cards totalling ${gb(total)} GB`} (${ram}) and ${swapCandidates} thing${swapCandidates === 1 ? "" : "s"} discovered to swap between: one pinned model is the honest shape here, so Memex will not promise per-role model changes.`,
+    why: `${gpus.length === 1 ? `One card with ${gb(largest)} GB` : `${gpus.length} cards totalling ${gb(total)} GB`} and ${swapCandidates} thing${swapCandidates === 1 ? "" : "s"} discovered to swap between: one pinned model is the honest shape here, so Memex will not promise per-role model changes.`,
   };
 }
 

@@ -232,7 +232,7 @@ export function SetupWizard({ onComplete }: Props) {
   useEffect(() => { void inspectLocal(); }, [bridge]);
 
   const proposal = localInspection
-    ? proposeRunStyle(localInspection.gpus, localInspection.systemRamGb, localInspection.engines)
+    ? proposeRunStyle(localInspection.gpus, localInspection.engines)
     : null;
 
   // The engines this step would write, and which one the confirmed model belongs to.
@@ -345,7 +345,7 @@ export function SetupWizard({ onComplete }: Props) {
                   {/* 2. The run style: proposed here, decided by the user */}
                   {proposal && (
                     <div className="space-y-1.5">
-                      <label className="text-xs text-muted">Run style · proposed: {proposal.runStyle === "single" ? "one pinned model" : "multi-model"}</label>
+                      <label className="text-xs text-muted">Run style · {proposal.runStyle ? (proposal.runStyle === "single" ? "proposed: one pinned model" : "proposed: multi-model") : "not proposed — this probe cannot tell"}</label>
                       <p className="text-[11px] text-muted">{proposal.why}</p>
                       {storedRouting && (
                         // What the file holds is shown as a fact about the file, not as
