@@ -317,3 +317,88 @@ Unverified, stated as such: no perspective matrix has been observed end to end f
 workspace; the 8 behavioural tests in `Agent_Swarm/tests/test_dev_harness_routing.py` skip off
 container (no `prometheus_client`/`agno` on a workstation); the public `memex-anywhere` profile's
 deployment was never inspected and may already run the `Agent_Swarm` code.
+
+---
+
+# Item 4 — D1c: `model` is carrying two meanings at once (raised 2026-09-24)
+
+Read-only inspection of this tree's working copy, which is what `agent_runtime` serves. Two facts, and
+the second is a hazard rather than a preference:
+
+1. **`agents/handlers/coordinate.py:131` passes `selected_model=ctx.get("model")` — the request's `model`
+   used as a model id.** With the single-binding change now in the tree
+   (`role_model_resolver.snapshot_role_models(selected_model=…, team_builder_roles=False)`), that value
+   binds **all seven** `_SWARM_ROLES` and `coordination/executor.py:196` hands it to `Ollama(id=…)`.
+2. **The desktop still sends `"swarm"` there when no model is resolved**
+   (`memex-desktop/src/lib/sse-stream.ts:169` — `model: opts.model || "swarm"`). `"swarm"` is not an
+   Ollama tag. It is the pre-existing routing sentinel that `_routes_to_dev_harness()` exempts.
+
+So one field is both "which orchestrator serves this turn" and "which weights to load", and the failure
+mode of the second reading is not a validation error — it is seven roles pointed at a nonexistent model.
+Today it is latent, because `InputBar.tsx:431` always passes a real selection; it becomes reachable the
+moment any caller omits one.
+
+**Fix 1, one line, do it first — it makes the rest safe to sequence.** In `handlers/coordinate.py`, treat
+the sentinel as absent:
+
+```python
+selected_model=None if ctx.get("model") == "swarm" else ctx.get("model"),
+```
+
+A Collective then falls through to team-builder/env resolution exactly as it did before the single-binding
+change, instead of binding seven roles to a tag that cannot load. Add a named test for it in
+`tests/test_gauntlet_routing.py`'s style: a coordination request whose `model` is `"swarm"` must not
+produce a snapshot bound to `"swarm"`.
+
+**Why the sentinel is already redundant for routing, and can therefore be retired rather than renamed.**
+`_routes_to_dev_harness()` exempts a turn when it sees `swarm_mode` **or** `gauntlet_mode` **or**
+`model == "swarm"` **or** the slash prefixes. The desktop sets `swarm_mode: true` on every Collective it
+launches (`MODE_FLAGS.swarm = { swarm_mode, research_mode }`, plus `dev_mode` for the Code workspace), so
+for any current client the `model == "swarm"` clause is never the only thing preventing DevHarness
+preemption. The only case it still carries is a legacy session that sends `model: "swarm"` **without**
+the flags — `memex-desktop/src/lib/__tests__/collective-contract.test.ts:33` pins exactly that shape, so
+it exists in stored data even if no composer path produces it. Keep the clause until the desktop stops
+sending it, then delete it in a separate commit. Do not delete it as part of Fix 1.
+
+**Fix 2 — give the run style a field of its own.** `handlers/coordinate.py:132` reads
+`ctx.get("team_builder_roles", False)` and **nothing in this tree ever sets that key**: `church.py` has
+zero occurrences of `team_builder`, and `ChatRequest` has no such field. `SNAPSHOT_SOURCE_TEAM_BUILDER`
+is therefore reachable only when a client sent no model at all, and the per-role Team Builder map — which
+`main.py:1617-1659` still happily saves and loads — cannot take effect in any run. If that is intended,
+say so in the commit message and the endpoints become the odd artefact. If it is not, the request needs
+to carry the map rather than a boolean, because the desktop now owns routing
+(`memex-desktop/plan-09-24-2026.md`, decisions 2 and D2):
+
+- `ChatRequest.role_models: dict[str, str] | None` — role → model, keys a subset of `_SWARM_ROLES`.
+- Forward through the same path `gauntlet_bar` already took: `main.py` → `church.py` ctx →
+  `handlers/coordinate.py` → `coordinate_task(...)` → `CoordinationSession`, and bind it as a snapshot
+  with `source="client"`.
+- **Add the third source value rather than reusing `single`.** `from_dict` currently coerces anything
+  unknown to `team_builder`, so a client-supplied map restored from a checkpoint would silently be
+  reinterpreted as Team Builder's. `to_dict`/`from_dict` must round-trip it, and the restore-side check
+  the docstring promises ("a restored map must have been built under the same source and selected
+  model") must include it.
+- Precedence, stated explicitly in the docstring: client map > `selected_model` (single) > Team Builder >
+  env defaults, and unknown roles in a client map are rejected by name rather than ignored — the same
+  lesson as `gauntlet_bar`, where `extra="allow"` turned a typo into a silently ignored field.
+
+**Fix 3 — the capacity half is unattributable right now.** `agents/inference/node_health.py` is modified,
+`tests/test_node_vram_reporting.py` is untracked, and `execution_plane/docker-compose.yml` carries the
+`LOVELACE_VRAM_MB` / `TURING_VRAM_MB` declarations those comments say are the only way the number becomes
+real. Those three are one change and must be one commit, or a rebuild of the container from
+`fix-sse-events` loses the `vram_source` reporting while the desktop is still reading
+`/api/v1/health/nodes`.
+
+**Verification that does not need a GPU.** `agent_runtime` has no NVML and no `/dev/nvidia*` (established
+2026-09-23), so `_measure_visible_vram_mb()` returns `None` in the serving process by design and
+`_resolve_node_vram` must report `("…", "configured")` or `(None, "unknown")` — never a default integer.
+`_host_is_local` excludes `http://ollama:11434`, which is the container's own default: worth a test
+asserting the sibling-container case reports `unknown`, because that is precisely the guess the docstring
+refuses to make.
+
+**What was not checked, so do not trust it as complete:** nothing in this item was executed against the
+running container — no request was sent and no test was collected. The `team_builder_roles` claim rests on
+`handlers/coordinate.py:132` reading a key that `church.py` never writes, and `church.py:1317` builds that
+`ctx` as an explicit dict literal rather than copying request extras — so a client cannot reach it through
+`extra="allow"` either. That is source-level evidence, not a runtime observation: if the key is set from
+somewhere I did not grep, Fix 2's premise changes.
