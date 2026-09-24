@@ -24,7 +24,6 @@ import { EvalStore }       from "./eval-store";
 import { ArtifactStore }   from "./artifact-store";
 import { HooksStore }      from "./hooks-store";
 import { BrowserPane }     from "./browser-pane";
-import { registerRemoteAuthIpc } from "./remote-auth";
 import { PermissionStore }    from "./permission-store";
 import { WorktreeManager }    from "./worktree-manager";
 import { GauntletHandoffStore } from "./gauntlet-handoff-store";
@@ -87,7 +86,6 @@ app.whenReady().then(() => {
 
   setupUpdater(getMain, getTray, isDev);
   registerUpdaterIpc();
-  registerRemoteAuthIpc(getMain);
   registerHealthIpc(config, getMain);
   registerQuickIpc(getMain);
   registerShortcuts(config, getMain, toggleQuickWindow);

@@ -173,11 +173,6 @@ contextBridge.exposeInMainWorld("memex", {
     },
   },
 
-  remoteAuth: {
-    signIn: () => ipcRenderer.invoke("remote-auth:signIn") as Promise<boolean>,
-    signOut: () => ipcRenderer.invoke("remote-auth:signOut") as Promise<boolean>,
-  },
-
   // LSP bridge
   lsp: {
     start:   (ext: string, rootUri: string) =>
@@ -197,9 +192,9 @@ contextBridge.exposeInMainWorld("memex", {
     check:   () => ipcRenderer.invoke("health:check"),
     getLast: () => ipcRenderer.invoke("health:getLast"),
     onStatus: (cb: (status: {
-      agentRuntime: "connected" | "disconnected" | "sign_in_required";
-      mempalace:    "connected" | "disconnected" | "sign_in_required";
-      ollama:       "connected" | "disconnected" | "sign_in_required";
+      agentRuntime: "connected" | "disconnected";
+      mempalace:    "connected" | "disconnected";
+      ollama:       "connected" | "disconnected";
       checkedAt:    string;
     }) => void) => {
       ipcRenderer.on("health:status", (_e, s) => cb(s));

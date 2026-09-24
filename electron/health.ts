@@ -1,7 +1,6 @@
 /** Native health loop — probes all three endpoints, pushes health:status to renderer. */
 import { ipcMain, BrowserWindow } from "electron";
 import type { ConfigStore } from "./config-store";
-import { MEMEX_PUBLIC_ORIGIN, publicSessionHeaders } from "./remote-auth";
 import { classifyHealthResponse, type NativeConnectionStatus } from "./health-status";
 
 export interface HealthStatus {
@@ -14,30 +13,24 @@ export interface HealthStatus {
 let timer:      ReturnType<typeof setInterval> | null = null;
 let lastStatus: HealthStatus | null = null;
 
-async function probe(url: string, publicProfile: boolean, headers?: HeadersInit, init?: RequestInit): Promise<NativeConnectionStatus> {
+async function probe(url: string): Promise<NativeConnectionStatus> {
   try {
-    // Preserve request-specific headers (notably MemPalace's JSON content
-    // type) while adding the Authentik session cookie. Passing `headers`
-    // separately used to overwrite init.headers, turning the POST into
-    // text/plain and producing a false offline result.
-    const mergedHeaders = new Headers(init?.headers);
-    for (const [name, value] of new Headers(headers)) mergedHeaders.set(name, value);
-    const r = await fetch(url, { ...init, headers: mergedHeaders, redirect: publicProfile ? "manual" : "follow", signal: AbortSignal.timeout(4000) });
-    return classifyHealthResponse(r.status, r.headers.get("content-type"), publicProfile);
+    const r = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    return classifyHealthResponse(r.status);
   } catch { return "disconnected"; }
 }
 
-async function agentHealth(url: string, publicProfile: boolean, headers?: HeadersInit): Promise<{ agentRuntime: NativeConnectionStatus; ollama: NativeConnectionStatus }> {
+async function agentHealth(url: string): Promise<{ agentRuntime: NativeConnectionStatus; ollama: NativeConnectionStatus }> {
   try {
-    const r = await fetch(url, { headers, redirect: publicProfile ? "manual" : "follow", signal: AbortSignal.timeout(4000) });
-    const agentRuntime = classifyHealthResponse(r.status, r.headers.get("content-type"), publicProfile);
-    if (agentRuntime !== "connected") return { agentRuntime, ollama: agentRuntime === "sign_in_required" ? "sign_in_required" : "disconnected" };
+    const r = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    const agentRuntime = classifyHealthResponse(r.status);
+    if (agentRuntime !== "connected") return { agentRuntime, ollama: "disconnected" };
     const body = await r.json() as { nodes?: Array<{ healthy?: boolean }> };
     return {
       agentRuntime,
-      // Remote Desktop intentionally has no direct Ollama URL.  The agent
-      // runtime owns model routing, so show its reported healthy inference
-      // nodes rather than probing an inaccessible private address.
+      // The harness owns model routing, so show the inference nodes it reports
+      // as healthy rather than probing a Docker-internal Ollama address a
+      // desktop process cannot reliably reach.
       ollama: Array.isArray(body.nodes) && body.nodes.some((node) => node.healthy === true) ? "connected" : "disconnected",
     };
   } catch {
@@ -47,22 +40,11 @@ async function agentHealth(url: string, publicProfile: boolean, headers?: Header
 
 async function check(config: ConfigStore): Promise<HealthStatus> {
   const { agentRuntime, mempalace } = config.getUrls();
-  const isPublicProfile = agentRuntime.startsWith(MEMEX_PUBLIC_ORIGIN);
-  const headers = isPublicProfile ? await publicSessionHeaders() : undefined;
   const [runtimeHealth, mp] = await Promise.all([
-    // Both local and hosted deployments expose their model-node registry via
-    // the harness. This is the authoritative model-health signal; a desktop
-    // process cannot reliably reach Docker's internal Ollama listener.
-    agentHealth(`${agentRuntime}/api/v1/health/nodes`, isPublicProfile, headers),
-    // MemPalace has no public /health endpoint. Its documented, used-in-
-    // production contract is POST /v1/memories/search, not GET /v1/memories.
-    isPublicProfile
-      ? probe(`${mempalace}/v1/memories/search`, true, headers, {
-          method: "POST",
-          headers: { ...(headers ?? {}), "Content-Type": "application/json" },
-          body: JSON.stringify({ query: "healthcheck", limit: 1 }),
-        })
-      : probe(`${mempalace}/health`, false),
+    // The harness reports its model-node registry; this is the authoritative
+    // model-health signal for the active profile.
+    agentHealth(`${agentRuntime}/api/v1/health/nodes`),
+    probe(`${mempalace}/health`),
   ]);
   return {
     agentRuntime: runtimeHealth.agentRuntime,

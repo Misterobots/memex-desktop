@@ -91,8 +91,9 @@ export function SetupWizard({ onComplete }: Props) {
   const [root,     setRoot]     = useState("");
   const [mode,     setMode]     = useState<"trusted" | "workspace" | "ask">("workspace");
   const [uid,      setUid]      = useState("");
-  const [signingIn, setSigningIn] = useState(false);
-  const [connectionChoice, setConnectionChoice] = useState<"hosted" | "local" | "advanced">("hosted");
+  // Local-only routing: the retired Memex Anywhere profile left this step with
+  // nothing to choose, so the local services panel is what the wizard opens on.
+  const [connectionChoice, setConnectionChoice] = useState<"local" | "advanced">("local");
   const [localInspection, setLocalInspection] = useState<LocalLlmInspection | null>(null);
   const [localBusy, setLocalBusy] = useState(false);
   const [localError, setLocalError] = useState("");
@@ -101,7 +102,6 @@ export function SetupWizard({ onComplete }: Props) {
     harnessUrl: "http://[::1]:8008", mempalaceUrl: "http://192.168.2.102:8200", ollamaUrl: "http://[::1]:11434",
     openWebUiUrl: "http://127.0.0.1:3000", comfyUiUrl: "http://127.0.0.1:8188",
   });
-  const publicProfile = profiles.find((p) => p.id === "memex-anywhere");
 
   useEffect(() => {
     if (!bridge) return;
@@ -145,6 +145,10 @@ export function SetupWizard({ onComplete }: Props) {
     } finally { setLocalBusy(false); }
   };
 
+  // The scan used to be a side effect of clicking the Local LLMs card. That
+  // card is gone and its panel is now the opening state, so probe on arrival.
+  useEffect(() => { void inspectLocal(); }, [bridge]);
+
   const activateLocal = async () => {
     if (!bridge) return false;
     setLocalBusy(true);
@@ -183,34 +187,13 @@ export function SetupWizard({ onComplete }: Props) {
             if (connectionChoice === "local") void activateLocal().then((ok) => { if (ok) next(); });
             else next();
           }} nextLabel={connectionChoice === "local" ? "Use Local LLMs" : "Continue"}>
-            <p className="text-sm text-muted">Memex Anywhere works from anywhere. Local LLMs connects this desktop to AI services you run on this computer.</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => { setConnectionChoice("hosted"); setActiveId(publicProfile?.id ?? activeId); bridge?.config.setActive(publicProfile?.id ?? activeId); }}
-                className={`text-left px-3 py-3 rounded-xl border ${connectionChoice === "hosted" ? "border-accent/50 bg-accent/10" : "border-border/40"}`}>
-                <div className="text-sm font-medium text-text">Memex Anywhere</div><div className="text-xs text-muted mt-1">Secure, remote-ready</div>
-              </button>
-              <button onClick={() => { setConnectionChoice("local"); void inspectLocal(); }}
-                className={`text-left px-3 py-3 rounded-xl border ${connectionChoice === "local" ? "border-accent/50 bg-accent/10" : "border-border/40"}`}>
-                <div className="text-sm font-medium text-text">Local LLMs</div><div className="text-xs text-muted mt-1">Your models, your machine</div>
-              </button>
-            </div>
-            {connectionChoice === "hosted" && activeId === publicProfile?.id && (
-              <button
-                onClick={async () => {
-                  setSigningIn(true);
-                  await bridge?.remoteAuth.signIn();
-                  setSigningIn(false);
-                }}
-                disabled={signingIn}
-                className="w-full py-2.5 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent/80 disabled:opacity-50"
-              >{signingIn ? "Waiting for sign-in…" : "Sign in to Memex"}</button>
-            )}
+            <p className="text-sm text-muted">Connect this desktop to the AI services you run on this computer.</p>
             {connectionChoice === "local" && (
               <div className="space-y-3 rounded-xl border border-border/50 bg-surface2/30 p-3">
                 <div className="flex items-center justify-between gap-3"><div><div className="text-sm font-medium text-text">Local setup</div><div className="text-xs text-muted">Discover services, then confirm your harness.</div></div>
                   <button onClick={() => void inspectLocal()} disabled={localBusy} className="text-xs text-accent hover:text-accent/80">{localBusy ? "Checking…" : "Scan machine"}</button></div>
                 {localInspection && <>
-                  <div className="text-xs text-muted">{localInspection.systemRamGb} GB RAM · {localInspection.gpus.length ? localInspection.gpus.map((gpu) => `${gpu.name} (${gpu.vramGb} GB)`).join(", ") : "GPU details unavailable"}</div>
+                  <div className="text-xs text-muted">{localInspection.systemRamGb} GB RAM · {localInspection.gpus.length ? localInspection.gpus.map((gpu) => gpu.vramGb ? `${gpu.name} (${gpu.vramGb} GB)` : `${gpu.name} (memory unknown)`).join(", ") : "GPU details unavailable"}</div>
                   <div className="space-y-1 rounded-lg bg-canvas/40 p-2"><StatusLine label="Ollama" ok={localInspection.ollama.reachable} required />
                     <StatusLine label="Local Memex harness" ok={localInspection.harness.reachable} required />
                     <StatusLine label="Open WebUI" ok={localInspection.openWebUi.reachable} />
@@ -225,7 +208,10 @@ export function SetupWizard({ onComplete }: Props) {
               </div>
             )}
             {connectionChoice === "advanced" && <div className="space-y-2">{profiles.map((p) => <button key={p.id} onClick={() => { setActiveId(p.id); bridge?.config.setActive(p.id); }} className={`w-full text-left px-4 py-3 rounded-xl border ${activeId === p.id ? "border-accent/50 bg-accent/10" : "border-border/40"}`}><div className="text-sm font-medium text-text">{p.name}</div><div className="text-xs text-muted font-mono truncate">{p.agentRuntime}</div></button>)}</div>}
-            {connectionChoice !== "advanced" && <button onClick={() => setConnectionChoice("advanced")} className="text-xs text-muted hover:text-text">Advanced routing profiles</button>}
+            <button onClick={() => setConnectionChoice(connectionChoice === "advanced" ? "local" : "advanced")}
+              className="text-xs text-muted hover:text-text">
+              {connectionChoice === "advanced" ? "Back to Local LLM setup" : "Advanced routing profiles"}
+            </button>
           </Step>
         )}
 

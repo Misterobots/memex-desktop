@@ -7,7 +7,6 @@ import {
 import { join } from "path";
 import type { ConfigStore } from "./config-store";
 import { getCurrentUid } from "./identity";
-import { MEMEX_PUBLIC_ORIGIN, publicSessionHeaders } from "./remote-auth";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -83,20 +82,9 @@ export function createMainWindow(
             ? { Authorization: `Bearer ${active.apiKey}` }
             : {};
         try {
-          // Renderer requests originate from file://. Even with
-          // credentials:"include", SameSite rules can omit the Authentik
-          // cookie because that is a cross-site request. Health checks worked
-          // while chat, Memory, and Schedules received Authentik HTML for this
-          // exact reason. Attach the public profile's Electron-session cookies
-          // here, at the one hook shared by every renderer API client (including
-          // streaming responses), rather than fixing each feature separately.
-          const sessionHeaders = agentRuntime.startsWith(MEMEX_PUBLIC_ORIGIN)
-            ? await publicSessionHeaders()
-            : {};
           callback({
             requestHeaders: {
               ...details.requestHeaders,
-              ...sessionHeaders,
               "X-authentik-uid":      getCurrentUid(),
               // Owner key for server-side conversation sync (/v1/conversations).
               "X-authentik-username": getCurrentUid(),

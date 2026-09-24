@@ -8,6 +8,7 @@ import { join } from "path";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { randomUUID } from "crypto";
 import { safeStorage } from "electron";
+import { LOCAL_DEFAULT_PROFILE_ID, migrateLocalOnlyProfiles } from "./profile-migration";
 
 export type ProviderType = "internal" | "external";
 
@@ -84,20 +85,11 @@ function defaultShortcuts(): ShortcutConfig {
   };
 }
 
-// Seed profiles — installed on first run if config.json doesn't exist
+// Seed profiles — installed on first run if config.json doesn't exist.
+// Memex Desktop is local-only: every install reaches the runtime its own user
+// runs, so there is no hosted seed here. `migrateLocalOnlyProfiles` strips the
+// retired "Memex Anywhere" profile from configs written before that decision.
 const SEED_PROFILES: RuntimeProfile[] = [
-  {
-    id:           "memex-anywhere",
-    name:         "Memex Anywhere",
-    providerType: "internal",
-    // The Next.js proxy authenticates with Authentik and reaches both the
-    // agent runtime and Hopper's MemPalace over private Docker/LAN links.
-    // Neither private address is ever sent to a remote Desktop install.
-    agentRuntime: "https://memex.shivelymedia.com/api/backend",
-    mempalace:    "https://memex.shivelymedia.com/api/backend",
-    defaultModel: "qwen3:14b",
-    readonly:     true,
-  },
   {
     id:           "home-lan",
     name:         "Home LAN",
@@ -126,10 +118,9 @@ const SEED_PROFILES: RuntimeProfile[] = [
   },
 ];
 
-// Desktop is local-first.  A hosted profile remains available, but a fresh
-// installation must not appear signed out/degraded simply because its optional
-// hosted browser session has not been established yet.
-const DEFAULT_ACTIVE = "localhost";
+// Desktop is local-first.  The active route on a fresh install is the harness on
+// this machine; there is no hosted profile left to sign into.
+const DEFAULT_ACTIVE = LOCAL_DEFAULT_PROFILE_ID;
 
 export class ConfigStore {
   private configPath: string;
@@ -145,10 +136,13 @@ export class ConfigStore {
       try {
         const raw = JSON.parse(readFileSync(this.configPath, "utf-8")) as AppConfig;
         raw.profiles = decryptProfilesFromDisk(raw.profiles as unknown as LegacyPersistedProfile[]);
-        // A config created before Memex Anywhere existed only knows about LAN
-        // addresses.  Add the new profile and make it the active route once,
-        // so an upgrade does not strand a user on private 192.168.x.x hosts.
-        const hadAnywhere = raw.profiles.some((p) => p.id === "memex-anywhere");
+        // Memex Anywhere was retired on 2026-09-24 (see profile-migration.ts).
+        // Removing its seed is not enough: a config written while it existed
+        // still carries the profile, so drop it on load and re-point the active
+        // route if that profile was the one in use.
+        const migrated = migrateLocalOnlyProfiles(raw.profiles, raw.activeProfileId);
+        raw.profiles        = migrated.profiles;
+        raw.activeProfileId = migrated.activeProfileId;
         // Ensure seed profiles are always present (add if missing from stored config)
         for (const seed of SEED_PROFILES) {
           if (!raw.profiles.find((p) => p.id === seed.id)) {
@@ -164,10 +158,9 @@ export class ConfigStore {
           Object.assign(localhost, localhostSeed);
           this.persist(raw);
         }
-        if (!hadAnywhere) {
-          raw.activeProfileId = DEFAULT_ACTIVE;
-          this.persist(raw);
-        }
+        // Persisted once, after the back-fills, so the retired profile cannot
+        // come back on the next load.
+        if (migrated.changed) this.persist(raw);
         return raw;
       } catch {}
     }

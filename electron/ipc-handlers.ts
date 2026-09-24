@@ -42,7 +42,6 @@ import { collectResidentModels, type OllamaPsModel } from "./ollama-residency";
 import { fireHooks }                   from "./hooks-runner";
 import { runOpenScad, type RenderParams } from "./openscad-runner";
 import { autoWireStore }                  from "./ipc-autowire";
-import { MEMEX_PUBLIC_ORIGIN, publicSessionHeaders } from "./remote-auth";
 import { inspectLocalLlm, normalizeLocalEndpoint } from "./local-llm";
 import { discoverUnrealInstalls, validateUnrealRoot } from "./unreal-engine";
 
@@ -156,9 +155,6 @@ export function registerAllIpc(ctx: IpcContext): void {
     headers.set("X-authentik-uid", getCurrentUid());
     headers.set("X-authentik-username", getCurrentUid());
     headers.set("X-desktop-client", "memex-desktop");
-    if (urls.agentRuntime.startsWith(MEMEX_PUBLIC_ORIGIN)) {
-      for (const [name, value] of Object.entries(await publicSessionHeaders())) headers.set(name, value);
-    }
     // The local CAD bridge owns a separate workstation-only token.  Source it
     // locally so a pasted UI value cannot be stale or accidentally be an LLM
     // provider key. Never expose the token back across IPC.

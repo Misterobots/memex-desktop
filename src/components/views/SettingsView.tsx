@@ -326,8 +326,6 @@ export function SettingsView() {
   const [profiles,         setProfiles]       = useState<RuntimeProfile[]>([]);
   const [activeProfileId,  setActiveProfileId] = useState<string>("");
   const [editingProfile,   setEditingProfile]  = useState<Partial<RuntimeProfile> | null>(null);
-  const [signingIn,        setSigningIn]       = useState(false);
-  const [signingOut,       setSigningOut]      = useState(false);
 
   // ── Workspace / permission ────────────────────────────────────────────────
   const [permMode,         setPermMode]        = useState<"trusted"|"workspace"|"ask">("workspace");
@@ -390,30 +388,6 @@ export function SettingsView() {
   const handleActivate = async (id: string) => {
     await bridge?.config.setActive(id);
     setActiveProfileId(id);
-  };
-
-  const handleRemoteSignIn = async () => {
-    if (!bridge) return;
-    setSigningIn(true);
-    await bridge.remoteAuth.signIn();
-    setSigningIn(false);
-  };
-
-  const handleRemoteSignOut = async () => {
-    if (!bridge) return;
-    setSigningOut(true);
-    try {
-      const complete = await bridge.remoteAuth.signOut();
-      if (!complete) throw new Error("Sign-out did not complete");
-      // Refresh the native badge immediately; it will now report the signed-out
-      // public route as unreachable until the user deliberately signs in again.
-      await bridge.health.check();
-      window.dispatchEvent(new CustomEvent("memex:notice", { detail: "Signed out of Memex on this desktop." }));
-    } catch {
-      window.dispatchEvent(new CustomEvent("memex:notice", { detail: "Could not sign out. Please try again." }));
-    } finally {
-      setSigningOut(false);
-    }
   };
 
   const handleSaveProfile = async (p: Partial<RuntimeProfile>) => {
@@ -529,20 +503,6 @@ export function SettingsView() {
                 <span className="text-[10px] font-semibold uppercase tracking-wide text-accent px-2 py-0.5 rounded-full border border-accent/30">
                   Active
                 </span>
-              )}
-              {p.id === "memex-anywhere" && (
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={handleRemoteSignIn}
-                    disabled={signingIn || signingOut}
-                    className="text-xs text-accent hover:text-accent/80 px-2 py-1 disabled:opacity-50"
-                  >{signingIn ? "Signing in…" : "Sign in"}</button>
-                  <button
-                    onClick={handleRemoteSignOut}
-                    disabled={signingIn || signingOut}
-                    className="text-xs text-muted hover:text-text px-2 py-1 disabled:opacity-50"
-                  >{signingOut ? "Signing out…" : "Sign out"}</button>
-                </div>
               )}
               {!p.readonly && (
                 <>

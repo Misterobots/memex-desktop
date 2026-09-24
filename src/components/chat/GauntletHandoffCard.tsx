@@ -18,7 +18,6 @@ export function GauntletHandoffCard({ handoffId }: { handoffId: string }) {
   const [packet, setPacket] = useState<GauntletHandoff | null>(null);
   const [busy, setBusy] = useState(false);
   const [coordinatorNote, setCoordinatorNote] = useState("");
-  const [requiresSignIn, setRequiresSignIn] = useState(false);
   useEffect(() => { void desktop()?.gauntlet?.get(handoffId).then(setPacket); }, [handoffId]);
 
   const checkCoordinator = useCallback(async (silent = false) => {
@@ -29,7 +28,6 @@ export function GauntletHandoffCard({ handoffId }: { handoffId: string }) {
       return;
     }
     if (!silent) setBusy(true);
-    setRequiresSignIn(false);
     if (!silent) setCoordinatorNote("Refreshing coordinator status…");
     try {
       const base = `${getAgentRuntime()}/v1/tasks/${encodeURIComponent(packet.id)}`;
@@ -39,10 +37,10 @@ export function GauntletHandoffCard({ handoffId }: { handoffId: string }) {
       ]);
       const taskBody = taskResponse.body || "";
       const taskContentType = taskResponse.headers["content-type"] || "";
+      // An HTML document here means the address answered with a web page rather
+      // than the coordinator API; report it as the failed read that it is.
       if (/text\/html/i.test(taskContentType) || /<html[\s>]/i.test(taskBody)) {
-        setRequiresSignIn(true);
-        setCoordinatorNote("Memex Anywhere returned its sign-in page, not a coordinator record. Sign in again, then retry this checkpoint.");
-        return;
+        throw new Error("the runtime returned a page, not a coordinator record");
       }
       if (taskResponse.status === 404) {
         setCoordinatorNote("This runtime has no durable record for the checkpoint. It may predate coordinator persistence or be on another runtime; resume with the preserved brief after the target runtime is upgraded.");
@@ -92,16 +90,6 @@ export function GauntletHandoffCard({ handoffId }: { handoffId: string }) {
 
   if (!packet) return null;
   const resume = () => window.dispatchEvent(new CustomEvent("chat:prefill", { detail: resumeText(packet) }));
-  const signIn = async () => {
-    setBusy(true);
-    try {
-      const complete = await desktop()?.remoteAuth.signIn();
-      setRequiresSignIn(!complete);
-      setCoordinatorNote(complete ? "Sign-in completed. Check coordinator again to read the durable run." : "Sign-in was not completed; the local checkpoint remains preserved.");
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return <section className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/40 pt-2 text-xs text-muted" aria-label="Gauntlet checkpoint">
     <span className="font-medium text-text">Gauntlet</span>
@@ -119,7 +107,6 @@ export function GauntletHandoffCard({ handoffId }: { handoffId: string }) {
       </svg>
     </button>
     {(packet.status === "blocked" || packet.status === "cancelled" || packet.status === "needs_input") && <button onClick={resume} className="text-accent hover:underline">Resume preserved Gauntlet</button>}
-    {requiresSignIn && <button disabled={busy} onClick={() => void signIn()} className="text-accent hover:underline disabled:opacity-50">Sign in to Memex</button>}
     {packet.status === "cancelled" && <button onClick={() => window.dispatchEvent(new CustomEvent("chat:prefill", { detail: "Start fresh: " }))} className="hover:text-text">Start fresh</button>}
     {coordinatorNote && <span className="basis-full text-[11px] text-muted" role="status">{coordinatorNote}</span>}
   </section>;

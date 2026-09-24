@@ -218,9 +218,9 @@ export interface Session {
 }
 
 export interface ConnectionStatus {
-  agentRuntime: "connected" | "disconnected" | "checking" | "sign_in_required";
-  mempalace:    "connected" | "disconnected" | "checking" | "sign_in_required";
-  ollama:       "connected" | "disconnected" | "checking" | "sign_in_required";
+  agentRuntime: "connected" | "disconnected" | "checking";
+  mempalace:    "connected" | "disconnected" | "checking";
+  ollama:       "connected" | "disconnected" | "checking";
 }
 
 export interface DirEntry {
