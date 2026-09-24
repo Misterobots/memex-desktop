@@ -339,26 +339,41 @@ Today it is latent, because `InputBar.tsx:431` always passes a real selection; i
 moment any caller omits one.
 
 **Fix 1, one line, do it first — it makes the rest safe to sequence.** In `handlers/coordinate.py`, treat
-the sentinel as absent:
+the non-model placeholders as absent:
 
 ```python
-selected_model=None if ctx.get("model") == "swarm" else ctx.get("model"),
+_model = (ctx.get("model") or "").strip().lower()
+selected_model=None if _model in ("", "swarm", "default") else _model,
 ```
 
-A Collective then falls through to team-builder/env resolution exactly as it did before the single-binding
-change, instead of binding seven roles to a tag that cannot load. Add a named test for it in
-`tests/test_gauntlet_routing.py`'s style: a coordination request whose `model` is `"swarm"` must not
-produce a snapshot bound to `"swarm"`.
+`"swarm"` is the desktop's legacy sentinel; **`"default"` is `ChatRequest.model`'s pydantic default**
+(`main.py:654` — `model: str = "default"`), and it fails the same way: seven roles bound to a tag that
+cannot load. So the desktop must not "fix" this by omitting `model` either — silence arrives as
+`"default"`, which looks like a choice and is not one. Anything left over falls through to team-builder /
+env resolution exactly as it did before the single-binding change. Add named tests in
+`tests/test_gauntlet_routing.py`'s style for both strings: a coordination request whose `model` is
+`"swarm"` or `"default"` must not produce a snapshot bound to that value.
 
-**Why the sentinel is already redundant for routing, and can therefore be retired rather than renamed.**
-`_routes_to_dev_harness()` exempts a turn when it sees `swarm_mode` **or** `gauntlet_mode` **or**
-`model == "swarm"` **or** the slash prefixes. The desktop sets `swarm_mode: true` on every Collective it
-launches (`MODE_FLAGS.swarm = { swarm_mode, research_mode }`, plus `dev_mode` for the Code workspace), so
-for any current client the `model == "swarm"` clause is never the only thing preventing DevHarness
-preemption. The only case it still carries is a legacy session that sends `model: "swarm"` **without**
-the flags — `memex-desktop/src/lib/__tests__/collective-contract.test.ts:33` pins exactly that shape, so
-it exists in stored data even if no composer path produces it. Keep the clause until the desktop stops
-sending it, then delete it in a separate commit. Do not delete it as part of Fix 1.
+**Why the sentinel is already redundant for routing — verified in this tree, not from the older desktop
+notes.** `main.py:2451-2462`:
+
+```python
+return bool(
+    request.swarm_mode
+    or request.gauntlet_mode
+    or (request.model and request.model.lower() == "swarm")
+    or _last_message_text(request).startswith(("/swarm", "/build", "/plan", "/collective"))
+)
+```
+
+and `_routes_to_dev_harness` (`:2490-2499`) uses `not _swarm_turn(request)` as one of five conditions.
+Every request the desktop produces that carries the sentinel also carries `swarm_mode` —
+`MODE_FLAGS.swarm = { swarm_mode, research_mode }`, and the legacy shape is pinned that way in
+`memex-desktop/src/lib/__tests__/collective-contract.test.ts:33`, which asserts `model: "swarm"`
+**together with** `swarm_mode: true, research_mode: true`. So the `model` clause is not load-bearing for
+this client, and `_swarm_turn`'s third operand also feeds `swarm_mode=` downstream (`main.py:2777`), which
+is the reason it must be retired deliberately rather than incidentally. Keep the clause until the desktop
+stops sending it, then delete it in a separate commit. Do not delete it as part of Fix 1.
 
 **Fix 2 — give the run style a field of its own.** `handlers/coordinate.py:132` reads
 `ctx.get("team_builder_roles", False)` and **nothing in this tree ever sets that key**: `church.py` has
