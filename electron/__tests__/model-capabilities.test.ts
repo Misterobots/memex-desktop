@@ -11,9 +11,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ALL_FEATURES, capabilityCacheKey, COORDINATOR_MIN_CONTEXT_TOKENS, enginesCapabilitiesFor, evaluate,
   evaluateFeature, FEATURE_REQUIREMENTS, fromReport, isUnverifiable, parseLlamaCppProps,
-  parseOllamaCapabilities, probeModelCapabilities, requirementForRoutingRow, toReport, unknownCapabilities,
-  type CapabilityReport, type FeatureRequirement,
+  parseOllamaCapabilities, probeModelCapabilities, requirementForRoutingRow, resolveCapabilities, toReport,
+  unknownCapabilities, type CapabilityReport, type FeatureRequirement, type FeatureVerdict,
 } from "../model-capabilities";
+import { CAPABILITY_TOKENS } from "../routing-config";
 import type { EngineDescriptor } from "../engine-registry";
 
 // ---------------------------------------------------------------------------
@@ -53,6 +54,10 @@ const DEEPSEEK = show("qwen2", ["tools", "thinking", "completion"], 131072);
 const OLLAMA_LANE: EngineDescriptor = { id: "ollama", kind: "ollama", baseUrl: "http://127.0.0.1:11434", label: "Ollama" };
 
 const capsOf = (payload: unknown) => parseOllamaCapabilities(payload);
+
+/** Two of the three verdict members carry a `reason`; reading it through here keeps an
+ * assertion about wording from having to re-narrow the union each time. */
+const reasonOf = (verdict: FeatureVerdict): string => ("reason" in verdict ? verdict.reason : "");
 
 // ---------------------------------------------------------------------------
 
@@ -290,6 +295,116 @@ describe("requirementForRoutingRow — which row checks what", () => {
     for (const key of ["default", "architect", "devops", "analyst", "verifier", "coordinator", "anything-else"]) {
       expect(requirementForRoutingRow(key)).toBe("chat");
     }
+  });
+});
+
+describe("a human assertion about a model the engine would not describe", () => {
+  const reported = (payload: unknown) => toReport(capsOf(payload));
+  /** An older Ollama, a never-observed llama.cpp, a lane that is down: the same shape
+   * every one of them answers with, and the case D2 says the file may settle. */
+  const SILENT: CapabilityReport = {
+    capabilities: [], source: "unknown", contextLength: null,
+    detail: "/api/show reported no capabilities array (older engine, or a model it cannot describe)",
+  };
+
+  it("is used where the engine stayed silent, and the verdict arrives labelled as an assertion", () => {
+    const verdict = evaluateFeature("chat", SILENT, ["completion"]);
+    expect(verdict.ok).toBe(true);
+    expect(isUnverifiable(verdict)).toBe(false);   // the row is no longer a dead end
+    expect(verdict.origin).toBe("asserted");
+    // Nothing to contradict: the engine never answered, so this is the case the field
+    // exists for, and the UI has to say "the file says it can" rather than "it can".
+    expect(verdict.disagreement).toBeNull();
+  });
+
+  it("does not clear the row when the assertion falls short of the requirement, and names itself in the refusal", () => {
+    const verdict = evaluateFeature("code", SILENT, ["completion"]);
+    expect(verdict.ok).toBe(false);
+    // The refusal is where the provenance matters most: read as an engine answer, "this
+    // model reports completion" would be a statement about `/api/show` that was never made.
+    expect(reasonOf(verdict)).toContain("needs tools");
+    expect(reasonOf(verdict)).toContain("the routing entry asserts completion");
+    expect(reasonOf(verdict)).not.toContain("this model reports");
+  });
+
+  it("is outranked by the engine's own answer, so an assertion cannot promote an embedder to a chat model", () => {
+    // nomic-embed-text really is `["embedding"]` with no `completion` (measured, above).
+    // Asserting `completion` on it is allowed and kept; using it is not.
+    const verdict = evaluateFeature("chat", reported(NOMIC), ["completion"]);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.origin).toBe("reported");
+    expect(reasonOf(verdict)).toContain("needs completion");
+    expect(reasonOf(verdict)).toContain("this model reports embedding");
+  });
+
+  it("never lets a refusal disappear silently: the override stands and the engine's report is named", () => {
+    const verdict = evaluateFeature("chat", reported(NOMIC), ["completion"]);
+    expect(verdict.disagreement).not.toBeNull();
+    expect(verdict.disagreement).toContain("completion");
+    // The engine's own words, not a paraphrase of them — this is the sentence a user has
+    // to be able to check against the daemon.
+    expect(verdict.disagreement).toContain("/api/show reported: embedding");
+    expect(verdict.ok).toBe(false);   // …and the refusal is still there beside it
+  });
+
+  it("says nothing about a contradiction that is not one, including a token merely spelled differently", () => {
+    expect(evaluateFeature("chat", reported(QWEN3_14B), ["thinking"]).disagreement).toBeNull();
+    expect(evaluateFeature("code", reported(QWEN3_14B), ["Tools", " tools "]).disagreement).toBeNull();
+    expect(evaluateFeature("code", reported(QWEN3_14B), ["Tools"]).origin).toBe("reported");
+  });
+
+  it("cannot assert a context window into existence, because nothing in the field carries one", () => {
+    // The coordinator's floor is a second, separate fact. An assertion that clears the
+    // capability half must not be read as having settled the window as well.
+    const verdict = evaluateFeature("coordinator", SILENT, ["tools"]);
+    expect(verdict.ok).toBe(true);
+    expect(isUnverifiable(verdict)).toBe(true);
+    expect(reasonOf(verdict)).toContain(String(COORDINATOR_MIN_CONTEXT_TOKENS));
+    expect(reasonOf(verdict)).toContain("cannot verify");
+  });
+
+  it("leaves the verdict exactly where it was when nobody asserted anything", () => {
+    for (const asserted of [null, undefined, [], [""]]) {
+      const verdict = evaluateFeature("chat", SILENT, asserted);
+      expect(verdict.origin).toBe("none");
+      expect(isUnverifiable(verdict)).toBe(true);
+      expect(reasonOf(verdict)).toContain("cannot verify");
+    }
+  });
+
+  it("keeps `source` a statement about the engine after an override, and puts the assertion in its own field", () => {
+    // The temptation this guards against is the one that would make everything else
+    // unreadable: rewriting `source` to "reported" because a human said so.
+    const resolved = resolveCapabilities(SILENT, ["vision"]);
+    expect(resolved.capabilities.source).toBe("unknown");
+    expect([...resolved.capabilities.capabilities]).toEqual(["vision"]);
+    expect(resolved.capabilities.asserted).toEqual(["vision"]);
+    expect(resolved.origin).toBe("asserted");
+    // And the engine's own report, when there is one, is passed through untouched.
+    expect(resolveCapabilities(reported(NOMIC), ["completion"]).capabilities.capabilities).toEqual(new Set(["embedding"]));
+  });
+
+  it("reads an assertion the way it reads an engine list, so a hand-typed token still lands", () => {
+    const resolved = resolveCapabilities(SILENT, [" Tools ", "tools", "", "VISION"]);
+    expect([...resolved.capabilities.capabilities!].sort()).toEqual(["tools", "vision"]);
+  });
+});
+
+describe("the assertion vocabulary matches the engine's", () => {
+  it("lets a user assert exactly the capabilities a requirement can ask for", () => {
+    // The two lists are in different modules to keep `electron/routing-config.ts` free of
+    // a runtime import (see the note on CAPABILITY_TOKENS), so drift is possible and this
+    // is what catches it: a `requires` token outside the assertion vocabulary would be a
+    // capability the app demands and no user could ever declare.
+    for (const requirement of Object.values(FEATURE_REQUIREMENTS)) {
+      for (const capability of requirement.requires) {
+        expect(CAPABILITY_TOKENS, `requires "${capability}" is not assertable`).toContain(capability);
+      }
+    }
+  });
+
+  it("asserts only tokens measured on a live engine, the same list the matrix is held to", () => {
+    expect([...CAPABILITY_TOKENS].sort()).toEqual(["completion", "embedding", "thinking", "tools", "vision"]);
   });
 });
 

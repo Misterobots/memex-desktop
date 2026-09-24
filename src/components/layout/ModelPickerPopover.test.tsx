@@ -433,4 +433,147 @@ describe("ModelPickerPopover", () => {
     await waitFor(() => expect(screen.getByTitle("qwen3:14b — on Ollama")).toBeTruthy());
     expect(document.querySelectorAll("[data-capability]").length).toBe(0);
   });
+
+  // D4's outstanding item: the trigger has to be able to say "no engine offers this
+  // model", and the reason it could not say it before is that it could not tell an empty
+  // catalogue from an unread one. `catalogueState` is the discriminant, so the tests
+  // below are all about the states where the sentence is *not* allowed.
+  const deferred = <T,>() => {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((res) => { resolve = res; });
+    return { promise, resolve };
+  };
+  const absentChip = () => document.querySelector("[data-catalogue='absent']");
+
+  it("says it only once the catalogue is closed, and goes quiet again while a re-read is in flight", async () => {
+    const lane = deferred<EngineModel[]>();
+    useLocalEngines(async () => lane.promise);
+    useRouting(OLLAMA_ONLY("qwen3:14b"));
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    const trigger = await screen.findByRole("button", { name: /qwen3 14b/i });
+
+    // idle: the popover has never been opened, so nobody has asked any engine anything.
+    expect(absentChip()).toBeNull();
+
+    await user.click(trigger);
+    // loading: the list is empty here too, and that is precisely the trap — an
+    // assertion read off `models.length` would be a lie in this state.
+    expect(await screen.findByText("No models available")).toBeTruthy();
+    expect(absentChip()).toBeNull();
+
+    lane.resolve([engineRow(OLLAMA, "nomic-embed-text:latest")]);
+    await waitFor(() => expect(screen.getByTitle("nomic-embed-text:latest — on Ollama")).toBeTruthy());
+    // loaded, and the selected model genuinely is in no lane's list. The sentence names
+    // the slot the table will actually resolve, in the vocabulary config.json uses.
+    await waitFor(() => expect(absentChip()).not.toBeNull());
+    const note = document.querySelector("[data-catalogue='absent-note']");
+    expect(note?.textContent).toContain("No engine lane reports qwen3:14b");
+    expect(note?.textContent).toContain("routing.default resolves to qwen3:14b on Ollama");
+    expect(trigger.title).toContain("No engine lane reports qwen3:14b");
+
+    // Re-open against a lane that is now slow. The component still holds last time's
+    // rows, so only the state can make the claim go quiet — which is what it is for.
+    const slow = deferred<EngineModel[]>();
+    useLocalEngines(async () => slow.promise);
+    await user.click(trigger);
+    await user.click(trigger);
+    await waitFor(() => expect(screen.getAllByTitle("nomic-embed-text:latest — on Ollama").length).toBeGreaterThan(0));
+    expect(absentChip()).toBeNull();
+
+    slow.resolve([engineRow(OLLAMA, "nomic-embed-text:latest")]);
+    await waitFor(() => expect(absentChip()).not.toBeNull());
+  });
+
+  it("says nothing about a model it has just listed", async () => {
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b"), engineRow(OLLAMA, "nomic-embed-text:latest")]);
+    useRouting(OLLAMA_ONLY("qwen3:14b"));
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 14b/i }));
+
+    await waitFor(() => expect(screen.getByTitle("qwen3:14b — on Ollama")).toBeTruthy());
+    expect(absentChip()).toBeNull();
+    expect(document.querySelector("[data-catalogue='absent-note']")).toBeNull();
+  });
+
+  it("matches the tag the way the VRAM rows do, so :latest is not an absence", async () => {
+    // `qwen3:14b` and `qwen3:14b:latest` are the same model on this daemon. Calling the
+    // one the user selected absent because the other is spelled longer would be a false
+    // statement of exactly the kind this label is allowed to make.
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b:latest")]);
+    useRouting(OLLAMA_ONLY("qwen3:14b"));
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 14b/i }));
+
+    await waitFor(() => expect(screen.getByTitle("qwen3:14b:latest — on Ollama")).toBeTruthy());
+    expect(absentChip()).toBeNull();
+  });
+
+  it("stays silent when a lane would not answer, because an incomplete list proves nothing", async () => {
+    // Two lanes, one of them refusing: the rows that did come back are real, and the
+    // selected model's absence from them is not — it may be sitting in the lane that
+    // stayed shut.
+    useLocalEngines(async (engineId) => {
+      if (engineId === LLAMA.id) throw new Error("llama-server is not running");
+      return [engineRow(OLLAMA, "qwen3:14b")];
+    }, [OLLAMA, LLAMA]);
+    useRouting(OLLAMA_ONLY("deepseek-r1:32b"));
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /deepseek-r1 32b/i }));
+
+    await waitFor(() => expect(screen.getByTitle("qwen3:14b — on Ollama")).toBeTruthy());
+    expect(absentChip()).toBeNull();
+  });
+
+  it("applies an asserted capability to the row it was written about, and only to that row", async () => {
+    // routing.default asserts `completion` about qwen3:14b because this lane will not
+    // say; the embedder beside it was never asserted about, so it still reads
+    // "cannot verify". One entry, one claim.
+    useLocalEngines(
+      async () => [engineRow(OLLAMA, "qwen3:14b"), engineRow(OLLAMA, "nomic-embed-text:latest")],
+      [OLLAMA],
+      async () => SILENT,
+    );
+    useRouting({
+      ...OLLAMA_ONLY("qwen3:14b"),
+      routing: { default: { engine: "ollama", model: "qwen3:14b", capabilities: ["completion"] } },
+    });
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 14b/i }));
+
+    await waitFor(() => expect(document.querySelectorAll("[data-capability='asserted']")).toHaveLength(1));
+    const line = document.querySelector("[data-capability='asserted']");
+    expect(line?.textContent).toContain("routing.default.capabilities");
+    expect(line?.textContent).toContain("your assertion, not Ollama's answer");
+    // The claim sits on the row it was written about and on no other: the embedder
+    // beside it is still an unknown, because nobody asserted anything about it.
+    const assertedRow = screen.getByTitle("qwen3:14b — on Ollama");
+    const otherRow = screen.getByTitle("nomic-embed-text:latest — on Ollama");
+    expect(assertedRow.querySelector("[data-capability='asserted']")).not.toBeNull();
+    expect(assertedRow.querySelector("[data-capability='unknown']")).toBeNull();
+    expect(otherRow.querySelector("[data-capability='unknown']")).not.toBeNull();
+    expect(otherRow.querySelector("[data-capability='asserted']")).toBeNull();
+    expect(document.querySelectorAll("[data-capability='missing']")).toHaveLength(0);
+  });
+
+  it("stays silent on a provider whose list could not be read, which is not an empty list", async () => {
+    // The shared fixture's external profile with `apiFetch` rejecting for every URL: the
+    // row that appears is an error row, and `models` is as empty as an unasked catalogue.
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 8b/i }));
+
+    await waitFor(() => expect(screen.getByText("Fetch Error: fetch failed")).toBeTruthy());
+    expect(absentChip()).toBeNull();
+    expect(document.querySelector("[data-catalogue='absent-note']")).toBeNull();
+  });
 });

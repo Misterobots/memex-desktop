@@ -641,4 +641,105 @@ describe("SetupWizard step 1 — assignments", () => {
     await modelPick("Coder");   // the step is up and its rows are filled
     expect(document.querySelectorAll("[data-capability]").length).toBe(0);
   });
+
+  // D2's last sentence, landed: where the engine cannot say, the capability is a
+  // user-editable field on the routing entry. These three are the whole contract that
+  // makes the field safe — it is used only in the engine's absence, it never outranks an
+  // answer, and a contradiction is shown rather than swallowed.
+  /** One lane, and the Coder row written by hand. `code` rather than `default`, because
+   * setup replaces `default` and carries hand-written slots through untouched. */
+  const storedWithCoder = (model: string, capabilities?: string[]): RoutingConfig => ({
+    runStyle: "multi",
+    engines: { ollama: { kind: "ollama", baseUrl: "http://[::1]:11434", label: "Ollama" } },
+    routing: {
+      default: { engine: "ollama", model: "qwen3:14b" },
+      code: { engine: "ollama", model, ...(capabilities ? { capabilities } : {}) },
+    },
+  });
+  const SILENT_ANYWAY = async (): Promise<CapabilityReport> => ({
+    capabilities: [], source: "unknown", contextLength: null,
+    detail: "/api/show reported no capabilities array (older engine, or a model it cannot describe)",
+  });
+
+  it("writes an asserted capability into the routing entry, so a silent engine stops being the last word", async () => {
+    // No `capabilities` on the bridge at all: nothing can be asked, and every row reads
+    // "cannot verify" with nothing the user can do about it. That is the state this
+    // control exists to end.
+    const { written } = mount({ scanned: TWO_LANES(), catalogue: { ollama: THREE_MODELS, "llama.cpp": [] } });
+    render(<SetupWizard onComplete={vi.fn()} />);
+    const user = await assign("multi");
+
+    const toggle = await screen.findByRole("button", { name: "Embeddings capability embedding" });
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    await user.click(toggle);
+
+    await waitFor(() => expect(written.length).toBe(2));
+    expect(written[1].routing.embedding).toEqual({ engine: "ollama", model: "qwen3:14b", capabilities: ["embedding"] });
+    // It is a valid write: the assertion goes through the same validator as every other
+    // field, so config.json holds exactly what the click means.
+    expect(validateRouting(written[1])).toEqual([]);
+    expect((await modelPick("Embeddings")).value).toBe("qwen3:14b");   // the row kept its model
+    // The row reads back what the write returned, so the control is on the file's state
+    // rather than on a click it just handled.
+    expect((await screen.findByRole("button", { name: "Embeddings capability embedding" })).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("says a check came from the routing file when the engine never answered, not from the engine", async () => {
+    mount({
+      scanned: TWO_LANES(),
+      stored: storedWithCoder("qwen3:14b", ["tools"]),
+      catalogue: { ollama: THREE_MODELS, "llama.cpp": [] },
+      capabilities: SILENT_ANYWAY,
+    });
+    render(<SetupWizard onComplete={vi.fn()} />);
+    await assign("multi");
+
+    const node = await waitFor(() => {
+      const found = document.querySelector("p[data-capability='asserted']");
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    // "The file says it can" and "the engine says it can" are different claims, so the
+    // row says which one it is standing on, names the field, and quotes the engine's
+    // silence as the reason.
+    expect(node.textContent).toContain("routing.code.capabilities");
+    expect(node.textContent).toContain("your assertion, not the engine's answer");
+    expect(node.textContent).toContain("/api/show reported no capabilities array");
+    // The assertion cleared the dead end on its own row and nowhere else: a row it does
+    // not reach still says it cannot verify, rather than inheriting someone else's claim.
+    expect(node.textContent).not.toContain("cannot verify — the engine did not answer");
+    expect(screen.getAllByText(/cannot verify/).length).toBeGreaterThan(1);
+    expect((await screen.findByRole("button", { name: "Coder capability tools" })).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("keeps the engine's refusal standing beside a contradicting assertion, and names the engine's report", async () => {
+    mount({
+      scanned: TWO_LANES(),
+      // nomic-embed-text is `["embedding"]` with no `tools`, measured. Asserting `tools`
+      // on it is allowed and stays written; believing it is not.
+      stored: storedWithCoder("nomic-embed-text:latest", ["tools"]),
+      catalogue: { ollama: THREE_MODELS, "llama.cpp": [] },
+      capabilities: measured,
+    });
+    render(<SetupWizard onComplete={vi.fn()} />);
+    await assign("multi");
+
+    // The refusal is still there — the override did not make it disappear.
+    const refusal = await waitFor(() => {
+      const found = [...document.querySelectorAll("p[data-capability='missing']")]
+        .find((node) => node.textContent?.includes("Code / DevHarness"));
+      expect(found).not.toBeUndefined();
+      return found as HTMLElement;
+    });
+    expect(refusal.textContent).toContain("needs tools");
+    expect(refusal.textContent).toContain("this model reports embedding");
+
+    // …and beside it, the contradiction, in the engine's own words, with the user's entry
+    // left as they wrote it.
+    const notice = screen.getByText(/the engine's own answer is different/);
+    expect(notice.textContent).toContain("the routing entry asserts tools");
+    expect(notice.textContent).toContain("/api/show reported: embedding");
+    expect(notice.getAttribute("data-capability")).toBe("disagreement");
+    expect((await screen.findByRole("button", { name: "Coder capability tools" })).getAttribute("aria-pressed")).toBe("true");
+  });
 });

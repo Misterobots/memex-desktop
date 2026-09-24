@@ -70,6 +70,14 @@ export interface ModelCapabilities {
   contextLength?: number;
   /** Why the source is what it is, so the UI can say it rather than paraphrase. */
   detail: string;
+  /** A human assertion from `routing.<slot>.capabilities`, present only on a value
+   * produced by `resolveCapabilities` and never on one parsed from an engine. It is not
+   * a third `source`: `source` keeps reporting what the **engine** did, and an engine
+   * that stayed silent is still `unknown` after somebody asserted something. What it
+   * carries is the provenance a refusal has to name — "the routing entry asserts
+   * vision" and "this model reports vision" are different claims, and only one of them is
+   * checkable against `/api/show`. */
+  asserted?: string[];
 }
 
 /** The wire form of `ModelCapabilities`: the same facts, JSON-safe. */
@@ -331,10 +339,92 @@ function reported(caps: ModelCapabilities): string {
   return caps.capabilities.size ? [...caps.capabilities].sort().join(", ") : "no capabilities at all";
 }
 
+/** The subject of the clause that names a capability set in a refusal. Two kinds of
+ * claim, and the sentence has to carry which one it is: an engine answer can be checked
+ * by re-asking the engine, a human assertion can only be checked by looking at the
+ * routing file. `reported()` above is the verb half; this is the noun half. */
+const ENGINE_SUBJECT = "this model reports";
+const ASSERTION_SUBJECT = "the routing entry asserts";
+
+function subjectOf(caps: ModelCapabilities): string {
+  return caps.source === "reported" || !caps.asserted?.length ? ENGINE_SUBJECT : ASSERTION_SUBJECT;
+}
+
+/** Which of the two possible inputs a verdict was computed from.
+ *
+ * `"reported"` — the engine answered, so this row's claim is checkable by asking again.
+ * `"asserted"` — the engine did not answer and a human did; the claim is in the file.
+ * `"none"` — neither, which is the "cannot verify" row D4 established and the case the
+ * override exists to get out of. */
+export type CapabilityOrigin = "reported" | "asserted" | "none";
+
+export interface ResolvedCapabilities {
+  /** The one set every check is computed from. */
+  capabilities: ModelCapabilities;
+  origin: CapabilityOrigin;
+  /** A human asserted what the engine's own answer contradicts. Non-null only in that
+   * case, and always naming the engine's report, because "the file says it can" and "the
+   * engine says it can" are different claims and the reader has to be able to tell them
+   * apart. The assertion is *not* voided by this — see `evaluateFeature`. */
+  disagreement: string | null;
+}
+
+/** Weigh an engine answer against a routing assertion.
+ *
+ * The rule is one line and it is the whole point: **an engine answer outranks a human
+ * assertion**, so `capabilities` is the engine's whenever the engine answered, and the
+ * asserted list is used only where the engine is silent. That ordering is what keeps the
+ * override from becoming a guess dressed as a fact — a user who asserts `completion`
+ * about an embedding-only model does not get to make the model a chat model, they get a
+ * notice that says the engine disagrees, in the engine's own words, and their entry is
+ * left exactly as they wrote it. People are allowed to be right about their own hardware;
+ * they are not allowed to be quietly wrong.
+ *
+ * `asserted` is normalised the same way an engine's list is (trimmed, lower-cased) so a
+ * hand-typed `"Tools"` matches a reported `tools` instead of looking like a contradiction.
+ * A context window is deliberately not overridable: nothing in `RouteTarget` claims one,
+ * so a context floor still answers "cannot verify" whatever the user asserted.
+ */
+export function resolveCapabilities(
+  report: CapabilityReport | null | undefined,
+  asserted?: readonly string[] | null,
+): ResolvedCapabilities {
+  const tokens = [...new Set((Array.isArray(asserted) ? asserted : [])
+    .filter((token): token is string => typeof token === "string")
+    .map((token) => token.trim().toLowerCase())
+    .filter(Boolean))];
+  const fromEngine = report?.source === "reported" ? fromReport(report) : null;
+
+  if (fromEngine) {
+    const contradicted = tokens.filter((token) => !fromEngine.capabilities.has(token));
+    return {
+      capabilities: fromEngine,
+      origin: "reported",
+      disagreement: contradicted.length
+        ? `${ASSERTION_SUBJECT} ${contradicted.join(", ")}; the engine's own answer is different — ${report?.detail || "no capability list"}`
+        : null,
+    };
+  }
+
+  if (tokens.length) {
+    // `source` stays `unknown` — the engine really did not answer, and that is a fact
+    // worth keeping after the override. What changes is that there is now something to
+    // check a requirement against, and `asserted` is what makes `evaluate` say so.
+    const silent = fromReport(report);
+    return {
+      capabilities: { ...silent, capabilities: new Set(tokens), asserted: tokens },
+      origin: "asserted",
+      disagreement: null,
+    };
+  }
+
+  return { capabilities: fromReport(report), origin: "none", disagreement: null };
+}
+
 /** The one place a limitation becomes a sentence. Returns a pass, a refusal, or a
  * pass-that-says-it-is-unverified; it never invents the third. */
 export function evaluate(requirement: FeatureRequirement, caps: ModelCapabilities): Evaluation {
-  if (caps.source === "unknown") {
+  if (caps.source === "unknown" && !caps.asserted?.length) {
     return {
       ok: true,
       unverifiable: true,
@@ -349,7 +439,7 @@ export function evaluate(requirement: FeatureRequirement, caps: ModelCapabilitie
       // The capability token is quoted, not paraphrased: "needs a model that can
       // complete instructions" is prose a reader cannot check against the engine, while
       // `needs completion` is the exact field that was absent. Both halves, always.
-      reason: `${requirement.label} ${requirement.refusal} — needs ${missing.join(", ")}; this model reports ${reported(caps)}`,
+      reason: `${requirement.label} ${requirement.refusal} — needs ${missing.join(", ")}; ${subjectOf(caps)} ${reported(caps)}`,
     };
   }
 
@@ -380,9 +470,43 @@ export function evaluate(requirement: FeatureRequirement, caps: ModelCapabilitie
   return { ok: true };
 }
 
-/** Renderer-facing convenience: requirement id + wire report → verdict. */
-export function evaluateFeature(feature: FeatureId, report: CapabilityReport | null | undefined): Evaluation {
-  return evaluate(FEATURE_REQUIREMENTS[feature], fromReport(report));
+/** A verdict plus the two things the UI has to say about it that `evaluate` cannot:
+ * which input produced it, and whether a human is currently contradicting an engine.
+ *
+ * Spelled as three members rather than `Evaluation & {…}` so that narrowing keeps
+ * working at the call sites — `isUnverifiable` and `!verdict.ok` both rely on the
+ * discriminant, and an intersection of a union would leave `reason` unresolvable. */
+export type FeatureVerdict =
+  | { ok: true; origin: CapabilityOrigin; disagreement: string | null }
+  | { ok: true; unverifiable: true; reason: string; origin: CapabilityOrigin; disagreement: string | null }
+  | { ok: false; reason: string; origin: CapabilityOrigin; disagreement: string | null };
+
+/** Renderer-facing convenience: requirement id + wire report (+ the routing entry's
+ * assertion) → verdict.
+ *
+ * `asserted` is `RouteTarget.capabilities` — what a human wrote in config.json because
+ * the engine would not say. It reaches the check through `resolveCapabilities`, so the
+ * ordering is not a caller's choice: the engine's answer is used when there is one, and
+ * then `origin` is `"reported"` and the assertion is only ever a `disagreement` to be
+ * shown. **An override never makes a refusal disappear silently** — it clears a
+ * "cannot verify" on its own, and where the engine contradicts it, the refusal stands and
+ * the sentence names the engine's report. */
+export function evaluateFeature(
+  feature: FeatureId,
+  report: CapabilityReport | null | undefined,
+  asserted?: readonly string[] | null,
+): FeatureVerdict {
+  const resolved = resolveCapabilities(report, asserted);
+  const caps = resolved.capabilities;
+  const extra = { origin: resolved.origin, disagreement: resolved.disagreement };
+  const verdict = evaluate(FEATURE_REQUIREMENTS[feature], caps);
+  // Each member rebuilt on its own rather than one spread of a union: TS will not
+  // distribute a spread over `Evaluation`, and the union above is what the call sites
+  // narrow on.
+  if (!verdict.ok) return { ok: false, reason: verdict.reason, ...extra };
+  return "unverifiable" in verdict
+    ? { ok: true, unverifiable: true, reason: verdict.reason, ...extra }
+    : { ok: true, ...extra };
 }
 
 // ---------------------------------------------------------------------------

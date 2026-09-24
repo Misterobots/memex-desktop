@@ -16,7 +16,10 @@
  *     "code":                   { "engine": "ollama-local", "model": "qwen3.8:27b" },
  *     "collective.coordinator": { "engine": "ollama-local", "model": "qwen3.8:27b" },
  *     "collective.critic":      { "engine": "ollama-local", "model": "qwen3:14b" },
- *     "embedding":              { "engine": "ollama-local", "model": "nomic-embed-text:latest" }
+ *     "embedding":              { "engine": "ollama-local", "model": "nomic-embed-text:latest",
+ *                                 "capabilities": ["embedding"] }   // D4: a human assertion,
+ *                                                                   // read only where the
+ *                                                                   // engine stayed silent
  *   }
  * }
  * ```
@@ -54,10 +57,36 @@ export interface EngineConfig {
   pinnedModel?: string;
 }
 
+/** The capability tokens a routing entry is allowed to assert.
+ *
+ * These are the engine's own spellings, transcribed from the `/api/show` responses
+ * measured in `model-capabilities.ts` (`completion`, `tools`, `thinking` on qwen3:14b;
+ * `embedding` on nomic-embed-text; `vision` on minicpm-v) — they are not a vocabulary
+ * this module invented, and an assertion written in a different spelling could never be
+ * read back against an engine answer. The describe block "the assertion vocabulary matches
+ * the engine's" in `electron/__tests__/model-capabilities.test.ts` fails if the two lists
+ * ever drift.
+ *
+ * The list lives *here* rather than beside the requirements for one structural reason:
+ * `model-capabilities.ts` imports `engine-registry.ts`, which imports this module at
+ * runtime, so a value import the other way would close a cycle through three main
+ * modules. `validateRouting` is the only consumer, and it is the grammar of a
+ * hand-edited file, which is this module's job. */
+export const CAPABILITY_TOKENS: readonly string[] = ["completion", "tools", "vision", "embedding", "thinking"];
+
 /** What a slot sends: one engine's id plus the model to ask that engine for. */
 export interface RouteTarget {
   engine: string;
   model: string;
+  /** D4's open item, and the last sentence of D2: *where the engine cannot say, the
+   * capability is a user-editable field in the routing entry — never a guess baked into
+   * `src/`.* A human asserting what their own hardware does is the only way an older
+   * Ollama, a never-observed llama.cpp, or a lane that is down can stop answering
+   * "cannot verify" forever. It is an assertion about the pair above, not about the
+   * slot, and `model-capabilities.ts` reads it **only** when the engine stayed silent —
+   * an engine answer outranks it. Absent means "nobody asserted anything", which is not
+   * the same claim as an empty array. */
+  capabilities?: string[];
 }
 
 /** The routing block: `runStyle`, `engines` and `routing`, the three keys
@@ -289,6 +318,33 @@ export function validateRouting(candidate: unknown): RoutingIssue[] {
     }
     if (!text(rawTarget.model)) {
       issues.push({ path: `${path}.model`, message: `slot ${slot} names no model` });
+    }
+    // The D4 override. Judged by the same rule as every other field in a hand-edited
+    // file: each problem gets its own path, so `capabilities[3]` names the token that is
+    // wrong instead of the whole entry being discarded for it. A token this build does
+    // not know is *refused*, not dropped — silently removing one would leave the user
+    // looking at an entry that still says what they typed while the app reads something
+    // narrower.
+    const asserted = rawTarget.capabilities;
+    if (asserted !== undefined) {
+      if (!Array.isArray(asserted)) {
+        issues.push({
+          path: `${path}.capabilities`,
+          message: `expected an array of capability tokens (${CAPABILITY_TOKENS.join(", ")}), found ${describe(asserted)}`,
+        });
+      } else {
+        asserted.forEach((token, index) => {
+          const itemPath = `${path}.capabilities[${index}]`;
+          if (typeof token !== "string") {
+            issues.push({ path: itemPath, message: `expected a capability token string, found ${describe(token)}` });
+          } else if (!CAPABILITY_TOKENS.includes(token.trim().toLowerCase())) {
+            issues.push({
+              path: itemPath,
+              message: `${describe(token)} is not a recognised capability — this build can assert ${CAPABILITY_TOKENS.join(", ")}`,
+            });
+          }
+        });
+      }
     }
   }
 
@@ -533,7 +589,13 @@ export function deriveRoutingFromSetup(input: SetupRoutingInput): RoutingConfig 
   const engine = idOf.get(chosenEngine) ?? chosenEngine;
   const model = text(input.selection?.model);
   if (engine && model && engine in engines) {
-    routing[DEFAULT_SLOT] = { engine, model };
+    // A human assertion about this exact pair survives re-running setup. The wizard
+    // replaces `default` and carries every other slot untouched, so an entry that comes
+    // back with the same engine and the same model must not come back having lost the
+    // claim its owner wrote — the assertion is about the pair, and the pair did not move.
+    const prior = existing?.routing?.[DEFAULT_SLOT];
+    const carried = prior?.engine === engine && prior.model === model ? prior.capabilities : undefined;
+    routing[DEFAULT_SLOT] = carried?.length ? { engine, model, capabilities: [...carried] } : { engine, model };
     if (input.runStyle === "single") engines[engine] = { ...engines[engine], pinnedModel: model };
   }
 

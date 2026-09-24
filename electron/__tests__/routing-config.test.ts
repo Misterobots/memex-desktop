@@ -185,6 +185,96 @@ describe("validating a hand-edited table", () => {
   });
 });
 
+describe("asserting a capability the engine would not confirm", () => {
+  /** One slot's entry, rewritten. */
+  const withCapabilities = (capabilities: unknown) => ({
+    ...D2,
+    routing: { ...D2.routing, embedding: { engine: "ollama-local", model: "nomic-embed-text:latest", capabilities } },
+  });
+
+  it("accepts the tokens the engine itself uses, so the file can say what /api/show refused to", () => {
+    // D2's last sentence: where the engine cannot tell you, the capability is a
+    // user-editable field in the routing entry. A well-formed assertion must validate
+    // clean, or the wizard's own write would be refused by the module that judges it.
+    expect(validateRouting(withCapabilities(["embedding"]))).toEqual([]);
+    expect(validateRouting(withCapabilities(["completion", "tools", "vision", "embedding", "thinking"]))).toEqual([]);
+    // An explicit empty list is "nobody claimed anything", not a malformed claim.
+    expect(validateRouting(withCapabilities([]))).toEqual([]);
+  });
+
+  it("reports an unrecognised token by its own path, so the bad one is findable without rereading the file", () => {
+    // Index in the path is the point: `routing.embedding.capabilities` would send the
+    // user back through the whole list to find the one typo in it.
+    const issues = validateRouting(withCapabilities(["completion", "tools", "vision", "struct-output"]));
+    expect(paths(issues)).toEqual(["routing.embedding.capabilities[3]"]);
+    expect(issues[0].message).toContain("not a recognised capability");
+    expect(issues[0].message).toContain("struct-output");
+  });
+
+  it("names every bad element in one pass, and keeps the good ones out of it", () => {
+    const issues = validateRouting(withCapabilities(["completion", 4096, "tools", true]));
+    expect(paths(issues)).toEqual(["routing.embedding.capabilities[1]", "routing.embedding.capabilities[3]"]);
+    expect(issues[0].message).toContain("expected a capability token string");
+    expect(issues[1].message).toContain("expected a capability token string");
+  });
+
+  it("refuses a non-array rather than reading a scalar as one capability, or nothing as zero", () => {
+    // `"tools"` is the shape a hand-editor reaches for when they think the field is a
+    // label. Accepted as one token it would silently narrow an entry that looked like a
+    // list; dropped, it would silently widen it. Both are reports, not repairs.
+    expect(paths(validateRouting(withCapabilities("tools")))).toEqual(["routing.embedding.capabilities"]);
+    expect(paths(validateRouting(withCapabilities({ any: ["tools"] })))).toEqual(["routing.embedding.capabilities"]);
+    expect(paths(validateRouting(withCapabilities(null)))).toEqual(["routing.embedding.capabilities"]);
+  });
+
+  it("refuses a whole-entry mistake and the capability mistakes in the same pass", () => {
+    const candidate = {
+      ...D2,
+      routing: {
+        ...D2.routing,
+        code: { engine: "ollama-local", model: "", capabilities: ["tools", "coding"] },
+        embedding: { engine: "ollama-local", model: "nomic-embed-text:latest", capabilities: "embedding" },
+      },
+    };
+    expect(paths(validateRouting(candidate))).toEqual([
+      // Inside one entry the field order is the file's own: engine, model, capabilities.
+      "routing.code.model", "routing.code.capabilities[1]", "routing.embedding.capabilities",
+    ]);
+  });
+
+  it("leaves an entry that never mentions capabilities exactly as free of problems as it was", () => {
+    // Absent is not empty: the override must not turn a plain entry into a claim.
+    expect(validateRouting(D2)).toEqual([]);
+    expect(resolveRoute(D2, "embedding").target).not.toHaveProperty("capabilities");
+  });
+
+  it("survives re-running guided setup on the same model, which is the only write that replaces this entry", () => {
+    // `deriveRoutingFromSetup` carries hand-written slots through untouched and rewrites
+    // `default` — so an assertion made about the model setup is about to confirm again
+    // would be discarded by the wizard that changed nothing about it.
+    const existing: RoutingConfig = {
+      ...D2,
+      routing: { ...D2.routing, [DEFAULT_SLOT]: { engine: "ollama-local", model: "qwen3:14b", capabilities: ["tools"] } },
+    };
+    const same = deriveRoutingFromSetup({
+      runStyle: "multi",
+      engines: { "ollama-local": { kind: "ollama", baseUrl: "http://[::1]:11434" } },
+      selection: { engine: "ollama-local", model: "qwen3:14b" },
+      existing,
+    });
+    expect(same.routing[DEFAULT_SLOT]).toEqual({ engine: "ollama-local", model: "qwen3:14b", capabilities: ["tools"] });
+
+    // A different model is a different claim, and the old one does not travel to it.
+    const moved = deriveRoutingFromSetup({
+      runStyle: "multi",
+      engines: { "ollama-local": { kind: "ollama", baseUrl: "http://[::1]:11434" } },
+      selection: { engine: "ollama-local", model: "qwen3.8:27b" },
+      existing,
+    });
+    expect(moved.routing[DEFAULT_SLOT]).toEqual({ engine: "ollama-local", model: "qwen3.8:27b" });
+  });
+});
+
 describe("flattening onto the run style", () => {
   it("multi leaves the table exactly as written — same reference, nothing rewritten", () => {
     const result = flattenForRunStyle(D2);

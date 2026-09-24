@@ -27,15 +27,15 @@ import type {
   CapabilityReport, EngineDiscovery, LocalLlmInspection, RoutingConfig, RoutingIssue, RunStyle, RuntimeProfile,
 } from "../../lib/desktop";
 import {
-  DEFAULT_ENGINE_IDS, DEFAULT_SLOT, ROUTING_ROWS, deriveRoutingFromSetup, pinnedTarget,
-  proposeRunStyle, roleTarget, type EngineConfig, type RoutingRow, type RouteTarget,
+  CAPABILITY_TOKENS, DEFAULT_ENGINE_IDS, DEFAULT_SLOT, ROUTING_ROWS, deriveRoutingFromSetup, pinnedTarget,
+  proposeRunStyle, resolveRoute, roleTarget, type EngineConfig, type RoutingRow, type RouteTarget,
 } from "../../../electron/routing-config";
 // D4's matrix, imported rather than restated: a role row that carried its own idea of
 // what a coder needs would be a second source of truth about a model, which is the
 // thing this slice exists to remove.
 import {
   capabilityCacheKey, evaluateFeature, FEATURE_REQUIREMENTS, isUnverifiable, requirementForRoutingRow,
-  type Evaluation,
+  type FeatureVerdict,
 } from "../../../electron/model-capabilities";
 
 // ---------------------------------------------------------------------------
@@ -184,18 +184,49 @@ function AssignRow({
   // deliverable, exactly as `unreported` above states a catalogue miss without refusing
   // it (D3a-2's rule).
   const feature = requirementForRoutingRow(row.key);
-  const verdictFor = (model: string | null): Evaluation | null => {
+  // D2's last sentence made editable: what the engine refused to say about this row's
+  // model can be asserted in the file instead of guessed in `src/`. Read from
+  // `resolveRoute` rather than widened onto `roleTarget`, because the assertion belongs
+  // to the entry that *answered* — a row falling back to `default` inherits `default`'s
+  // assertion, and no other slot's.
+  const asserted = resolveRoute(table, row.key).target?.capabilities ?? null;
+  const assignedReport = at.engine && at.model
+    ? capabilityReports[capabilityCacheKey(at.engine, at.model)] ?? null
+    : null;
+  const verdictFor = (model: string | null, isRowsOwnModel: boolean): FeatureVerdict | null => {
     if (!model || !at.engine) return null;
-    const report = capabilityReports[capabilityCacheKey(at.engine, model)];
-    return report ? evaluateFeature(feature, report) : null;
+    const report = capabilityReports[capabilityCacheKey(at.engine, model)] ?? null;
+    // An assertion is about the model the row actually names, so a candidate still being
+    // weighed in the select must not inherit a claim made about the current pick.
+    const own = isRowsOwnModel ? asserted : null;
+    // Nothing reported and nothing asserted is "never asked", which stays unmarked —
+    // exactly as before. An assertion alone is enough to check against, and is then
+    // labelled as one rather than as the engine's answer.
+    if (!report && !own?.length) return null;
+    return evaluateFeature(feature, report, own);
   };
-  const assigned = verdictFor(at.model);
+  const assigned = verdictFor(at.model, true);
   const incapable = assigned && !assigned.ok ? assigned.reason : "";
   const unverifiable = assigned && isUnverifiable(assigned) ? assigned.reason : "";
+  /** Said when the verdict came from the file rather than the engine, and only when the
+   * file carried the check outright: a refusal already names its own source, so this
+   * would only repeat it. "The file says it can" and "the engine says it can" are
+   * different claims, and a row that did not say which it was resting on is the guess
+   * this whole layer exists to make impossible. */
+  const assertedFrom = assigned?.origin === "asserted" && !incapable && !unverifiable && asserted?.length
+    ? `${FEATURE_REQUIREMENTS[feature].label} is checked against routing.${at.via}.capabilities `
+      + `(${[...asserted].map((token) => token.trim().toLowerCase()).sort().join(", ")}) — your assertion, not the engine's answer, `
+      + `because ${assignedReport?.detail || "this build never asked the engine"}. Not assumed either way.`
+    : "";
+  /** Said when a human asserted what the engine's own report contradicts. The refusal
+   * above is still shown — the engine outranks the assertion — and the entry is left as
+   * written, because being wrong about your own hardware is allowed; being quietly wrong
+   * is not. */
+  const disagreement = assigned?.disagreement ?? "";
   /** Compact, and read out of the table — the row's own requirement, never a guess
    * about the model. The full sentence appears under the select once it is chosen. */
   const optionHint = (model: string): string => {
-    const verdict = verdictFor(model);
+    const verdict = verdictFor(model, model === at.model);
     if (!verdict) return "";
     if (!verdict.ok) return ` — needs ${FEATURE_REQUIREMENTS[feature].requires.join(" + ")}`;
     return isUnverifiable(verdict) ? " — cannot verify" : "";
@@ -269,6 +300,52 @@ function AssignRow({
         <p className="text-[11px] text-muted" data-capability="unknown">
           {at.model}: {unverifiable}. Not assumed either way.
         </p>
+      )}
+      {assertedFrom && (
+        <p className="text-[11px] text-muted" data-capability="asserted">
+          {at.model}: {assertedFrom}
+        </p>
+      )}
+      {disagreement && (
+        <p className="text-[11px] text-yellow" data-capability="disagreement">
+          {at.model}: {disagreement}. The engine's answer is what this row was checked
+          against, and your entry is left as you wrote it.
+        </p>
+      )}
+      {at.model && at.engine && (
+        // The assertion, editable. Five tokens the engines have actually been observed to
+        // emit, so a click cannot write a spelling nothing will ever report — and an
+        // unknown token typed into config.json is refused by `validateRouting` with its
+        // own path rather than dropped.
+        <div className="flex flex-wrap items-center gap-1 pt-0.5">
+          <span className="text-[10px] font-mono text-faint">routing.{row.key}.capabilities</span>
+          {CAPABILITY_TOKENS.map((token) => {
+            const on = asserted?.some((entry) => entry.trim().toLowerCase() === token) ?? false;
+            // Built from the stored list, so a hand-written token this build does not
+            // recognise survives a click on a different one instead of vanishing.
+            const next = on
+              ? (asserted ?? []).filter((entry) => entry.trim().toLowerCase() !== token)
+              : [...(asserted ?? []), token];
+            return (
+              <button
+                key={token}
+                type="button"
+                aria-pressed={on}
+                aria-label={`${row.label} capability ${token}`}
+                disabled={busy}
+                title={`Assert "${token}" in config.json. Read only while the engine stays silent — where ${at.engine} has answered, its answer outranks this.`}
+                onClick={() => onAssign(row.key, {
+                  engine: at.engine!, model: at.model!, ...(next.length ? { capabilities: next } : {}),
+                })}
+                className={`px-1.5 py-0.5 rounded border text-[10px] font-mono transition-colors disabled:opacity-50
+                  ${on ? "bg-accent/15 border-accent/40 text-text" : "bg-canvas border-border/60 text-muted hover:text-text"}`}
+              >
+                {token}
+              </button>
+            );
+          })}
+          <span className="text-[10px] text-faint">used only where the engine is silent</span>
+        </div>
       )}
       {reported?.length === 0 && (
         <p className="text-[11px] text-muted">{at.engine} reported no models; nothing here can be confirmed against it.</p>
@@ -475,7 +552,14 @@ export function SetupWizard({ onComplete }: Props) {
 
   /** One row's assignment. Only that key is replaced, so hand-written slots outside
    * the presented rows — `collective.critic` above all, which has no row — survive a
-   * role write untouched. */
+   * role write untouched.
+   *
+   * A select's target carries no `capabilities`, so moving a row to a different model
+   * drops whatever was asserted about the old one. That is deliberate and it is not
+   * silent: an assertion is about a model, and carrying it across would attribute to the
+   * new model a claim nobody made about it — the guess this field exists to avoid. The
+   * row goes back to asking the engine, and says "cannot verify" if the engine is still
+   * quiet, which is the state the user can then re-assert against. */
   const assignRow = (rowKey: string, target: RouteTarget) => {
     if (!storedRouting) return;
     void writeTable({ ...storedRouting, routing: { ...storedRouting.routing, [rowKey]: target } });

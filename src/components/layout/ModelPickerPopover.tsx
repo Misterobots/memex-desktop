@@ -48,6 +48,29 @@ type CatalogModel = {
   engineLabel?: string;
 };
 
+/** How much the picker actually knows about the model list it is holding.
+ *
+ * The reason this exists is that `models: []` on its own is ambiguous: it is what an
+ * empty catalogue looks like *and* what "nobody has asked yet" looks like *and* what
+ * "we asked and the lane would not answer" looks like. Rendering "no engine offers this
+ * model" from any of the last two would be a new false statement of exactly the class
+ * D4 was written to stop, so every claim that depends on absence reads this instead of
+ * the array's length.
+ *
+ * `idle` nothing has been asked (the popover has never been opened);
+ * `loading` an ask is in flight;
+ * `loaded` every lane that was asked answered, so absence from the list is a fact;
+ * `failed` at least one ask did not answer, so absence proves nothing.
+ *
+ * `failed` on a partly answered list is deliberate: one engine refusing to answer makes
+ * the catalogue incomplete, and an incomplete catalogue may not be read as a closed one.
+ */
+type CatalogueState = "idle" | "loading" | "loaded" | "failed";
+
+/** What was asked to produce the rows — the sentence naming an absence has to name its
+ * source, and a provider's model list is not an engine's. */
+type CatalogueSource = "engines" | "provider";
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -56,6 +79,12 @@ export function ModelPickerPopover() {
 
   const [open,   setOpen]   = useState(false);
   const [models, setModels] = useState<CatalogModel[]>([]);
+  /** D4's prerequisite: whether `models` may be read as a closed list at all. Set on
+   * every path that writes `models`, and nowhere else. */
+  const [catalogueState, setCatalogueState] = useState<CatalogueState>("idle");
+  /** Which kind of source answered for the current rows, so an absence can be phrased
+   * about the thing that was actually asked. */
+  const [catalogueFrom, setCatalogueFrom] = useState<CatalogueSource | null>(null);
   const [canSelectModels, setCanSelectModels] = useState(false);
   const [accessResolved, setAccessResolved] = useState(false);
   const [query,  setQuery]  = useState("");
@@ -208,12 +237,19 @@ export function ModelPickerPopover() {
     // provider's models, exactly as before.
     const engines = bridge?.engines;
     if (engines && !external) {
+      setCatalogueFrom("engines");
+      setCatalogueState("loading");
       try {
         const descriptors = await engines.list();
+        // A lane that would not answer leaves the list short by whatever it holds, and
+        // "short" is not "complete": the flag below is what keeps an absent model from
+        // being read as an unheld one.
+        let unansweredLane = false;
         const perEngine = await Promise.all(descriptors.map(async (descriptor) => {
           try {
             return await engines.models(descriptor.id);
           } catch {
+            unansweredLane = true;
             return []; // one unanswerable engine must not empty the list
           }
         }));
@@ -223,9 +259,11 @@ export function ModelPickerPopover() {
           engineId: row.engineId,
           engineLabel: row.engineLabel,
         })));
+        setCatalogueState(unansweredLane ? "failed" : "loaded");
         void probeCapabilities(rows);
       } catch (e) {
         setModels([{ id: `Engine Error: ${e instanceof Error ? e.message : String(e)}`, label: "Error" }]);
+        setCatalogueState("failed");
       }
       return;
     }
@@ -240,10 +278,13 @@ export function ModelPickerPopover() {
       else url = `${base}/v1/models`;
     }
 
+    setCatalogueFrom("provider");
+    setCatalogueState("loading");
     try {
       const response = await apiFetch(url, { signal: AbortSignal.timeout(8000) });
       if (!response.ok) {
         setModels([{ id: `Error ${response.status}: ${response.statusText}`, label: `Error ${response.status}` }]);
+        setCatalogueState("failed");
         return;
       }
       const data = await response.json();
@@ -255,12 +296,17 @@ export function ModelPickerPopover() {
       }
 
       if (mList.length === 0) {
+        // An answer that could not be read is not an empty catalogue: both would leave
+        // `models` empty, and only one of them licenses a sentence about absence.
         setModels([{ id: "Error: Unrecognized API response", label: "Error" }]);
+        setCatalogueState("failed");
       } else {
         setModels(mList);
+        setCatalogueState("loaded");
       }
     } catch (e) {
       setModels([{ id: `Fetch Error: ${e instanceof Error ? e.message : String(e)}`, label: "Error" }]);
+      setCatalogueState("failed");
     }
   }, [canSelectModels, probeCapabilities]);
 
@@ -426,6 +472,33 @@ export function ModelPickerPopover() {
   // `resolveRoute` exists to make visible.
   const routingNote = routed?.route.slot ? `routed from routing.${routed.route.slot} on ${routed.engineLabel}` : "";
 
+  // D4's assertion, read off the entry that answered. It is a claim about one
+  // (engine, model) pair, so it can only be applied to the row that pair names:
+  // spreading `routing.default`'s assertion across every pulled model would be a guess
+  // about all of them, which is the thing the field exists to avoid.
+  const assertedFor = routed?.route.target?.capabilities ?? null;
+  const routedPair = routed?.route.target ? `${routed.route.target.engine}:${routed.route.target.model}` : "";
+  const assertionFor = (engineId: string | undefined, model: string): string[] | null =>
+    assertedFor && routedPair === `${engineId ?? ""}:${model}` ? assertedFor : null;
+
+  /** The label D4 left unimplemented, and the reason `catalogueState` had to come first:
+   * "no engine reports this model" is a claim about a *closed* list, and until the picker
+   * could tell a closed list from an unread one it had no way to know which it was
+   * holding. Suppressed for every state but `loaded`, including the case that reads as
+   * empty — a catalogue nobody asked for yet, or one a lane refused to answer. */
+  const inCatalogue = models.some((row) => matchesModel(row.id, selectedModel));
+  const notOffered = catalogueState === "loaded" && !inCatalogue;
+  const notOfferedNote = !notOffered ? "" :
+    // Phrased about what was actually asked. `engines.list()` answers from the registry,
+    // which is not the routing table — a box with lanes but no table would otherwise be
+    // told its table is missing a model it never appears in at all.
+    `${catalogueFrom === "provider" ? "No model in this profile's list is" : "No engine lane reports"} ${selectedModel}`
+    + (routed?.route.target
+      // Which slot the table will actually honour, named the way the user would edit it:
+      // the unresolved model is not merely missing, it is what this desktop will send.
+      ? ` — routing.${routed.route.slot ?? DEFAULT_SLOT} resolves to ${routed.route.target.model} on ${routed.engineLabel}`
+      : ", and config.json names no route to resolve instead");
+
   return (
     <div ref={ref} className="relative">
       {/* Trigger button */}
@@ -438,7 +511,7 @@ export function ModelPickerPopover() {
             ? `${shortName(selectedModel)} is resident in VRAM`
             : hasLoadedModels
             ? `${shortName(selectedModel)} (idle) — ${loadedModels.map((m) => shortName(m.name)).join(", ")} in VRAM`
-            : `${shortName(selectedModel)} (idle)`}${routingNote ? ` — ${routingNote}` : ""}`
+            : `${shortName(selectedModel)} (idle)`}${routingNote ? ` — ${routingNote}` : ""}${notOfferedNote ? ` — ${notOfferedNote}` : ""}`
         }
       >
         {isSelectedLoaded && (
@@ -451,6 +524,19 @@ export function ModelPickerPopover() {
           <span className="h-1.5 w-1.5 rounded-full bg-amber-500/70 flex-shrink-0" title={`Selected model is idle (${loadedModels.length} background model${loadedModels.length > 1 ? "s" : ""} in VRAM)`} />
         )}
         <span className="font-mono max-w-[120px] truncate">{shortName(selectedModel)}</span>
+        {notOffered && (
+          // Said on the trigger, where the choice was already made, rather than only
+          // inside the list the user has to open to discover it. `notOffered` is only
+          // ever true on a closed catalogue, which is what makes it a fact and not a
+          // guess about a list nobody read.
+          <span
+            data-catalogue="absent"
+            title={notOfferedNote}
+            className="px-1 py-0.5 text-[9px] font-mono rounded bg-amber-500/15 text-amber-400 border border-amber-500/25 flex-shrink-0"
+          >
+            not offered
+          </span>
+        )}
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5">
           <path d="M2 3.5l3 3 3-3" />
         </svg>
@@ -601,6 +687,16 @@ export function ModelPickerPopover() {
               </span>
             </div>
           )}
+          {notOfferedNote && (
+            // The same claim the trigger's chip stands for, spelled out where the user is
+            // about to pick: which slot the table will really resolve, in the vocabulary
+            // they would edit it in.
+            <div className="px-3 py-1.5 border-b border-border/40 bg-amber-500/5">
+              <span className="block text-[10px] font-mono text-amber-400" data-catalogue="absent-note">
+                {notOfferedNote}.
+              </span>
+            </div>
+          )}
 
           <div className="p-2 border-b border-border/40">
             {/* Names what the marks below are marks *about*. A row reading "needs a
@@ -633,10 +729,18 @@ export function ModelPickerPopover() {
               // The picker writes `routing.default` — the slot every feature falls back
               // to — so the claim it can check a row against is `chat`'s. Rows with no
               // report are left unmarked rather than shown as passing.
-              const report = capabilityReports[capabilityCacheKey(m.engineId ?? "", m.id)];
-              const verdict = report ? evaluateFeature("chat", report) : null;
+              const report = capabilityReports[capabilityCacheKey(m.engineId ?? "", m.id)] ?? null;
+              // The routing entry's assertion reaches exactly one row: the (engine, model)
+              // pair it was written about. Every other row is still only what the engine
+              // said, because nothing else in the file has claimed anything about it.
+              const asserted = assertionFor(m.engineId, m.id);
+              const verdict = report || asserted?.length ? evaluateFeature("chat", report, asserted) : null;
               const limitation = verdict && !verdict.ok ? verdict.reason : "";
               const unverified = verdict && isUnverifiable(verdict) ? verdict.reason : "";
+              const fromFile = verdict?.origin === "asserted" && !limitation && !unverified
+                ? `chat is taken from routing.${routed?.route.slot ?? DEFAULT_SLOT}.capabilities (${[...asserted ?? []].sort().join(", ")}) — your assertion, not ${m.engineLabel ?? m.engineId}'s answer`
+                : "";
+              const contradicted = verdict?.disagreement ?? "";
               return (
                 <button
                   key={`${m.engineId ?? ""}:${m.id}`}
@@ -676,6 +780,19 @@ export function ModelPickerPopover() {
                     {unverified && (
                       <div className="text-[10px] text-muted" data-capability="unknown">
                         {unverified}
+                      </div>
+                    )}
+                    {fromFile && (
+                      // Which of the two claims this row is standing on. A row that read
+                      // as though the engine had said it is the defect this field could
+                      // easily introduce, so the provenance is on the row, not in a tooltip.
+                      <div className="text-[10px] text-muted" data-capability="asserted">
+                        {fromFile}
+                      </div>
+                    )}
+                    {contradicted && (
+                      <div className="text-[10px] text-yellow" data-capability="disagreement">
+                        {contradicted} — the engine's answer is what this row was checked against.
                       </div>
                     )}
                   </div>
