@@ -39,6 +39,7 @@ import type { PermissionStore }        from "./permission-store";
 import type { WorktreeManager }        from "./worktree-manager";
 import type { GauntletHandoffStore }   from "./gauntlet-handoff-store";
 import { collectResidentModels, type OllamaPsModel } from "./ollama-residency";
+import { discoverEngineModels, engineDescriptors } from "./engine-registry";
 import { fireHooks }                   from "./hooks-runner";
 import { runOpenScad, type RenderParams } from "./openscad-runner";
 import { autoWireStore }                  from "./ipc-autowire";
@@ -571,7 +572,29 @@ export function registerAllIpc(ctx: IpcContext): void {
     add: "addArtifact", forRun: "getForRun", forSession: "getForSession", recent: "getRecent",
   });
 
+  // ── Engine registry ───────────────────────────────────────────────────────
+  // The desktop owns model routing, so the renderer asks this process which
+  // engines the active profile runs and what each one holds. Deliberately
+  // descriptor-based: callers name an engine id, never `profile.ollama`.
+  ipcMain.handle("engines:list", async () => {
+    try {
+      return engineDescriptors(config.getActive());
+    } catch {
+      return [];
+    }
+  });
+
+  // An engine that is down answers with an empty list, never an error — the
+  // picker must still show whatever the other engine has.
+  ipcMain.handle("engines:models", async (_e, engineId: string) => {
+    const engine = engineDescriptors(config.getActive()).find((d) => d.id === engineId);
+    if (!engine) return [];
+    return discoverEngineModels(engine);
+  });
+
   // ── Ollama model list ─────────────────────────────────────────────────────
+  // No renderer call site remains — the picker reads `engines:models` now. Left
+  // in place (same daemon, same endpoint) until D1a formally absorbs it.
   ipcMain.handle("ollama:listModels", async () => {
     try {
       const urls  = config.getUrls();

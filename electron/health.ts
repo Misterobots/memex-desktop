@@ -28,9 +28,11 @@ async function agentHealth(url: string): Promise<{ agentRuntime: NativeConnectio
     const body = await r.json() as { nodes?: Array<{ healthy?: boolean }> };
     return {
       agentRuntime,
-      // The harness owns model routing, so show the inference nodes it reports
-      // as healthy rather than probing a Docker-internal Ollama address a
-      // desktop process cannot reliably reach.
+      // Health still reads the nodes the harness reports, because a desktop
+      // process cannot reliably reach the Docker-internal Ollama address. Note
+      // that this is only a connected/disconnected signal: what models *exist*
+      // comes from engine-registry.ts now, not from this node list — folding
+      // inference health onto the registry is the remaining half of D1.
       ollama: Array.isArray(body.nodes) && body.nodes.some((node) => node.healthy === true) ? "connected" : "disconnected",
     };
   } catch {

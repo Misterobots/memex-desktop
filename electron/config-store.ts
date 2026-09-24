@@ -19,6 +19,10 @@ export interface RuntimeProfile {
   agentRuntime: string;
   mempalace:    string;
   ollama?:      string;
+  /** Optional llama.cpp (`llama-server`) lane, which runs alongside Ollama rather
+   * than instead of it. Read by engine-registry.ts; D2 replaces this pair with a
+   * full `engines` map, so nothing outside the registry should name this field. */
+  llamaCpp?:    string;
   /** Last model deliberately selected for this routing profile. */
   defaultModel?: string;
   /** Optional local companion services configured by Local LLM setup. */
@@ -109,9 +113,10 @@ const SEED_PROFILES: RuntimeProfile[] = [
     agentRuntime: "http://[::1]:8008",
     // Memory is a companion service on Hopper, not a local process.
     mempalace:    "http://192.168.2.102:8200",
-    // The harness owns the Docker-internal Ollama route.  Keep this endpoint
-    // for advanced direct use, while health derives model availability from
-    // the harness node registry.
+    // Model availability for the picker is discovered against this address by
+    // engine-registry.ts — the harness is no longer the authority on what models
+    // exist. Inference *health* still derives from the harness node registry
+    // (health.ts), which is the half of D1 not moved yet.
     ollama:       "http://[::1]:11434",
     defaultModel: "qwen3:14b",
     readonly:     true,

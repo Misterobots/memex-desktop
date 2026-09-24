@@ -106,6 +106,24 @@ export interface LoadedOllamaModel {
   expiresAt?: string;
 }
 
+/** Mirrors electron/engine-registry.ts — an inference engine this install runs. */
+export interface EngineDescriptor {
+  id: string;
+  kind: "ollama" | "llama.cpp";
+  baseUrl: string;
+  label?: string;
+}
+
+/** One model as the registry normalises it, for either engine kind. */
+export interface EngineModel {
+  engineId: string;
+  engineKind: EngineDescriptor["kind"];
+  engineLabel: string;
+  model: string;
+  sizeBytes?: number;
+  resident?: boolean;
+}
+
 export interface LocalLlmInspection {
   systemRamGb: number;
   gpus: Array<{ name: string; vramGb: number }>;
@@ -152,6 +170,9 @@ export interface RuntimeProfile {
   agentRuntime: string;
   mempalace:    string;
   ollama?:      string;
+  /** Optional llama.cpp (`llama-server`) lane, alongside Ollama rather than
+   * instead of it. Owned by the engine registry — see electron/engine-registry.ts. */
+  llamaCpp?:    string;
   /** Last model deliberately selected for this routing profile. */
   defaultModel?: string;
   localServices?: { openWebUi?: string; comfyUi?: string };
@@ -320,6 +341,11 @@ export interface MemexBridge {
     forRun:     (runId: string)                                   => Promise<ArtifactRecord[]>;
     forSession: (sessionId: string)                               => Promise<ArtifactRecord[]>;
     recent:     (limit?: number)                                  => Promise<ArtifactRecord[]>;
+  };
+
+  engines: {
+    list:   () => Promise<EngineDescriptor[]>;
+    models: (engineId: string) => Promise<EngineModel[]>;
   };
 
   ollama: {

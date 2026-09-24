@@ -36,6 +36,10 @@ type CatalogModel = {
   description?: string;
   owned_by?: string;
   available?: boolean;
+  /** Which engine produced this row. Two engines can be live at once and can
+   * hold the same tag, so the name alone does not identify the entry. */
+  engineId?: string;
+  engineLabel?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -117,18 +121,49 @@ export function ModelPickerPopover() {
   const load = useCallback(async () => {
     if (!canSelectModels) return;
 
-    let url = `${getAgentRuntime()}/v1/models`;
     const bridge = desktop();
-    if (bridge) {
+    let profile: RuntimeProfile | null = null;
+    try {
+      profile = bridge ? await bridge.config.getActive() : null;
+    } catch {}
+    const external = profile?.providerType === "external";
+
+    // Desktop with a routing profile that runs local engines: the catalog is
+    // those engines, resolved in the main process. The agent runtime is
+    // deliberately not asked — it can be stopped while Ollama is up, and a picker
+    // that went empty when that happened was the defect. An external provider
+    // profile has no local engine to enumerate, so it keeps listing its
+    // provider's models, exactly as before.
+    const engines = bridge?.engines;
+    if (engines && !external) {
       try {
-        const profile = await bridge.config.getActive();
-        if (profile?.providerType === "external") {
-          let base = getAgentRuntime();
-          if (base.endsWith("/")) base = base.slice(0, -1);
-          if (base.endsWith("/v1")) url = `${base}/models`;
-          else url = `${base}/v1/models`;
-        }
-      } catch {}
+        const descriptors = await engines.list();
+        const perEngine = await Promise.all(descriptors.map(async (descriptor) => {
+          try {
+            return await engines.models(descriptor.id);
+          } catch {
+            return []; // one unanswerable engine must not empty the list
+          }
+        }));
+        setModels(perEngine.flat().map((row) => ({
+          id: row.model,
+          engineId: row.engineId,
+          engineLabel: row.engineLabel,
+        })));
+      } catch (e) {
+        setModels([{ id: `Engine Error: ${e instanceof Error ? e.message : String(e)}`, label: "Error" }]);
+      }
+      return;
+    }
+
+    // No engine bridge (browser dev mode, or a preload older than the registry):
+    // the runtime's list is all that is available, and it stays as it was.
+    let url = `${getAgentRuntime()}/v1/models`;
+    if (external) {
+      let base = getAgentRuntime();
+      if (base.endsWith("/")) base = base.slice(0, -1);
+      if (base.endsWith("/v1")) url = `${base}/models`;
+      else url = `${base}/v1/models`;
     }
 
     try {
@@ -252,7 +287,7 @@ export function ModelPickerPopover() {
   }, [open]);
 
   const filtered = models.filter((m) =>
-    !query || `${m.label ?? ""} ${m.id}`.toLowerCase().includes(query.toLowerCase())
+    !query || `${m.label ?? ""} ${m.id} ${m.engineLabel ?? ""}`.toLowerCase().includes(query.toLowerCase())
   );
 
   const chooseModel = async (model: string) => {
@@ -465,15 +500,21 @@ export function ModelPickerPopover() {
               const isLoaded = loadedModels.some((lm) => matchesModel(lm.name, m.id));
               return (
                 <button
-                  key={m.id}
+                  key={`${m.engineId ?? ""}:${m.id}`}
                   disabled={m.available === false}
                   onClick={() => { void chooseModel(m.id); }}
+                  title={m.engineLabel ? `${m.id} — on ${m.engineLabel}` : m.id}
                   className={`w-full text-left flex items-center justify-between gap-2 px-3 py-2 transition-colors disabled:opacity-45 disabled:cursor-not-allowed
                     ${m.id === selectedModel ? "bg-accent/10 text-text" : "text-text/80 hover:bg-surface2/60"}`}
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs font-medium truncate">{m.label ?? m.id}</span>
+                      {m.engineLabel && (
+                        <span className="text-[9px] px-1 py-0.5 rounded bg-surface border border-border/40 text-muted/90 font-mono flex-shrink-0">
+                          {m.engineLabel}
+                        </span>
+                      )}
                       {isLoaded && (
                         <span className="px-1.5 py-0.2 text-[9px] font-mono rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 flex-shrink-0">
                           In VRAM

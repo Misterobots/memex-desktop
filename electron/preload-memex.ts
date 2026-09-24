@@ -247,6 +247,12 @@ contextBridge.exposeInMainWorld("memex", {
   // Artifact store
   artifacts: bridgeNamespace("artifact", { add: "add", forRun: "forRun", forSession: "forSession", recent: "recent" }),
 
+  // Engine registry — which engines this install runs, and what each holds.
+  engines: {
+    list:   () => ipcRenderer.invoke("engines:list"),
+    models: (engineId: string) => ipcRenderer.invoke("engines:models", engineId),
+  },
+
   // Ollama model list
   ollama: {
     listModels:      () => ipcRenderer.invoke("ollama:listModels"),
