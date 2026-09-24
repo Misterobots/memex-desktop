@@ -1,8 +1,8 @@
 /**
  * The routing table (D2) — `config.json` is the source of truth for model routing.
  *
- * The schema, as it appears in the file. This is the block the D3 wizard will
- * eventually edit, so it is documented here rather than only in the plan:
+ * The schema, as it appears in the file. `deriveRoutingFromSetup` is what the D3
+ * wizard writes into it, so it is documented here rather than only in the plan:
  *
  * ```jsonc
  * {
@@ -369,6 +369,174 @@ export function migrateToRouting<T extends Record<string, unknown>>(raw: T): { c
 }
 
 // ---------------------------------------------------------------------------
+// Guided setup (D3): propose a run style, then write the table it implies
+// ---------------------------------------------------------------------------
+
+/** The ids this build proposes for the engines it can discover. A stored table that
+ * already uses another id for the same kind keeps it — see `deriveRoutingFromSetup`. */
+export const DEFAULT_ENGINE_IDS: Record<EngineKind, string> = { ollama: "ollama", "llama.cpp": "llama.cpp" };
+
+/** What the discovery step could see, reduced to the facts a run style depends on.
+ * `EngineDiscovery` (engine-discovery.ts) satisfies this structurally; it is declared
+ * here rather than imported so this module stays the leaf the renderer and the picker
+ * already depend on, and so the rule set can be tested without a probe. */
+export interface RunStyleEvidence {
+  kind: string;
+  running: boolean;
+  installed?: "yes" | "inferred" | "unknown";
+  models?: readonly string[];
+}
+
+export interface RunStyleProposal {
+  runStyle: RunStyle;
+  /** One or two sentences the wizard shows verbatim. Every rule states the evidence
+   * it used, because "single" is a promise about what the box cannot do and the user
+   * has to be able to disagree with a reason. */
+  why: string;
+}
+
+/**
+ * Propose how this box should run, from what it has and what was found on it.
+ *
+ * The rules are ordered, and the first match wins:
+ *
+ * 1. Nothing measurable about VRAM → `multi`. An unmeasured card is not evidence of a
+ *    small one (`AdapterRAM` used to make exactly that mistake — see plan D3), so this
+ *    step declines to constrain the user at all.
+ * 2. A small card → `single`. One model at a time is the honest shape.
+ * 3. Room to hold several models, and more than one thing discovered to run →
+ *    `multi`, which is what per-role variety needs.
+ * 4. Anything else → `single`.
+ *
+ * A proposal, never a decision: `SetupWizard` must show this and require the user to
+ * confirm or change it (plan C1, no silent default).
+ */
+export function proposeRunStyle(
+  gpus: readonly { vramGb: number }[],
+  systemRamGb: number,
+  discovered: readonly RunStyleEvidence[],
+): RunStyleProposal {
+  const ram = `${gb(systemRamGb)} GB of system RAM`;
+  // A card that reported 0 GB is present but unmeasured, not a 0 GB card. Its memory
+  // is left out of the totals rather than counted as zero, which would flatter a
+  // measured box and punish an unmeasured one.
+  const measured = gpus.filter((gpu) => gpu.vramGb > 0);
+  const total = measured.reduce((sum, gpu) => sum + gpu.vramGb, 0);
+  const largest = measured.reduce((max, gpu) => Math.max(max, gpu.vramGb), 0);
+
+  if (!measured.length) {
+    return {
+      runStyle: "multi",
+      why: gpus.length
+        ? `The ${gpus.length === 1 ? "graphics card" : `${gpus.length} graphics cards`} reported no usable memory, so its video memory could not be measured and this step claims nothing about what fits in it. Multi keeps every model available — change it if you know what this box has.`
+        : `No graphics card was found, so video memory could not be measured and this step claims nothing about it. Multi keeps every model available; switch to single if this box runs one model at a time.`,
+    };
+  }
+
+  if (largest < 10 && total < 16) {
+    return {
+      runStyle: "single",
+      why: `${gb(largest)} GB on the largest card and ${gb(total)} GB across ${gpus.length === 1 ? "one card" : `${gpus.length} cards`} (${ram}) will not hold two models at once, so Memex pins one model and serves it everywhere instead of swapping on demand.`,
+    };
+  }
+
+  const engines = discovered.filter((d) => d.running || d.installed === "yes" || d.installed === "inferred").length;
+  // Only a running engine can report an inventory, so a stopped Ollama contributes a
+  // lane it has and no models it might have.
+  const models = discovered.reduce((sum, d) => sum + (d.running ? (d.models?.length ?? 0) : 0), 0);
+  // A model list lives inside its engine, so these are not summed: what matters is
+  // whether there is more than one thing this box could serve.
+  const swapCandidates = Math.max(engines, models);
+
+  if ((total >= 24 || gpus.length >= 2) && swapCandidates > 1) {
+    const room = gpus.length === 1
+      ? `${gb(total)} GB on one card`
+      : `${gpus.length} cards totalling ${gb(total)} GB`;
+    return {
+      runStyle: "multi",
+      why: `${room} (${ram}) and ${swapCandidates} model${swapCandidates === 1 ? "" : "s"} across ${engines} engine${engines === 1 ? "" : "s"} discovered — enough to hold more than one, so each role can get its own model and Ollama loads and evicts them on demand.`,
+    };
+  }
+
+  return {
+    runStyle: "single",
+    why: `${gpus.length === 1 ? `One card with ${gb(largest)} GB` : `${gpus.length} cards totalling ${gb(total)} GB`} (${ram}) and ${swapCandidates} thing${swapCandidates === 1 ? "" : "s"} discovered to swap between: one pinned model is the honest shape here, so Memex will not promise per-role model changes.`,
+  };
+}
+
+/** One engine the setup step wants in the table, as discovery and the Advanced panel
+ * produced it — an `EngineConfig` with no pin decided yet. */
+export interface SetupRoutingInput {
+  runStyle: RunStyle;
+  /** Keyed by the ids this build proposes (`DEFAULT_ENGINE_IDS`). */
+  engines: Record<string, EngineConfig>;
+  /** The confirmed selection. Without both halves nothing is written to
+   * `routing.default` — an invented default is the silent substitution this module
+   * exists to prevent. */
+  selection?: Partial<RouteTarget> | null;
+  /** The table already stored, so a hand-written slot survives running the wizard
+   * again (Settings can re-open it via `requireWizard()`). */
+  existing?: RoutingConfig | null;
+}
+
+/**
+ * The table the wizard writes for a confirmed setup (D3 requirement 4).
+ *
+ * Three things happen at once and all three are load-bearing:
+ *
+ * - The proposed engine id is re-used from the stored table where the mapping is
+ *   unambiguous. Slots name engines by id, so rewriting `ollama-local` as `ollama`
+ *   would leave every hand-written slot pointing at an engine the new table does not
+ *   have — the write would be refused, and the user's own edits would be the reason.
+ * - Hand-written slots are carried over untouched; only `default` is replaced.
+ * - In `single` the pin moves with the selection, because `flattenForRunStyle`
+ *   resolves every slot onto the pin and would otherwise override this choice under
+ *   a different name (the same trap D2 recorded for the picker).
+ */
+export function deriveRoutingFromSetup(input: SetupRoutingInput): RoutingConfig {
+  const existing = input.existing ?? null;
+  const existingEngines = existing?.engines ?? {};
+  // Start from what the file already has. This step adds and updates the engines it
+  // could see; it does not delete lanes it never looked for, because a hand-edited
+  // table can hold engines discovery cannot reach and the slots that name them.
+  const engines: Record<string, EngineConfig> = { ...existingEngines };
+  const idOf = new Map<string, string>();
+
+  for (const [proposedId, candidate] of Object.entries(input.engines ?? {})) {
+    const baseUrl = normaliseBaseUrl(candidate?.baseUrl);
+    if (!candidate || !baseUrl) continue; // an engine with no address is a half-filled form, not a lane
+    const priorId = proposedId in existingEngines ? proposedId : soleEngineIdOfKind(existing, candidate.kind);
+    const prior = priorId ? existingEngines[priorId] : undefined;
+    const entry: EngineConfig = { kind: candidate.kind, baseUrl };
+    const label = text(candidate.label) || text(prior?.label);
+    if (label) entry.label = label;
+    const carriedPin = text(prior?.pinnedModel);
+    if (carriedPin) entry.pinnedModel = carriedPin;
+    const id = priorId ?? proposedId;
+    engines[id] = entry;
+    idOf.set(proposedId, id);
+  }
+
+  const routing: Record<string, RouteTarget> = { ...(existing?.routing ?? {}) };
+  const chosenEngine = text(input.selection?.engine);
+  const engine = idOf.get(chosenEngine) ?? chosenEngine;
+  const model = text(input.selection?.model);
+  if (engine && model && engine in engines) {
+    routing[DEFAULT_SLOT] = { engine, model };
+    if (input.runStyle === "single") engines[engine] = { ...engines[engine], pinnedModel: model };
+  }
+
+  return { runStyle: input.runStyle, engines, routing };
+}
+
+/** The stored id for a kind, when the file holds exactly one — otherwise null,
+ * because two engines of a kind is the file knowing something this step does not. */
+function soleEngineIdOfKind(existing: RoutingConfig | null, kind: EngineKind): string | null {
+  const ids = Object.entries(existing?.engines ?? {}).filter(([, engine]) => engine?.kind === kind).map(([id]) => id);
+  return ids.length === 1 ? ids[0]! : null;
+}
+
+// ---------------------------------------------------------------------------
 // Small readers — a hand-edited file gets judged on what it actually contains
 // ---------------------------------------------------------------------------
 
@@ -379,6 +547,11 @@ function normaliseBaseUrl(raw: string | undefined): string {
 
 function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+/** Rounded the way a sentence about hardware reads: 15.93 GB is 15.9 GB, not 15.9296875. */
+function gb(value: number): string {
+  return String(Math.round((Number.isFinite(value) ? value : 0) * 10) / 10);
 }
 
 function isHttpUrl(value: string): boolean {

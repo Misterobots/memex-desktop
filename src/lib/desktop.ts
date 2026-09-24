@@ -8,8 +8,11 @@ import type { RunRecord, RunEvent, EvalCase, EvalResult, ConnectionStatus } from
 // renderer resolves routes with the main process's own `resolveRoute` from
 // electron/routing-config.ts. Two copies of the shape would mean two copies of the
 // fallback rules; a pure, Electron-free module is what makes one copy possible.
-import type { RoutingConfig, RoutingIssue, RoutingResult, RoutingState } from "../../electron/routing-config";
-export type { RoutingConfig, RoutingIssue, RoutingResult, RoutingState };
+import type { RoutingConfig, RoutingIssue, RoutingResult, RoutingState, RunStyle } from "../../electron/routing-config";
+// Re-exported rather than mirrored, same reason as the routing types above: the
+// discovery verdict is one shape decided in electron/engine-discovery.ts.
+import type { EngineDiscovery } from "../../electron/engine-discovery";
+export type { RoutingConfig, RoutingIssue, RoutingResult, RoutingState, RunStyle, EngineDiscovery };
 export type { RunRecord, RunEvent, EvalCase, EvalResult };
 
 export type PermissionMode = "trusted" | "workspace" | "ask";
@@ -138,6 +141,8 @@ export interface LocalLlmInspection {
   comfyUi: { url: string; reachable: boolean };
   harness: { url: string; reachable: boolean };
   recommendations: Array<{ model: string; label: string; reason: string }>;
+  /** Installed / running / address / evidence per engine kind (electron/engine-discovery.ts). */
+  engines: EngineDiscovery[];
 }
 
 export interface UnrealEngineInstall {

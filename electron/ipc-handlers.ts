@@ -754,7 +754,21 @@ export function registerAllIpc(ctx: IpcContext): void {
   ipcMain.handle("gauntlet:resume", (_event, id: string, clarification: string) => gauntletHandoffs.resume(id, clarification));
 
   // ── Local LLM setup ──────────────────────────────────────────────────────
-  ipcMain.handle("localLlm:inspect", () => inspectLocalLlm());
+  // The real probes for engine discovery: `engine-discovery.ts` stays free of `fs`,
+  // so the filesystem and environment are handed to it here, where the rest of the
+  // machine's capabilities are already wired up.
+  ipcMain.handle("localLlm:inspect", () => {
+    // Whatever the routing table already names is probed there first: a llama.cpp lane
+    // the user wrote by hand must not come back as missing because this app only knew
+    // its own defaults ("a configured or probed address", D3 requirement 1).
+    const engines = Object.values(config.getRouting().engines ?? {});
+    const urlsFor = (kind: string) => engines.filter((engine) => engine?.kind === kind && engine.baseUrl).map((engine) => engine.baseUrl);
+    return inspectLocalLlm({
+      fileExists: (path) => { try { return existsSync(path); } catch { return false; } },
+      env: process.env,
+      platform: process.platform,
+    }, { ollama: urlsFor("ollama"), llamaCpp: urlsFor("llama.cpp") });
+  });
   ipcMain.handle("localLlm:openOllamaDownload", async () => {
     await shell.openExternal("https://ollama.com/download");
   });
@@ -778,7 +792,11 @@ export function registerAllIpc(ctx: IpcContext): void {
     const profile = config.saveProfile({
       id: "local-llm", name: "Local LLMs", providerType: "internal",
       agentRuntime: normalizeLocalEndpoint(payload.harnessUrl),
-      mempalace: normalizeLocalEndpoint(payload.mempalaceUrl),
+      // An empty memory URL is a legitimate answer, not a malformed one: this app has
+      // no default memory service to fall back to (see LOCAL_SERVICE_DEFAULTS), and
+      // inventing one is how an install ends up pointing at a stranger's machine.
+      // Unconfigured stays unconfigured, and `health.ts` reports it as disconnected.
+      mempalace: payload.mempalaceUrl?.trim() ? normalizeLocalEndpoint(payload.mempalaceUrl) : "",
       ollama: normalizeLocalEndpoint(payload.ollamaUrl),
       localServices: {
         openWebUi: payload.openWebUiUrl ? normalizeLocalEndpoint(payload.openWebUiUrl) : undefined,

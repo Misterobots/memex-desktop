@@ -3,9 +3,11 @@ import {
   DEFAULT_OLLAMA_BASE_URL,
   DEFAULT_SLOT,
   deriveRoutingFromProfile,
+  deriveRoutingFromSetup,
   flattenForRunStyle,
   migrateToRouting,
   pinnedTarget,
+  proposeRunStyle,
   readRoutingBlock,
   resolveRoute,
   validateRouting,
@@ -325,5 +327,196 @@ describe("the pin a single-style box serves", () => {
   it("needs exactly one engine when there is no default to point at one", () => {
     expect(pinnedTarget(SINGLE({}))).toEqual({ engineId: "llama-local", target: { engine: "llama-local", model: "qwen3-coder:30b" } });
     expect(pinnedTarget({ ...D2, runStyle: "single", routing: {} })).toBeNull();
+  });
+});
+
+// D3's two halves: propose a style from the hardware, then write the table the
+// confirmed answer implies. The proposal is never applied on its own — the wizard has
+// to put it in front of the user first (plan C1).
+describe("proposing a run style", () => {
+  const card = (name: string, vramGb: number) => ({ name, vramGb });
+  const engine = (kind: string, over: Partial<{ running: boolean; installed: "yes" | "inferred" | "unknown"; models: string[] }> = {}) => ({
+    kind, running: true, installed: "yes" as const, models: [] as string[], ...over,
+  });
+
+  it("claims nothing when no VRAM could be measured, and says that is why", () => {
+    // An unmeasured card is not a small card: `AdapterRAM` used to read every card of
+    // 4 GB or more as 4 GB, which is how a 24 GB box landed in the entry-level tier.
+    const unmeasured = proposeRunStyle([card("RTX 4090", 0)], 64, [engine("ollama", { models: ["a:1", "b:2"] })]);
+    expect(unmeasured.runStyle).toBe("multi");
+    expect(unmeasured.why).toContain("could not be measured");
+    expect(unmeasured.why).toContain("claims nothing");
+
+    const headless = proposeRunStyle([], 32, []);
+    expect(headless.runStyle).toBe("multi");
+    expect(headless.why).toContain("No graphics card was found");
+    expect(headless.why).toContain("could not be measured");
+  });
+
+  it("proposes one pinned model for a card too small to hold two, quoting the memory it used", () => {
+    const proposal = proposeRunStyle([card("GTX 1650", 8)], 16, [engine("ollama", { models: ["qwen3:8b", "qwen2.5:7b"] })]);
+
+    expect(proposal.runStyle).toBe("single");
+    expect(proposal.why).toContain("8 GB");
+    expect(proposal.why).toContain("16 GB of system RAM");
+    expect(proposal.why).toContain("pins one model");
+  });
+
+  it("proposes multi for 24 GB+ of measured memory with more than one thing to run", () => {
+    const twoCards = proposeRunStyle([card("5060 Ti A", 15.9), card("5060 Ti B", 15.9)], 32, [
+      engine("ollama", { models: ["qwen3:14b", "qwen3.8:27b", "nomic-embed-text:latest"] }),
+      engine("llama.cpp", { models: ["qwen3-coder:30b"] }),
+    ]);
+
+    expect(twoCards.runStyle).toBe("multi");
+    expect(twoCards.why).toContain("2 cards totalling 31.8 GB");
+    expect(twoCards.why).toContain("models");
+    expect(twoCards.why).toContain("engines");
+
+    // One big card qualifies on the total alone, if the inventory says there is
+    // something to swap between.
+    const oneBigCard = proposeRunStyle([card("RTX 4090", 24)], 32, [engine("ollama", { models: ["a:1", "b:2"] })]);
+    expect(oneBigCard.runStyle).toBe("multi");
+    expect(oneBigCard.why).toContain("24 GB on one card");
+  });
+
+  it("counts an engine it could only infer as a lane, but never its unseeable models", () => {
+    // A stopped Ollama with a 24 GB card: two things exist (a lane and a pin) but
+    // nothing known to swap, so multi would be a promise about a model list nobody
+    // saw. The rule reads the evidence, not the optimism.
+    const stopped = proposeRunStyle([card("RTX 4090", 24)], 32, [
+      { kind: "ollama", installed: "inferred", running: false, models: [] },
+    ]);
+    expect(stopped.runStyle).toBe("single");
+    expect(stopped.why).toContain("1 thing");
+  });
+
+  it("falls back to single when the box is large but nothing was found to swap", () => {
+    const empty = proposeRunStyle([card("A100", 40)], 64, [
+      engine("ollama", { running: false, installed: "unknown", models: [] }),
+      engine("llama.cpp", { running: false, installed: "unknown", models: [] }),
+    ]);
+
+    expect(empty.runStyle).toBe("single");
+    expect(empty.why).toContain("40 GB");
+    expect(empty.why).toContain("0 things");
+    expect(empty.why).toContain("pinned");
+  });
+
+  it("gives every rule a reason a user can read", () => {
+    const cases = [
+      proposeRunStyle([], 16, []),
+      proposeRunStyle([card("x", 6)], 16, []),
+      proposeRunStyle([card("x", 24)], 32, [engine("ollama", { models: ["a:1", "b:2"] })]),
+      proposeRunStyle([card("x", 16), card("y", 16)], 32, []),
+    ];
+    for (const proposal of cases) {
+      expect(proposal.why.trim().length).toBeGreaterThan(30);
+      expect(["single", "multi"]).toContain(proposal.runStyle);
+    }
+  });
+});
+
+describe("writing the table guided setup confirmed", () => {
+  const ollama = { kind: "ollama" as const, baseUrl: "http://[::1]:11434", label: "Ollama" };
+
+  it("multi records the choice in routing.default and nothing else", () => {
+    const table = deriveRoutingFromSetup({
+      runStyle: "multi",
+      engines: { ollama },
+      selection: { engine: "ollama", model: "qwen3:14b" },
+    });
+
+    expect(table).toEqual({
+      runStyle: "multi",
+      engines: { ollama: { kind: "ollama", baseUrl: "http://[::1]:11434", label: "Ollama" } },
+      routing: { [DEFAULT_SLOT]: { engine: "ollama", model: "qwen3:14b" } },
+    });
+    // A pin in multi would be a second source of truth for the same model.
+    expect(table.engines.ollama.pinnedModel).toBeUndefined();
+    expect(validateRouting(table)).toEqual([]);
+  });
+
+  it("single moves the engine's pinnedModel with the choice, because every slot resolves onto it", () => {
+    const table = deriveRoutingFromSetup({
+      runStyle: "single",
+      engines: { ollama, "llama.cpp": { kind: "llama.cpp", baseUrl: "http://127.0.0.1:8011", label: "llama.cpp" } },
+      selection: { engine: "ollama", model: "qwen3:14b" },
+      existing: { runStyle: "single", engines: { ollama }, routing: { [DEFAULT_SLOT]: { engine: "ollama", model: "old:1b" } } },
+    });
+
+    expect(table.engines.ollama.pinnedModel).toBe("qwen3:14b");
+    expect(table.routing[DEFAULT_SLOT]).toEqual({ engine: "ollama", model: "qwen3:14b" });
+    // The reason the pin is required: without it, the flatten step would resolve every
+    // slot onto a model this step never confirmed.
+    const flattened = flattenForRunStyle(table);
+    expect(flattened.pinned).toEqual({ engine: "ollama", model: "qwen3:14b" });
+    expect(validateRouting(table)).toEqual([]);
+  });
+
+  it("keeps hand-written slots and the ids they name the engine by", () => {
+    // The wizard can be re-opened from Settings on a box whose file was edited by
+    // hand. Renaming the user's engine would strand every slot that refers to it.
+    const existing: RoutingConfig = {
+      runStyle: "multi",
+      engines: { "ollama-local": { kind: "ollama", baseUrl: "http://192.168.1.9:11434", label: "Studio box" } },
+      routing: {
+        [DEFAULT_SLOT]:            { engine: "ollama-local", model: "qwen3:8b" },
+        "collective.critic":       { engine: "ollama-local", model: "qwen3:14b" },
+        "collective.coordinator":  { engine: "ollama-local", model: "qwen3.8:27b" },
+      },
+    };
+    const table = deriveRoutingFromSetup({
+      runStyle: "multi",
+      engines: { ollama: { kind: "ollama", baseUrl: "http://[::1]:11434" } },
+      selection: { engine: "ollama", model: "qwen3:14b" },
+      existing,
+    });
+
+    expect(Object.keys(table.engines)).toEqual(["ollama-local"]);
+    expect(table.engines["ollama-local"]).toEqual({ kind: "ollama", baseUrl: "http://[::1]:11434", label: "Studio box" });
+    expect(table.routing[DEFAULT_SLOT]).toEqual({ engine: "ollama-local", model: "qwen3:14b" });
+    expect(table.routing["collective.critic"]).toEqual(existing.routing["collective.critic"]);
+    expect(table.routing["collective.coordinator"]).toEqual(existing.routing["collective.coordinator"]);
+    expect(validateRouting(table)).toEqual([]);
+  });
+
+  it("leaves a kind it cannot disambiguate under its own id, and drops an engine with no address", () => {
+    const twoOfAKind: RoutingConfig = {
+      runStyle: "multi",
+      engines: {
+        "ollama-a": { kind: "ollama", baseUrl: "http://127.0.0.1:11434" },
+        "ollama-b": { kind: "ollama", baseUrl: "http://127.0.0.1:11435" },
+      },
+      routing: {},
+    };
+    const renamed = deriveRoutingFromSetup({ runStyle: "multi", engines: { ollama }, existing: twoOfAKind });
+    expect(Object.keys(renamed.engines).sort()).toEqual(["ollama", "ollama-a", "ollama-b"]);
+
+    // A cleared Advanced field is not an engine: `validateRouting` would refuse the
+    // whole table for it, and the user would be told their setup is invalid for a
+    // lane they never asked for.
+    const blank = deriveRoutingFromSetup({
+      runStyle: "multi",
+      engines: { ollama, "llama.cpp": { kind: "llama.cpp", baseUrl: "   " } },
+      selection: { engine: "llama.cpp", model: "qwen3-coder:30b" },
+    });
+    expect(Object.keys(blank.engines)).toEqual(["ollama"]);
+    // The selection named an engine that is not in the table, so no default is invented.
+    expect(blank.routing[DEFAULT_SLOT]).toBeUndefined();
+    expect(validateRouting(blank)).toEqual([]);
+  });
+
+  it("writes nothing it was not told: a selection with no model leaves the slot alone", () => {
+    const existing: RoutingConfig = {
+      runStyle: "single",
+      engines: { ollama: { kind: "ollama", baseUrl: "http://[::1]:11434", pinnedModel: "kept:7b" } },
+      routing: { [DEFAULT_SLOT]: { engine: "ollama", model: "kept:7b" } },
+    };
+    const table = deriveRoutingFromSetup({ runStyle: "single", engines: { ollama }, selection: { model: "  " }, existing });
+
+    expect(table.routing[DEFAULT_SLOT]).toEqual({ engine: "ollama", model: "kept:7b" });
+    expect(table.engines.ollama.pinnedModel).toBe("kept:7b");
+    expect(table.runStyle).toBe("single");
   });
 });

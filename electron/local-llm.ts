@@ -1,6 +1,7 @@
 import { totalmem } from "os";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { discoverEngines, type DiscoveryDeps, type EngineDiscovery } from "./engine-discovery";
 
 const execFileAsync = promisify(execFile);
 
@@ -15,11 +16,20 @@ export interface LocalLlmInspection {
   comfyUi: LocalServiceStatus;
   harness: LocalServiceStatus;
   recommendations: LocalModelRecommendation[];
+  /** Installed / running / address / evidence per engine kind (engine-discovery.ts).
+   * Additive to the status lines above: the wizard reads this for its engine panel and
+   * for the run-style proposal, while `ollama`/`harness` keep their old meaning. */
+  engines: EngineDiscovery[];
 }
 
+/** Addresses this app probes when the user has configured nothing. Memory is
+ * deliberately absent: the one address that used to be here belonged to a specific
+ * machine in a specific house, and every install that inherited it was told its
+ * memory service was "disconnected" for a reason it could not see. An unconfigured
+ * memory service is now written as an empty string and reported that way. */
 export const LOCAL_SERVICE_DEFAULTS = {
   ollama: "http://[::1]:11434", openWebUi: "http://127.0.0.1:3000",
-  comfyUi: "http://127.0.0.1:8188", harness: "http://[::1]:8008", mempalace: "http://192.168.2.102:8200",
+  comfyUi: "http://127.0.0.1:8188", harness: "http://[::1]:8008",
 } as const;
 
 export function recommendLocalModels(gpus: LocalGpu[], systemRamGb: number): LocalModelRecommendation[] {
@@ -137,19 +147,32 @@ async function detectGpus(): Promise<LocalGpu[]> {
     (await execFileAsync(command, args, { timeout: 4_000, windowsHide: true })).stdout);
 }
 
-export async function inspectLocalLlm(): Promise<LocalLlmInspection> {
-  const [gpus, ollamaReachable, openWebUiReachable, comfyUiReachable, harnessReachable] = await Promise.all([
-    detectGpus(), reachable(LOCAL_SERVICE_DEFAULTS.ollama, "/api/tags"), reachable(LOCAL_SERVICE_DEFAULTS.openWebUi, "/api/config"),
+/**
+ * The one scan the wizard runs. `deps` is injected rather than built here because
+ * `engine-discovery.ts` stays free of `fs` (and therefore testable); the real probes
+ * come from `ipc-handlers.ts`, which is already the composition root.
+ *
+ * `configured` carries the addresses the routing table already names, so a lane the
+ * user wrote by hand is probed where it actually lives instead of being reported
+ * missing because this app only knew its own defaults.
+ */
+export async function inspectLocalLlm(
+  deps: DiscoveryDeps,
+  configured: { ollama?: string[]; llamaCpp?: string[] } = {},
+): Promise<LocalLlmInspection> {
+  const [gpus, engines, openWebUiReachable, comfyUiReachable, harnessReachable] = await Promise.all([
+    detectGpus(),
+    discoverEngines({ ollama: { configuredUrls: configured.ollama }, llamaCpp: { configuredUrls: configured.llamaCpp } }, deps),
+    reachable(LOCAL_SERVICE_DEFAULTS.openWebUi, "/api/config"),
     reachable(LOCAL_SERVICE_DEFAULTS.comfyUi, "/system_stats"), reachable(LOCAL_SERVICE_DEFAULTS.harness, "/api/v1/health/nodes"),
   ]);
-  let models: string[] = [];
-  if (ollamaReachable) try {
-    const body = await (await fetch(`${LOCAL_SERVICE_DEFAULTS.ollama}/api/tags`, { signal: AbortSignal.timeout(2_500) })).json() as { models?: Array<{ name?: string }> };
-    models = (body.models ?? []).flatMap((model) => model.name ? [model.name] : []);
-  } catch { /* A reachable Ollama service is still useful without a model list. */ }
+  const ollama = engines.find((engine) => engine.kind === "ollama");
   const systemRamGb = Math.round(totalmem() / 1024 ** 3);
   return {
-    systemRamGb, gpus, ollama: { url: LOCAL_SERVICE_DEFAULTS.ollama, reachable: ollamaReachable, models },
+    systemRamGb, gpus, engines,
+    // Same three fields as before, now answered by discovery: the address is the one
+    // actually reached (or the one Ollama would use), not the one this file guessed.
+    ollama: { url: ollama?.baseUrl ?? LOCAL_SERVICE_DEFAULTS.ollama, reachable: ollama?.running === true, models: ollama?.models ?? [] },
     openWebUi: { url: LOCAL_SERVICE_DEFAULTS.openWebUi, reachable: openWebUiReachable },
     comfyUi: { url: LOCAL_SERVICE_DEFAULTS.comfyUi, reachable: comfyUiReachable },
     harness: { url: LOCAL_SERVICE_DEFAULTS.harness, reachable: harnessReachable },
