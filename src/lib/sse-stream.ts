@@ -121,6 +121,16 @@ export function normalizeSSEDelta(delta: Record<string, unknown>): SSEEvent | nu
 export function streamChat(opts: StreamOptions): () => void {
   const controller = new AbortController();
   const bridge     = desktop();
+  // `model` is a model id on the wire, not a mode. The runtime reads this exact field
+  // as the model to bind every swarm role to, so a turn with no resolved selection
+  // must fail loudly rather than arrive as a placeholder the server cannot load
+  // (plan D3c; the old `?? "swarm"` fallback was load-bearing in SteeringCard).
+  const resolvedModel = (opts.model ?? "").trim();
+  if (!resolvedModel) {
+    opts.onError?.(new Error("No model selected. Memex will not send a placeholder model in its place — choose one in the model picker."));
+    opts.onDone?.();
+    return () => {};
+  }
   let runId: string | undefined;
   const recording = Boolean(bridge?.runs && opts.runMeta);
   const pendingRunEvents: Array<{ type: RunEventType; payload: Record<string, unknown> }> = [];
@@ -143,7 +153,7 @@ export function streamChat(opts: StreamOptions): () => void {
     bridge.runs.start({
       sessionId: opts.sessionId ?? "default",
       mode:      opts.mode,
-      model:     opts.model ?? "swarm",
+      model:     resolvedModel,
       profile:   opts.runMeta.profile,
       message:   userMsg.slice(0, 200),
     }).then((r) => {
@@ -167,7 +177,7 @@ For file operations and shell commands, use paths relative to "/workspace" or st
   }
 
   const body = JSON.stringify({
-    model: opts.model || "swarm",
+    model: resolvedModel,
     messages: enhancedMessages,
     stream: true,
     ...(opts.skill ? { skill: opts.skill } : {}),

@@ -63,10 +63,11 @@ export function SteeringCard({ card, sessionId, experience = "chat", workspaceKe
     const stop = streamChat({
       messages: history,
       mode,
-      // The selected model is part of the immutable Gauntlet effort policy.
-      // Without it, streamChat defaults to the compatibility alias "swarm",
-      // which the runtime correctly rejects as not user-selectable.
-      model: packet?.effort.model,
+      // The selected model is part of the immutable Gauntlet effort policy. When no
+      // packet exists yet there is still no placeholder to fall back to: the store's
+      // current selection is the answer, and if that is empty streamChat refuses the
+      // turn rather than sending `"swarm"` for the runtime to bind seven roles to.
+      model: packet?.effort.model || useStore.getState().selectedModel,
       gauntletBar: packet?.qualityBar,
       gauntletHandoff: packet ? {
         id: packet.id,

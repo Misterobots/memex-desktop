@@ -406,7 +406,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
         ? await bridge.gauntlet.resume(previous.id, content) ?? previous
         : previous ?? await bridge.gauntlet.create({
         sessionId, workspaceKey, role: "coordinator", goal: continuationText, qualityBar: gauntletBar.trim(),
-        effort: { model: selectedModel ?? "swarm", outputDetail: runPreferences.outputDetail, reasoningSummary: runPreferences.reasoningSummary, reasoningEffort: runPreferences.reasoningEffort },
+        effort: { model: selectedModel, outputDetail: runPreferences.outputDetail, reasoningSummary: runPreferences.reasoningSummary, reasoningEffort: runPreferences.reasoningEffort },
       });
       // Coordinator ownership is bookkeeping for durable recovery, not a
       // decision the user should have to make before their requested work can
@@ -440,7 +440,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
         goal: handoffPacket?.goal ?? content,
         qualityBar: handoffPacket?.qualityBar ?? gauntletBar.trim(),
           effort: {
-          model: handoffPacket?.effort.model ?? selectedModel ?? "swarm",
+          model: handoffPacket?.effort.model ?? selectedModel,
           outputDetail: handoffPacket?.effort.outputDetail ?? runPreferences.outputDetail,
           reasoningSummary: handoffPacket?.effort.reasoningSummary ?? runPreferences.reasoningSummary,
           reasoningEffort: handoffPacket?.effort.reasoningEffort ?? runPreferences.reasoningEffort,
