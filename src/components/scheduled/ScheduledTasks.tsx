@@ -4,6 +4,7 @@ import {
   type Trigger, type TriggerType,
 } from "../../lib/trigger-api";
 import { useStore } from "../../lib/store";
+import { getAgentRuntime } from "../../lib/runtime-urls";
 
 /**
  * Settings section for the Memex runtime trigger scheduler (agents/trigger_scheduler.py).
@@ -11,6 +12,16 @@ import { useStore } from "../../lib/store";
  * and survives a backend restart. See trigger_scheduler.py for why that's the only
  * trigger kind the REST API can create at all (a raw Python handler isn't JSON-able).
  */
+
+/**
+ * Which runtime owns this schedule. Placement is a fact about who starts that
+ * process — today, never this app — so name the host rather than implying the
+ * desktop keeps the clock. An unparseable address (same-origin in a browser build)
+ * falls back to a wording that is still true, never to a guessed hostname.
+ */
+function runtimeOwner(): string {
+  try { return new URL(getAgentRuntime()).host; } catch { return "the Memex runtime"; }
+}
 
 function fmtTimestamp(ts?: number | null): string {
   if (!ts) return "—";
@@ -161,8 +172,9 @@ export function ScheduledTasks() {
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted">
-        Runs a saved prompt on a schedule via the Memex runtime trigger scheduler. Restarting the
-        backend does not lose these — they're restored from disk on startup.
+        Runs a saved prompt on a schedule via {runtimeOwner()}'s trigger scheduler. Restarting the
+        backend does not lose these — they're restored from disk on startup. They fire on that
+        runtime's own clock, whether or not this desktop is open.
       </p>
 
       {loading && <p className="text-xs text-muted">Loading…</p>}
