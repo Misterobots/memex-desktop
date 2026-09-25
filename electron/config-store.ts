@@ -213,7 +213,12 @@ export class ConfigStore {
 
     let raw: AppConfig;
     try {
-      raw = JSON.parse(readFileSync(this.configPath, "utf-8")) as AppConfig;
+      // A leading byte-order mark is not whitespace to JSON.parse, and both
+      // PowerShell's `Set-Content -Encoding utf8` and Windows Notepad write one on
+      // a file that was otherwise valid. Strip it here rather than treating a
+      // hand-edit the user can read as corrupt — this config is meant to be edited.
+      const text = readFileSync(this.configPath, "utf-8");
+      raw = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text) as AppConfig;
     } catch (e) {
       return this.unreadable(`could not be parsed (${reason(e)})`);
     }

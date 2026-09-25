@@ -205,4 +205,18 @@ describe("a bad hand-edit and the file it lives in", () => {
     // Reload proves it is the file, not the in-memory copy, that now carries it.
     expect(new ConfigStore(USER_DATA).getRouting().runStyle).toBe("single");
   });
+
+  it("reads a config written with a byte-order mark", () => {
+    // PowerShell 5.1's `Set-Content -Encoding utf8` and Windows Notepad prepend
+    // U+FEFF to a file that is otherwise valid JSON, and JSON.parse does not treat
+    // it as whitespace. A config the owner is told to hand-edit must not become
+    // unreadable because of whichever editor produced the edit.
+    files.set(CONFIG, "\uFEFF" + JSON.stringify(preRoutingConfig, null, 2));
+    const store = new ConfigStore(USER_DATA);
+    expect(store.getActiveId()).toBe("localhost");
+    expect(store.getAll().map((profile) => profile.id)).toContain("home-lan");
+    // And the mark is not preserved into what the app next writes.
+    store.setActive("home-lan");
+    expect(files.get(CONFIG)!.charCodeAt(0)).not.toBe(0xfeff);
+  });
 });
