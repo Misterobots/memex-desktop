@@ -1,6 +1,6 @@
 {
   "name": "memex-desktop",
-  "version": "0.1.112",
+  "version": "0.1.113",
   "description": "Memex Desktop — local-first AI development harness",
   "author": "Misterobots",
   "main": "dist-electron/main.js",
