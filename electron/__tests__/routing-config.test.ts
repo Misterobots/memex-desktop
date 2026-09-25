@@ -15,6 +15,7 @@ import {
   readRoutingBlock,
   resolveRoute,
   roleTarget,
+  runRoleMap,
   validateRouting,
   type RoutingConfig,
   type RoutingRow,
@@ -804,5 +805,44 @@ describe("roleTarget", () => {
     expect(roleTarget(D2, DEFAULT_SLOT)).toEqual({
       engine: "ollama-local", model: "qwen3:14b", via: DEFAULT_SLOT, usedFallback: false,
     });
+  });
+});
+
+describe("runRoleMap", () => {
+  it("carries only the roles assigned in their own row", () => {
+    expect(runRoleMap(D2)).toEqual({
+      coder: "qwen3.8:27b",
+      coordinator: "qwen3.8:27b",
+    });
+  });
+
+  it("sends nothing when every role resolves through the default slot", () => {
+    const onlyDefault: RoutingConfig = { ...D2, routing: { [DEFAULT_SLOT]: D2.routing[DEFAULT_SLOT] } };
+    expect(runRoleMap(onlyDefault)).toEqual({});
+  });
+
+  it("adds a role the moment its own row is assigned, leaving the rest out", () => {
+    const partial: RoutingConfig = {
+      ...D2,
+      routing: { ...D2.routing, architect: { engine: "ollama-local", model: "qwen3.6:27b" } },
+    };
+    expect(runRoleMap(partial)).toEqual({
+      architect: "qwen3.6:27b",
+      coder: "qwen3.8:27b",
+      coordinator: "qwen3.8:27b",
+    });
+  });
+
+  it("answers an absent table with an empty map", () => {
+    expect(runRoleMap(undefined)).toEqual({});
+    expect(runRoleMap(null)).toEqual({});
+  });
+
+  it("keys the map by the runtime role name, never the desktop slot", () => {
+    const map = runRoleMap(D2);
+    expect(Object.keys(map).every((key) => (RUNE_ROLES as readonly string[]).includes(key))).toBe(true);
+    expect(map).not.toHaveProperty("code");
+    expect(map).not.toHaveProperty("collective.coordinator");
+    expect(map).not.toHaveProperty("embedding");
   });
 });

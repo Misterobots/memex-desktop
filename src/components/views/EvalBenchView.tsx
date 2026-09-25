@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { desktop }    from "../../lib/desktop";
-import { streamChat } from "../../lib/sse-stream";
+import { runRoleModels, streamChat } from "../../lib/sse-stream";
 import { useStore }   from "../../lib/store";
 import { modelsForArena } from "../../lib/model-arena";
 import { MODE_FLAGS, MODE_LABELS, modeLabel, type MemexMode } from "../../types/memex";
@@ -142,6 +142,9 @@ export function EvalBenchView() {
     // Deliberately sequential: an arena compares outputs without automatically
     // scheduling two large models onto the user's GPUs at the same time.
     const entrants = modelsForArena(selected);
+    // Resolved once for the whole arena: the routing table is not expected to
+    // change between entrants, and each entrant is the same run shape otherwise.
+    const roleModels = await runRoleModels();
     try {
       for (const model of entrants.length ? entrants : [selectedModel]) {
         let accumulated = "";
@@ -154,6 +157,7 @@ export function EvalBenchView() {
             messages: [{ role: "user", content: selected.input }],
             mode:    selected.mode,
             model,
+            roleModels,
             modeFlags: MODE_FLAGS[selected.mode] ?? {},
             onEvent: (ev) => {
               if (ev.type === "message" || ev.type === "response") {

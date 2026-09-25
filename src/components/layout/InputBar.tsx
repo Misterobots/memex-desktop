@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { defaultRunPreferences, sessionScopeKey, useStore } from "../../lib/store";
-import { streamChat } from "../../lib/sse-stream";
+import { runRoleModels, streamChat } from "../../lib/sse-stream";
 import { desktop, type GauntletHandoff } from "../../lib/desktop";
 import { pushSession } from "../../lib/conv-sync";
 import { extractConversationMemory } from "../../lib/memex-client";
@@ -425,10 +425,12 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       });
       syncSession();
     }
+    const roleModels = await runRoleModels();
     const stop = streamChat({
       messages: history,
       mode,
       model: selectedModel,
+      roleModels,
       // Routines are ordinary repeatable-work requests, not Product Workshop
       // discovery sessions. Tell the router to keep this workspace in the
       // conversational path even when the prompt is ambiguous.

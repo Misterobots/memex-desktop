@@ -73,6 +73,7 @@ function useRouting(routing: RoutingConfig) {
     get:      async () => ({ routing, errors: [] }),
     set:      async () => ({ ok: true, routing, issues: [] }),
     validate: async () => [],
+    runMap:   async () => ({}),
   };
 }
 
@@ -304,6 +305,7 @@ describe("ModelPickerPopover", () => {
       get:      async () => ({ routing: current, errors: [] }),
       set:      async (next: unknown) => { written.push(next as RoutingConfig); current = next as RoutingConfig; return { ok: true, routing: current, issues: [] }; },
       validate: async () => [],
+      runMap:   async () => ({}),
     };
     return { written, current: () => current };
   }
@@ -356,6 +358,7 @@ describe("ModelPickerPopover", () => {
       get:      async () => ({ routing: OLLAMA_ONLY("qwen2.5:7b"), errors: [] }),
       set:      async () => ({ ok: false, routing: OLLAMA_ONLY("qwen2.5:7b"), issues: [{ path: "routing.default.engine", message: "names no engine" }] }),
       validate: async () => [],
+      runMap:   async () => ({}),
     };
 
     const user = userEvent.setup();

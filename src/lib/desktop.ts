@@ -383,11 +383,13 @@ export interface MemexBridge {
   };
 
   /** D2 — the routing table `config.json` carries, plus what is wrong with it.
-   * `set` refuses without writing when the table is invalid. */
+   * `set` refuses without writing when the table is invalid. `runMap` is D1c: the
+   * sparse role->model map for one run, resolved in main from the stored table. */
   routing: {
     get:      () => Promise<RoutingState>;
     set:      (next: RoutingConfig) => Promise<RoutingResult>;
     validate: (next: unknown) => Promise<RoutingIssue[]>;
+    runMap:   () => Promise<Record<string, string>>;
   };
 
   ollama: {

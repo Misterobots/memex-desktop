@@ -49,6 +49,11 @@ export interface StreamOptions {
   gauntletHandoff?: { id: string; role: string; phase: string; goal: string; qualityBar: string; effort: Record<string, string>; clarifications?: string[] };
   /** Ollama model id to route to (e.g. "qwen3-coder:30b"). Defaults to "swarm". */
   model?: string;
+  /** D1c — roles the user assigned in this app's routing table, as role -> model
+   * id (`{ coder: "qwen3-coder:30b", coordinator: "qwen3.6:27b" }`). Sent as
+   * `role_models` only when non-empty: an absent role is left to the runtime's own
+   * sources rather than reported on the wire as a choice nobody made. */
+  roleModels?: Record<string, string>;
   /** Optional backend routing hint (for example, `general` for Routines). */
   skill?: string;
   /** Enable owner-scoped MemPalace recall and background extraction. */
@@ -118,6 +123,23 @@ export function normalizeSSEDelta(delta: Record<string, unknown>): SSEEvent | nu
     data: eventType === "message" || eventType === "response" ? undefined : delta,
   };
 }
+/**
+ * D1c — resolve this app's per-role assignments for one turn, from main's stored
+ * routing table. An empty map means "the table named no role", which the runtime
+ * reads as *no per-role choice* and resolves from the pinned model or Team Builder.
+ * So a missing bridge (the web build) or a failed read sends nothing rather than
+ * inventing assignments — the field is only allowed to carry what someone chose.
+ */
+export async function runRoleModels(): Promise<Record<string, string>> {
+  const bridge = desktop();
+  if (!bridge?.routing?.runMap) return {};
+  try {
+    return (await bridge.routing.runMap()) ?? {};
+  } catch {
+    return {};
+  }
+}
+
 export function streamChat(opts: StreamOptions): () => void {
   const controller = new AbortController();
   const bridge     = desktop();
@@ -178,6 +200,7 @@ For file operations and shell commands, use paths relative to "/workspace" or st
 
   const body = JSON.stringify({
     model: resolvedModel,
+    ...(opts.roleModels && Object.keys(opts.roleModels).length > 0 ? { role_models: opts.roleModels } : {}),
     messages: enhancedMessages,
     stream: true,
     ...(opts.skill ? { skill: opts.skill } : {}),

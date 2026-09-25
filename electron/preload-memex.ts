@@ -263,13 +263,14 @@ contextBridge.exposeInMainWorld("memex", {
   },
 
   // Routing table (D2). Hand-written rather than auto-wired: the channel names are
-  // the API (`get`/`set`/`validate`), while the store's methods are
+  // the API (`get`/`set`/`validate`/`runMap`), while the store's methods are
   // getRoutingState/saveRouting/getRoutingErrors, and `set` answers with a refusal
   // plus its reasons — a shape no passthrough wrapper should be inferred to have.
   routing: {
     get:       () => ipcRenderer.invoke("routing:get"),
     set:       (next: unknown) => ipcRenderer.invoke("routing:set", next),
     validate:  (next: unknown) => ipcRenderer.invoke("routing:validate", next),
+    runMap:    () => ipcRenderer.invoke("routing:runMap") as Promise<Record<string, string>>,
   },
 
   // Ollama model list

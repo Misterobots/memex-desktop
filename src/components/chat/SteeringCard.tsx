@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useStore } from "../../lib/store";
-import { streamChat } from "../../lib/sse-stream";
+import { runRoleModels, streamChat } from "../../lib/sse-stream";
 import { MODE_FLAGS, type ClarificationCard, type ChatMessage, type ExperienceId, type MessageEvent } from "../../types/memex";
 import { desktop, type GauntletHandoff } from "../../lib/desktop";
 
@@ -60,6 +60,7 @@ export function SteeringCard({ card, sessionId, experience = "chat", workspaceKe
         nextAction: "Coordinator is applying the project decision to the preserved Gauntlet contract.",
       });
     }
+    const roleModels = await runRoleModels();
     const stop = streamChat({
       messages: history,
       mode,
@@ -68,6 +69,7 @@ export function SteeringCard({ card, sessionId, experience = "chat", workspaceKe
       // current selection is the answer, and if that is empty streamChat refuses the
       // turn rather than sending `"swarm"` for the runtime to bind seven roles to.
       model: packet?.effort.model || useStore.getState().selectedModel,
+      roleModels,
       gauntletBar: packet?.qualityBar,
       gauntletHandoff: packet ? {
         id: packet.id,

@@ -716,7 +716,7 @@ export const ROUTING_ROWS: readonly RoutingRow[] = [
     key: role, label: role, role, env: RUNE_ROLE_ENV[role], perRoleBindable: true,
     // Said plainly because it is the load-bearing fact about these five rows: they are
     // new, and nothing in `routing` held them before this editor existed.
-    note: `No desktop slot has ever written this — until the runtime accepts a client-supplied map, ${role} keeps reading ${RUNE_ROLE_ENV[role]} on its own host.`,
+    note: `Assign a model here and this row travels to ${role} in the run's role map. Left unassigned, ${role} keeps reading ${RUNE_ROLE_ENV[role]} on the runtime host.`,
   })),
   {
     key: "code", label: "Coder", role: "coder", env: RUNE_ROLE_ENV.coder, perRoleBindable: true,
@@ -767,6 +767,34 @@ export function roleTarget(
     via: route.slot,
     usedFallback: route.usedFallback,
   };
+}
+
+/**
+ * The per-role map this desktop sends for one run: every role the user assigned
+ * **in their own row**, keyed by the runtime's role name (`code` -> `coder`,
+ * `collective.coordinator` -> `coordinator`).
+ *
+ * Deliberately sparse. A row that resolves through `routing.default` is the app
+ * having no opinion about that role, so it stays out and the runtime fills it
+ * from the pinned model or Team Builder — the sources that describe what actually
+ * happened. Sending the fallback's model anyway would mark every role
+ * hand-assigned (`source: "desktop"` on the runtime side) and let the app claim
+ * choices nobody made.
+ *
+ * A row bound to an engine with no model id is skipped for the same reason: a
+ * role can be bound to a model, not to a card.
+ */
+export function runRoleMap(
+  routing: RoutingConfig | null | undefined,
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const row of ROUTING_ROWS) {
+    if (!row.role || !row.perRoleBindable) continue;
+    const target = roleTarget(routing, row.key);
+    if (!target.model || target.usedFallback) continue;
+    map[row.role] = target.model;
+  }
+  return map;
 }
 
 // ---------------------------------------------------------------------------

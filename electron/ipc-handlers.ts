@@ -41,7 +41,7 @@ import type { GauntletHandoffStore }   from "./gauntlet-handoff-store";
 import { collectResidentModels, type OllamaPsModel } from "./ollama-residency";
 import { discoverEngineModels, engineDescriptors, enginesModelsFor } from "./engine-registry";
 import { enginesCapabilitiesFor, type CapabilityReport } from "./model-capabilities";
-import { validateRouting } from "./routing-config";
+import { runRoleMap, validateRouting } from "./routing-config";
 import { fireHooks }                   from "./hooks-runner";
 import { runOpenScad, type RenderParams } from "./openscad-runner";
 import { autoWireStore }                  from "./ipc-autowire";
@@ -628,6 +628,10 @@ export function registerAllIpc(ctx: IpcContext): void {
   ipcMain.handle("routing:set", (_e, next: unknown) => config.saveRouting(next));
   // Checked against the pure validator only: this channel cannot write.
   ipcMain.handle("routing:validate", (_e, next: unknown) => validateRouting(next));
+  // The role map for one run (D1c). Reads the stored table and answers a sparse
+  // role->model object; it takes no argument, so the renderer cannot ask main to
+  // resolve a routing table that was never saved.
+  ipcMain.handle("routing:runMap", () => runRoleMap(config.getRouting()));
 
   // ── Ollama model list ─────────────────────────────────────────────────────
   // No renderer call site remains — the picker reads `engines:models` now. Left

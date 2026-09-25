@@ -13,7 +13,7 @@ import { useStore } from "../store";
 import { streamChat, type StreamOptions } from "../sse-stream";
 import { createTrigger, listTriggers, resumeTrigger } from "../trigger-api";
 
-vi.mock("../sse-stream", () => ({ streamChat: vi.fn() }));
+vi.mock("../sse-stream", () => ({ streamChat: vi.fn(), runRoleModels: async () => ({}) }));
 vi.mock("../conv-sync", () => ({ pushSession: vi.fn(), deleteRemoteSession: vi.fn() }));
 vi.mock("../../components/layout/ModelPickerPopover", () => ({ ModelPickerPopover: () => null }));
 vi.mock("../../components/layout/ContextMeter", () => ({ ContextMeter: () => null }));

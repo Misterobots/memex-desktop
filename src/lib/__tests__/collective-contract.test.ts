@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MODE_FLAGS, MODE_LABELS, modeLabel } from "../../types/memex";
-import { streamChat } from "../sse-stream";
+import { runRoleModels, streamChat } from "../sse-stream";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -86,5 +86,54 @@ describe("Collective terminology and legacy wire compatibility", () => {
     }));
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(body.skill).toBe("general");
+  });
+});
+
+describe("D1c per-role map on the wire", () => {
+  it("sends role_models with exactly the roles the app assigned", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("data: [DONE]\n\n"));
+    vi.stubGlobal("fetch", fetchMock);
+    await new Promise<void>((resolve, reject) => streamChat({
+      messages: [{ role: "user", content: "Split this across the team" }],
+      model: "qwen3.6:27b",
+      roleModels: { coder: "qwen3-coder:30b", verifier: "qwen3:8b" },
+      mode: "swarm", modeFlags: MODE_FLAGS.swarm, sessionId: "role-map",
+      onEvent: vi.fn(), onDone: resolve, onError: reject,
+    }));
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.model).toBe("qwen3.6:27b");
+    expect(body.role_models).toEqual({ coder: "qwen3-coder:30b", verifier: "qwen3:8b" });
+  });
+
+  it("omits role_models when the table named no role, rather than sending an empty object", async () => {
+    for (const roleModels of [undefined, {}]) {
+      // A fresh mock and a fresh Response per case: one body stream cannot be read twice.
+      const fetchMock = vi.fn().mockResolvedValue(new Response("data: [DONE]\n\n"));
+      vi.stubGlobal("fetch", fetchMock);
+      await new Promise<void>((resolve, reject) => streamChat({
+        messages: [{ role: "user", content: "Explain the plan" }],
+        model: "qwen3:14b", roleModels,
+        mode: "chat", modeFlags: {}, sessionId: "no-role-map",
+        onEvent: vi.fn(), onDone: resolve, onError: reject,
+      }));
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body).not.toHaveProperty("role_models");
+    }
+  });
+
+  it("sends nothing it could not read from the bridge", async () => {
+    // This suite runs without a DOM, so `window` is genuinely absent here — the
+    // same shape as the web build. An absent bridge, a rejected read, and a
+    // readable table must answer {} , {} , and the real map: the field may only
+    // ever carry assignments someone actually made.
+    await expect(runRoleModels()).resolves.toEqual({});
+
+    const failing = vi.fn().mockRejectedValue(new Error("routing unavailable"));
+    vi.stubGlobal("window", { memex: { routing: { runMap: failing } } });
+    await expect(runRoleModels()).resolves.toEqual({});
+    expect(failing).toHaveBeenCalledTimes(1);
+
+    vi.stubGlobal("window", { memex: { routing: { runMap: async () => ({ coder: "qwen3-coder:30b" }) } } });
+    await expect(runRoleModels()).resolves.toEqual({ coder: "qwen3-coder:30b" });
   });
 });
