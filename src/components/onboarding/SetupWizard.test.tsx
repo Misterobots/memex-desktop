@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SetupWizard } from "./SetupWizard";
-import { validateRouting } from "../../../electron/routing-config";
+import { ROUTING_ROWS, validateRouting } from "../../../electron/routing-config";
 import type {
   CapabilityReport, EngineDiscovery, EngineModel, LocalLlmInspection, RoutingConfig, RoutingResult, RunStyle, RuntimeProfile,
 } from "../../lib/desktop";
@@ -136,6 +136,12 @@ const TWO_LANES = () => inspection({ engines: [OLLAMA_UP, LLAMA_UP] });
 const modelPick = (row: string) => screen.findByLabelText(`${row} model`) as Promise<HTMLSelectElement>;
 const enginePick = (row: string) => screen.findByLabelText(`${row} engine`) as Promise<HTMLSelectElement>;
 const optionValues = (select: HTMLSelectElement) => [...select.options].map((option) => option.value);
+/** Asks a row for its asserted-capability chips. They are collapsed, so a test that
+ * clicks one has to open it first — the same two keystrokes the user spends, and the
+ * reason the click is still worth testing: hidden must not mean unreachable. */
+const openCapabilities = async (user: ReturnType<typeof userEvent.setup>, row: string) => {
+  await user.click(await screen.findByRole("button", { name: `${row} capabilities` }));
+};
 
 describe("SetupWizard step 0", () => {
   beforeEach(() => {
@@ -144,13 +150,20 @@ describe("SetupWizard step 0", () => {
   afterEach(cleanup);
 
   it("shows what it found and how it knows, including the lane it will not claim", async () => {
+    const user = userEvent.setup();
     mount();
     render(<SetupWizard onComplete={vi.fn()} />);
+
+    // An engine row is one line, so the proof has to be asked for. It is opened here
+    // rather than assumed: a claim nobody can reach is not checkable.
+    await user.click(await screen.findByRole("button", { name: "Ollama evidence" }));
+    await user.click(screen.getByRole("button", { name: "llama.cpp evidence" }));
 
     expect(await screen.findByText(OLLAMA_UP.evidence)).toBeTruthy();
     expect(screen.getByText(LLAMA_QUIET.evidence)).toBeTruthy();
     expect(screen.getByText("running")).toBeTruthy();
-    // The asymmetry, said in the user's words rather than hidden in a footnote.
+    // The asymmetry, said in the user's words rather than hidden in a footnote — and in
+    // the verdict word, which is why it is asserted outside the disclosure.
     expect(screen.getByText("not installed · configurable")).toBeTruthy();
   });
 
@@ -669,6 +682,7 @@ describe("SetupWizard step 1 — assignments", () => {
     render(<SetupWizard onComplete={vi.fn()} />);
     const user = await assign("multi");
 
+    await openCapabilities(user, "Embeddings");
     const toggle = await screen.findByRole("button", { name: "Embeddings capability embedding" });
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     await user.click(toggle);
@@ -692,7 +706,8 @@ describe("SetupWizard step 1 — assignments", () => {
       capabilities: SILENT_ANYWAY,
     });
     render(<SetupWizard onComplete={vi.fn()} />);
-    await assign("multi");
+    const user = await assign("multi");
+    await openCapabilities(user, "Coder");
 
     const node = await waitFor(() => {
       const found = document.querySelector("p[data-capability='asserted']");
@@ -722,7 +737,8 @@ describe("SetupWizard step 1 — assignments", () => {
       capabilities: measured,
     });
     render(<SetupWizard onComplete={vi.fn()} />);
-    await assign("multi");
+    const user = await assign("multi");
+    await openCapabilities(user, "Coder");
 
     // The refusal is still there — the override did not make it disappear.
     const refusal = await waitFor(() => {
@@ -741,5 +757,205 @@ describe("SetupWizard step 1 — assignments", () => {
     expect(notice.textContent).toContain("/api/show reported: embedding");
     expect(notice.getAttribute("data-capability")).toBe("disagreement");
     expect((await screen.findByRole("button", { name: "Coder capability tools" })).getAttribute("aria-pressed")).toBe("true");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Disclosures — the collapsed state is the design, so it gets asserted as such.
+// ---------------------------------------------------------------------------
+
+/** The line a collapsed engine row is meant to be: one flex row, verdict, count and
+ * address sharing it. jsdom cannot measure pixels, but it can prove the parts were not
+ * stacked into separate blocks, which is what made the step a scroll. */
+const expectOneLine = (label: string, ...tokens: string[]) => {
+  const line = screen.getByText(label).parentElement as HTMLElement;
+  expect(line.className).toContain("flex");
+  for (const token of tokens) expect(screen.getByText(token).parentElement).toBe(line);
+};
+
+/** The step's one required input, counted rather than admired: a disclosure that
+ * collapsed a control into the page instead of hiding text would break the tests that
+ * do `getByRole("combobox")`, and this says which it did. */
+const expectOneSelect = () => {
+  expect(screen.getAllByRole("combobox")).toHaveLength(1);
+};
+
+describe("SetupWizard disclosures", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+  afterEach(cleanup);
+
+  it("shows step 1 with the proof collapsed, and everything needed to answer present", async () => {
+    const user = userEvent.setup();
+    mount();
+    render(<SetupWizard onComplete={vi.fn()} />);
+
+    // Two engine lines, each carrying its own verdict, model count and address.
+    expect(await screen.findByText("running")).toBeTruthy();
+    expectOneLine("Ollama", "running", "2 models", "http://[::1]:11434");
+    expectOneLine("llama.cpp", "not installed · configurable");
+
+    // What is behind a disclosure: the evidence, both trade-off paragraphs, the service
+    // addresses and the service probes. All four were most of one scroll.
+    expect(screen.queryByText(OLLAMA_UP.evidence)).toBeNull();
+    expect(screen.queryByText(LLAMA_QUIET.evidence)).toBeNull();
+    expect(screen.queryByText(/loads and evicts a model per role/)).toBeNull();
+    expect(screen.queryByText(/One model pinned to one GPU/)).toBeNull();
+    expect(screen.queryByLabelText("Memory service (no default)")).toBeNull();
+    expect(screen.queryByLabelText("ComfyUI (optional)")).toBeNull();
+    expect(screen.queryByText("Local Memex harness")).toBeNull();
+    expect(screen.queryByText("ComfyUI")).toBeNull();
+    for (const name of ["Ollama evidence", "llama.cpp evidence", "Show what this costs",
+      "Show what this locks in", "Advanced: edit service addresses"]) {
+      expect(screen.getByRole("button", { name }).getAttribute("aria-expanded")).toBe("false");
+    }
+
+    // What stays visible unconditionally: the proposal and the reason for it, the file's
+    // own answer, the fact that nothing is selected yet, and the one input the step
+    // requires. The unset memory service is visible too — a missing service changes what
+    // the features do, so it belongs behind no toggle.
+    expect(screen.getByText("Run style · proposed: multi-model")).toBeTruthy();
+    expect(screen.getByText(/2 cards totalling 31.8 GB/)).toBeTruthy();
+    expect(screen.getByText(/config\.json already holds runStyle "multi"/)).toBeTruthy();
+    expect(screen.getByText("Nothing is selected until you choose — this app will not pick a mode for you.")).toBeTruthy();
+    expect(screen.getByText(/No memory service is configured/)).toBeTruthy();
+    expectOneSelect();
+
+    // …and the preview, as soon as an answer is given, without opening anything.
+    await user.click(await styleButton(/Multi-model/));
+    expect(await screen.findByText(/"runStyle": "multi"/)).toBeTruthy();
+    expectOneSelect();
+  });
+
+  it("opens each disclosure to the words themselves, not to a shorter version of them", async () => {
+    const user = userEvent.setup();
+    mount();
+    render(<SetupWizard onComplete={vi.fn()} />);
+    await screen.findByText("running");
+
+    await user.click(screen.getByRole("button", { name: "Ollama evidence" }));
+    expect(await screen.findByText(OLLAMA_UP.evidence)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Ollama evidence" }).getAttribute("aria-expanded")).toBe("true");
+    // The quiet lane keeps its own shut disclosure: opening one row does not speak for
+    // the other, and "not installed · configurable" is still the visible claim.
+    expect(screen.queryByText(LLAMA_QUIET.evidence)).toBeNull();
+    expect(screen.getByRole("button", { name: "llama.cpp evidence" }).getAttribute("aria-expanded")).toBe("false");
+
+    await user.click(screen.getByRole("button", { name: "Show what this costs" }));
+    const costs = await screen.findByText(/loads and evicts a model per role/);
+    // Pinned at both ends: the paragraph is quoted, not summarised.
+    expect(costs.textContent).toMatch(/^Ollama loads and evicts a model per role/);
+    expect(costs.textContent).toMatch(/per-role variety needs\.$/);
+
+    await user.click(screen.getByRole("button", { name: "Show what this locks in" }));
+    const locks = await screen.findByText(/One model pinned to one GPU/);
+    expect(locks.textContent).toMatch(/^One model pinned to one GPU/);
+    expect(locks.textContent).toMatch(/without room for two\.$/);
+
+    await user.click(screen.getByRole("button", { name: "Advanced: edit service addresses" }));
+    for (const label of ["Memex harness", "Memory service (no default)", "Ollama",
+      "llama.cpp / llama-server (optional)", "Open WebUI (optional)", "ComfyUI (optional)"]) {
+      expect(screen.getByLabelText(label)).toBeTruthy();
+    }
+    expect(screen.getByText("Local Memex harness")).toBeTruthy();
+    expect(screen.getByText("Open WebUI")).toBeTruthy();
+    expect(screen.getByText("ComfyUI")).toBeTruthy();
+    expect(screen.getByText(/Ollama supplies models/)).toBeTruthy();
+  });
+
+  it("keeps a role row a select until its capabilities are asked for, and the click writes what it always wrote", async () => {
+    // A lane that will not answer about a model: the row states that, and the chips are
+    // what the user can do about it — so the verdict is visible while the control is not.
+    const silent = async (): Promise<CapabilityReport> => ({
+      capabilities: [], source: "unknown", contextLength: null,
+      detail: "/api/show reported no capabilities array (older engine, or a model it cannot describe)",
+    });
+    const { written } = mount({
+      scanned: TWO_LANES(), catalogue: { ollama: ["qwen3:14b"], "llama.cpp": [] }, capabilities: silent,
+    });
+    render(<SetupWizard onComplete={vi.fn()} />);
+    const user = await assign("multi");
+    await modelPick("Embeddings");   // the row is up and filled
+
+    // A row is its two picks and nothing more: the disclosure hides controls, so an
+    // uncounted one would let a fifth select in unnoticed.
+    expect(screen.getAllByRole("combobox")).toHaveLength(ROUTING_ROWS.length * 2);
+    expect(document.querySelectorAll("[data-capability='unknown']").length).toBeGreaterThan(0);
+    // Collapsed: no chips, no field name, and the toggle says so.
+    expect(screen.queryByRole("button", { name: "Embeddings capability embedding" })).toBeNull();
+    expect(screen.queryByText("routing.embedding.capabilities")).toBeNull();
+    expect(screen.getByRole("button", { name: "Embeddings capabilities" }).getAttribute("aria-expanded")).toBe("false");
+
+    await openCapabilities(user, "Embeddings");
+    expect(screen.getByText("routing.embedding.capabilities")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Embeddings capabilities" }).getAttribute("aria-expanded")).toBe("true");
+    const chip = await screen.findByRole("button", { name: "Embeddings capability embedding" });
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+    await user.click(chip);
+
+    await waitFor(() => expect(written.length).toBe(2));
+    expect(written[1].routing.embedding).toEqual({ engine: "ollama", model: "qwen3:14b", capabilities: ["embedding"] });
+    expect(validateRouting(written[1])).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The lockout. Setup is `fixed inset-0 z-50`: while it is open there is nothing else to
+// reach, so a control below the fold is not an inconvenience — it is the app being
+// unenterable. jsdom has no viewport, so these assert presence, enabled-ness and which
+// layer owns the scroll. Geometry is untested here and needs the packaged app.
+// ---------------------------------------------------------------------------
+
+describe("SetupWizard — nothing out of reach", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+  afterEach(cleanup);
+
+  it("puts the scroll on the modal layer and keeps the card out of a height contest", () => {
+    mount();
+    render(<SetupWizard onComplete={vi.fn()} />);
+
+    const layer = document.querySelector("div.fixed.inset-0") as HTMLElement;
+    expect(layer.className).toContain("overflow-y-auto");   // the backstop
+    expect(layer.className).toContain("items-start");       // so a tall card starts at the top
+    expect(layer.className).not.toContain("items-center");  // centring overflow is what hid the bottom
+
+    const card = layer.querySelector("div.no-drag") as HTMLElement;
+    expect(card.className).toContain("my-auto");            // …and it still centres when there is room
+    // CSS resolves min-height before max-height, so the old 520px floor beat the card's
+    // own viewport ceiling and it grew past the thing meant to bound it. Neither a floor
+    // nor a ceiling belongs on the card now — the outer scroller is what stops the trap.
+    expect(card.className).not.toMatch(/min-h-/);
+    expect(card.className).not.toMatch(/max-h-/);
+
+    // The invariant, stated as ancestry rather than arithmetic: the control the user has
+    // to press is inside the layer that can scroll to it.
+    expect(layer.contains(confirm())).toBe(true);
+  });
+
+  it("has the Confirm control in the DOM at every content length, and unlocks it only on the answer", async () => {
+    const { written } = mount();
+    const user = userEvent.setup();
+    render(<SetupWizard onComplete={vi.fn()} />);
+
+    // Longest content the step holds before anything is chosen. The control is present,
+    // and it is disabled because the run style is the user's to give — not because it is
+    // out of sight.
+    expect(await screen.findByText("running")).toBeTruthy();
+    expect(confirm()).toBeTruthy();
+    expect(confirm().disabled).toBe(true);
+
+    await user.click(await styleButton(/Multi-model/));
+    expect(confirm().disabled).toBe(false);
+    await user.click(confirm());
+
+    // The assignment step is the long one — nine rows — and its control is in the DOM the
+    // moment it is the step on screen.
+    await waitFor(() => expect(written).toHaveLength(1));
+    expect(await screen.findByRole("heading", { name: "Assign models to roles" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeTruthy();
+    expect(document.querySelector("div.fixed.inset-0")!.contains(screen.getByRole("button", { name: "Continue" }))).toBe(true);
   });
 });

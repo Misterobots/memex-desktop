@@ -3,9 +3,13 @@
  * again when Settings calls `config.requireWizard()`.
  *
  * Steps:
- *  0. Local engines — what this machine has (with evidence), the run style it
- *     proposes, the routing table that follows from the confirmed answer, and an
- *     Advanced disclosure of the service addresses for whoever detection cannot see.
+ *  0. Local engines — what this machine has (one line per engine, its evidence behind a
+ *     disclosure), the run style it proposes, the routing table that follows from the
+ *     confirmed answer, and an Advanced disclosure holding the service addresses and the
+ *     service probes for whoever detection cannot see. The step is built to be answered
+ *     without scrolling, and the modal layer scrolls as the backstop: a control that
+ *     cannot be reached while the wizard owns the screen is a lockout, not a layout
+ *     preference.
  *  1. Assignments — which model each Team Builder role gets (D3a-2). `multi` only:
  *     `single` has one pin and says so, and an unmeasured box says why it is empty.
  *  2. Connection test — probe the harness, memory, Ollama through the main process
@@ -100,12 +104,42 @@ function StatusLine({ label, ok, required }: { label: string; ok: boolean; requi
 }
 
 /**
- * One engine, as discovery answered it. The verdict and the address are the user's
- * to check; the evidence line is the reason, shown rather than asserted — a wizard
- * that says "found" without saying how is the same trust gap as a model list with no
- * engine on it.
+ * The control half of a collapsed detail. The panel it opens is written beside it and
+ * is not put in the DOM until asked for, so a step can carry its proof without paying a
+ * screenful for it. It is a `button` with `aria-expanded`, so the state is reachable by
+ * keyboard and is announced rather than being inferable from where an arrow points.
+ */
+function DisclosureToggle({
+  open, onToggle, show, hide, accessibleName, className = "text-[11px] text-muted hover:text-text",
+}: {
+  open: boolean;
+  onToggle: () => void;
+  show: string;
+  hide: string;
+  /** Said instead of the visible text where several rows on one step share a word —
+   * "Ollama evidence" rather than a screen full of buttons called "evidence". */
+  accessibleName?: string;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button" aria-expanded={open} aria-label={accessibleName} onClick={onToggle}
+      className={`flex-shrink-0 ${className}`}
+    >{open ? hide : show}</button>
+  );
+}
+
+/**
+ * One engine, as discovery answered it: verdict, count and address on one line, the
+ * evidence behind a disclosure. The verdict and the address are the user's to check and
+ * stay unconditionally visible — a wizard that says "found" without saying how is the
+ * same trust gap as a model list with no engine on it, so *how* is one keystroke away
+ * and quoted verbatim, not summarised. What is never collapsed is the wording of the
+ * verdict itself: a quiet port still reads "not installed · configurable" with the
+ * disclosure shut, because that asymmetry is the claim being declined, not evidence.
  */
 function EngineLine({ engine }: { engine: EngineDiscovery }) {
+  const [open, setOpen] = useState(false);
   const label = engine.kind === "ollama" ? "Ollama" : "llama.cpp";
   const dot = engine.running ? "bg-green" : engine.installed === "unknown" ? "bg-faint" : "bg-yellow";
   const words = engine.running
@@ -113,15 +147,37 @@ function EngineLine({ engine }: { engine: EngineDiscovery }) {
     : engine.installed === "unknown"
       ? engine.kind === "llama.cpp" ? "not installed · configurable" : "not found"
       : "installed · not running";
+  // Only ever what the lane reported: an engine that is down answers no models, and a
+  // "0 models" would read as a working lane with nothing on it rather than an absent one.
+  const models = engine.running && engine.models.length
+    ? `${engine.models.length} model${engine.models.length === 1 ? "" : "s"}`
+    : "";
   return (
     <div className="rounded-lg bg-canvas/40 p-2">
-      <div className="flex items-center gap-2 text-sm">
+      <div className="flex items-center gap-1.5 text-sm">
         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dot}`} />
         <span className="font-mono text-text/80">{label}</span>
-        <span className={`ml-auto text-xs ${engine.running ? "text-green" : "text-muted"}`}>{words}</span>
+        <span aria-hidden="true" className="text-faint">·</span>
+        <span className={`text-xs whitespace-nowrap ${engine.running ? "text-green" : "text-muted"}`}>{words}</span>
+        {models && (
+          <>
+            <span aria-hidden="true" className="text-faint">·</span>
+            <span className="text-xs whitespace-nowrap text-muted">{models}</span>
+          </>
+        )}
+        {engine.baseUrl && (
+          <>
+            <span aria-hidden="true" className="text-faint">·</span>
+            {/* Truncates on a narrow card; `title` keeps the whole address reachable. */}
+            <span title={engine.baseUrl} className="min-w-0 truncate text-[11px] font-mono text-faint">{engine.baseUrl}</span>
+          </>
+        )}
+        <DisclosureToggle
+          open={open} onToggle={() => setOpen((current) => !current)} accessibleName={`${label} evidence`}
+          show="evidence" hide="hide evidence" className="ml-auto text-[11px] font-mono text-faint hover:text-text"
+        />
       </div>
-      {engine.baseUrl && <div className="mt-0.5 text-[11px] font-mono text-faint">{engine.baseUrl}</div>}
-      <div className="mt-0.5 text-[11px] text-muted">{engine.evidence}</div>
+      {open && <p className="mt-0.5 text-[11px] text-muted">{engine.evidence}</p>}
     </div>
   );
 }
@@ -177,6 +233,11 @@ function AssignRow({
   const reported = at.engine ? catalogue[at.engine] : undefined;
   const candidates = dedupe([...(reported ?? []), at.model ?? ""]);
   const unreported = !!at.model && !!reported?.length && !reported.includes(at.model);
+  /** The asserted-capability chips are collapsed per row (see the header's toggle): a
+   * row is a select until the user asks what it can be told, and nine rows of five
+   * chips was a screen of controls nobody had asked for. What a click writes is
+   * unchanged by that — see the disclosure test. */
+  const [chipsOpen, setChipsOpen] = useState(false);
 
   // D4 — this row's own requirement, checked against what the lane reported about the
   // model it names. `embedding` needs an embedder and `code` needs tools; the role rows
@@ -239,6 +300,15 @@ function AssignRow({
         {row.env && <span className="text-[10px] font-mono text-faint">{row.env}</span>}
         {!row.perRoleBindable && (
           <span className="ml-auto text-[10px] text-muted">not a role binding</span>
+        )}
+        {/* The assertion is available wherever a model and a lane are named — the same
+            condition that drew the chips inline before they were collapsed. */}
+        {at.model && at.engine && (
+          <DisclosureToggle
+            open={chipsOpen} onToggle={() => setChipsOpen((current) => !current)}
+            accessibleName={`${row.label} capabilities`} show="capabilities" hide="hide capabilities"
+            className="ml-auto text-[10px] font-mono text-faint hover:text-muted"
+          />
         )}
       </div>
 
@@ -312,11 +382,12 @@ function AssignRow({
           against, and your entry is left as you wrote it.
         </p>
       )}
-      {at.model && at.engine && (
+      {chipsOpen && at.model && at.engine && (
         // The assertion, editable. Five tokens the engines have actually been observed to
         // emit, so a click cannot write a spelling nothing will ever report — and an
         // unknown token typed into config.json is refused by `validateRouting` with its
-        // own path rather than dropped.
+        // own path rather than dropped. Behind a per-row disclosure, which changes where
+        // it is on the screen and nothing about what a click writes.
         <div className="flex flex-wrap items-center gap-1 pt-0.5">
           <span className="text-[10px] font-mono text-faint">routing.{row.key}.capabilities</span>
           {CAPABILITY_TOKENS.map((token) => {
@@ -364,11 +435,47 @@ type WizardStep = 0 | 1 | 2 | 3 | 4 | 5;
 const TOTAL = 6;
 
 /** What each answer costs and buys, in the user's terms. "single" is not a lesser
- * mode — it is the shape of a box with one model in it — so the copy says which box. */
-const RUN_STYLES: Array<{ style: RunStyle; title: string; tradeoff: string }> = [
-  { style: "multi",  title: "Multi-model",   tradeoff: "Ollama loads and evicts a model per role, so chat, code, and the Collective's coordinator and critic can each run a different model. This is what Team-Builder-style per-role variety needs." },
-  { style: "single", title: "One pinned model", tradeoff: "One model pinned to one GPU — the llama.cpp lane, with its KV-cache saved and restored. Nothing swaps on demand: every role gets the same model, and that is the honest shape for a card without room for two." },
+ * mode — it is the shape of a box with one model in it — so the copy says which box.
+ * `detail` names the disclosure that opens the trade-off, and is the only difference
+ * in wording between the two cards' toggles: each style says what is being hidden in
+ * its own terms, and the two buttons stay tellable apart. */
+const RUN_STYLES: Array<{ style: RunStyle; title: string; detail: string; tradeoff: string }> = [
+  { style: "multi",  title: "Multi-model",   detail: "what this costs",    tradeoff: "Ollama loads and evicts a model per role, so chat, code, and the Collective's coordinator and critic can each run a different model. This is what Team-Builder-style per-role variety needs." },
+  { style: "single", title: "One pinned model", detail: "what this locks in", tradeoff: "One model pinned to one GPU — the llama.cpp lane, with its KV-cache saved and restored. Nothing swaps on demand: every role gets the same model, and that is the honest shape for a card without room for two." },
 ];
+
+/**
+ * One run-style answer, collapsed to the title plus the proposal marker. The trade-off
+ * is the reason to choose, so it stays one keystroke away rather than always on screen:
+ * two whole paragraphs was most of one scroll on a step that also has to show a JSON
+ * preview. Choosing is unchanged — the click still only sets the style, and nothing is
+ * selected for the user.
+ */
+function RunStyleCard({
+  title, detail, tradeoff, selected, proposed, onSelect,
+}: {
+  title: string; detail: string; tradeoff: string; selected: boolean; proposed: boolean; onSelect: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`rounded-xl border transition-colors ${selected ? "border-accent/50 bg-accent/10" : "border-border/40"}`}>
+      <div className="flex items-center gap-2 px-3 py-2">
+        <button
+          type="button" onClick={onSelect} aria-pressed={selected}
+          className={`flex-1 text-left text-sm font-medium text-text ${selected ? "" : "hover:text-accent"}`}
+        >
+          {title}
+          {proposed && <span className="ml-1.5 text-[11px] font-normal text-accent">proposed for this box</span>}
+        </button>
+        <DisclosureToggle
+          open={open} onToggle={() => setOpen((current) => !current)}
+          show={`Show ${detail}`} hide={`Hide ${detail}`} className="text-[11px] text-faint hover:text-text"
+        />
+      </div>
+      {open && <p className="px-3 pb-2 text-xs text-muted">{tradeoff}</p>}
+    </div>
+  );
+}
 
 export function SetupWizard({ onComplete }: Props) {
   const bridge = desktop();
@@ -643,15 +750,28 @@ export function SetupWizard({ onComplete }: Props) {
   })();
 
   return (
-    <div className="fixed inset-0 z-50 bg-canvas flex items-center justify-center p-6">
+    // The outer fixed layer owns the scroll. Setup is `fixed inset-0 z-50`, so nothing
+    // behind it is reachable while it is open: if this container cannot scroll, a Confirm
+    // control that falls below the visible area is not an inconvenience, it is a lockout.
+    // `items-start` plus the card's `my-auto` centres the card when there is room and
+    // starts it at the top when there is not, so nothing can be trapped above or below
+    // the fold whatever the card's own height turns out to be.
+    <div className="fixed inset-0 z-50 bg-canvas overflow-y-auto flex items-start justify-center p-6">
       {/* The app uses a hidden native title bar. The regular shell supplies its
           own drag region, but setup replaces that shell completely; keep a
           dedicated strip available throughout onboarding. */}
-      <div className="drag-region absolute inset-x-0 top-0 h-10" aria-hidden="true" />
-      {/* Bounded height is what makes the Step body's overflow-y-auto engage: with
-          only min-h, the card grew to fit its content and pushed the confirm button
-          off-screen on short windows, leaving nothing to scroll. */}
-      <div className="no-drag w-full max-w-md bg-surface border border-border/60 rounded-2xl p-8 shadow-2xl flex flex-col min-h-[520px] max-h-[calc(100vh-3rem)]">
+      {/* Viewport-anchored rather than parent-anchored: the parent is now the scroll
+          owner, so a strip pinned to it would travel with the content and the
+          frameless window would lose its drag handle as soon as a step scrolled. */}
+      <div className="drag-region fixed inset-x-0 top-0 h-10" aria-hidden="true" />
+      {/* No height contest here. CSS resolves `min-height` before `max-height`, so the
+          card's old 520px floor beat its own `calc(100vh - 3rem)` ceiling on a short
+          window and the card grew past the thing meant to bound it — a trap that holds
+          whatever the reason for the cap not sticking turns out to be. The card is
+          content-sized now; the scroller above is the guarantee, and the Step body's own
+          min-h-0 overflow-y-auto stays as the secondary scroller for a step long enough
+          to want one. */}
+      <div className="no-drag my-auto w-full max-w-md bg-surface border border-border/60 rounded-2xl p-8 shadow-2xl flex flex-col">
 
         {/* Step 0: local engines, run style, routing table */}
         {step === 0 && (
@@ -700,16 +820,12 @@ export function SetupWizard({ onComplete }: Props) {
                           config.json already holds runStyle {JSON.stringify(storedRouting.runStyle)}. Confirm to keep it, or choose the other one.
                         </p>
                       )}
-                      {RUN_STYLES.map(({ style, title, tradeoff }) => (
-                        <button key={style} onClick={() => setRunStyle(style)} aria-pressed={runStyle === style}
-                          className={`w-full text-left px-3 py-2 rounded-xl border transition-colors
-                            ${runStyle === style ? "border-accent/50 bg-accent/10" : "border-border/40 hover:bg-surface2/60"}`}>
-                          <div className="text-sm font-medium text-text">
-                            {title}
-                            {proposal.runStyle === style && <span className="ml-1.5 text-[11px] text-accent">proposed for this box</span>}
-                          </div>
-                          <div className="text-xs text-muted mt-0.5">{tradeoff}</div>
-                        </button>
+                      {RUN_STYLES.map(({ style, title, detail, tradeoff }) => (
+                        <RunStyleCard
+                          key={style} title={title} detail={detail} tradeoff={tradeoff}
+                          selected={runStyle === style} proposed={proposal.runStyle === style}
+                          onSelect={() => setRunStyle(style)}
+                        />
                       ))}
                       {!runStyle && <p className="text-[11px] text-muted">Nothing is selected until you choose — this app will not pick a mode for you.</p>}
                     </div>
@@ -745,7 +861,11 @@ export function SetupWizard({ onComplete }: Props) {
                     )}
                   </div>
 
-                  {/* 4. The addresses, for whoever detection cannot see */}
+                  {/* 4. The addresses and the service probes, for whoever detection
+                      cannot see. Both are inside the Advanced disclosure the heading
+                      already covers; the one thing that stays out is the missing memory
+                      service, because an unset address changes what the features do and
+                      belongs behind no toggle. */}
                   <div className="space-y-1.5">
                     <button onClick={() => setShowAddresses((open) => !open)} aria-expanded={showAddresses} className="text-xs text-muted hover:text-text">
                       {showAddresses ? "Hide service addresses" : "Advanced: edit service addresses"}
@@ -754,25 +874,27 @@ export function SetupWizard({ onComplete }: Props) {
                       <p className="text-[11px] text-muted">No memory service is configured, and Memex will not guess one: the memory-backed features report as unavailable until you enter an address.</p>
                     )}
                     {showAddresses && (
-                      <div className="grid grid-cols-1 gap-1.5">
-                        {([
-                          ["harnessUrl", "Memex harness"], ["mempalaceUrl", "Memory service (no default)"],
-                          ["ollamaUrl", "Ollama"], ["llamaCppUrl", "llama.cpp / llama-server (optional)"],
-                          ["openWebUiUrl", "Open WebUI (optional)"], ["comfyUiUrl", "ComfyUI (optional)"],
-                        ] as const).map(([key, label]) => (
-                          <label key={key} className="text-[11px] text-muted">{label}
-                            <input aria-label={label} value={localUrls[key]} onChange={(e) => setLocalUrls((urls) => ({ ...urls, [key]: e.target.value }))}
-                              className="mt-0.5 w-full px-2 py-1.5 rounded-lg bg-canvas border border-border/60 text-xs text-text font-mono" />
-                          </label>
-                        ))}
-                      </div>
+                      <>
+                        <div className="grid grid-cols-1 gap-1.5">
+                          {([
+                            ["harnessUrl", "Memex harness"], ["mempalaceUrl", "Memory service (no default)"],
+                            ["ollamaUrl", "Ollama"], ["llamaCppUrl", "llama.cpp / llama-server (optional)"],
+                            ["openWebUiUrl", "Open WebUI (optional)"], ["comfyUiUrl", "ComfyUI (optional)"],
+                          ] as const).map(([key, label]) => (
+                            <label key={key} className="text-[11px] text-muted">{label}
+                              <input aria-label={label} value={localUrls[key]} onChange={(e) => setLocalUrls((urls) => ({ ...urls, [key]: e.target.value }))}
+                                className="mt-0.5 w-full px-2 py-1.5 rounded-lg bg-canvas border border-border/60 text-xs text-text font-mono" />
+                            </label>
+                          ))}
+                        </div>
+                        <div className="space-y-1 rounded-lg bg-canvas/40 p-2">
+                          <StatusLine label="Local Memex harness" ok={localInspection.harness.reachable} required />
+                          <StatusLine label="Open WebUI" ok={localInspection.openWebUi.reachable} />
+                          <StatusLine label="ComfyUI" ok={localInspection.comfyUi.reachable} />
+                        </div>
+                        <p className="text-[11px] text-muted">Ollama supplies models. The local Memex harness provides chat, tools, memory, and workspace workflows. If it is not running, continue and test it on the next step.</p>
+                      </>
                     )}
-                    <div className="space-y-1 rounded-lg bg-canvas/40 p-2">
-                      <StatusLine label="Local Memex harness" ok={localInspection.harness.reachable} required />
-                      <StatusLine label="Open WebUI" ok={localInspection.openWebUi.reachable} />
-                      <StatusLine label="ComfyUI" ok={localInspection.comfyUi.reachable} />
-                    </div>
-                    <p className="text-[11px] text-muted">Ollama supplies models. The local Memex harness provides chat, tools, memory, and workspace workflows. If it is not running, continue and test it on the next step.</p>
                   </div>
                 </>}
                 <IssuePanel issues={routingIssues} />
