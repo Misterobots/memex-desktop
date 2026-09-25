@@ -66,7 +66,7 @@ function Step({
       <h2 className="text-xl font-semibold text-text mb-1">{title}</h2>
       <p className="text-xs text-muted mb-6">Step {index + 1} of {total}</p>
 
-      <div className="flex-1 space-y-4 overflow-y-auto pr-1">{children}</div>
+      <div className="flex-1 min-h-0 space-y-4 overflow-y-auto pr-1">{children}</div>
 
       <div className="flex gap-3 pt-6">
         {onBack && (
@@ -648,7 +648,10 @@ export function SetupWizard({ onComplete }: Props) {
           own drag region, but setup replaces that shell completely; keep a
           dedicated strip available throughout onboarding. */}
       <div className="drag-region absolute inset-x-0 top-0 h-10" aria-hidden="true" />
-      <div className="no-drag w-full max-w-md bg-surface border border-border/60 rounded-2xl p-8 shadow-2xl flex flex-col min-h-[520px]">
+      {/* Bounded height is what makes the Step body's overflow-y-auto engage: with
+          only min-h, the card grew to fit its content and pushed the confirm button
+          off-screen on short windows, leaving nothing to scroll. */}
+      <div className="no-drag w-full max-w-md bg-surface border border-border/60 rounded-2xl p-8 shadow-2xl flex flex-col min-h-[520px] max-h-[calc(100vh-3rem)]">
 
         {/* Step 0: local engines, run style, routing table */}
         {step === 0 && (

@@ -544,7 +544,7 @@ export function ModelPickerPopover() {
 
       {/* Popover */}
       {open && (
-        <div className="absolute bottom-full mb-2 left-0 w-80 bg-canvas border border-border/60 rounded-2xl shadow-2xl z-50 overflow-hidden">
+        <div className="absolute bottom-full mb-2 left-0 w-80 max-h-[70vh] bg-canvas border border-border/60 rounded-2xl shadow-2xl z-50 overflow-y-auto">
           {writeNotice && (
             <div className="px-3 py-2 text-[11px] text-amber-400 bg-amber-500/10 border-b border-border/60">{writeNotice}</div>
           )}
