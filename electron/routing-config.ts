@@ -589,7 +589,11 @@ export function deriveRoutingFromSetup(input: SetupRoutingInput): RoutingConfig 
     const entry: EngineConfig = { kind: candidate.kind, baseUrl };
     const label = text(candidate.label) || text(prior?.label);
     if (label) entry.label = label;
-    const carriedPin = text(prior?.pinnedModel);
+    // A pin is a claim about the one model a box holds. Re-running setup after
+    // switching style left the previous style's pin sitting in the file, which read
+    // as authoritative while nothing in multi style ever consults it — so it is
+    // carried only into a table that can still mean it.
+    const carriedPin = input.runStyle === "single" ? text(prior?.pinnedModel) : "";
     if (carriedPin) entry.pinnedModel = carriedPin;
     const id = priorId ?? proposedId;
     engines[id] = entry;

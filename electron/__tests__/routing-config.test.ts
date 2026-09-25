@@ -656,6 +656,25 @@ describe("writing the table guided setup confirmed", () => {
     expect(table.engines.ollama.pinnedModel).toBe("kept:7b");
     expect(table.runStyle).toBe("single");
   });
+
+  it("clears a pin left by a previous single-style run once the style is multi", () => {
+    // Observed in a real config: setup run twice, first as single then as multi,
+    // left `pinnedModel` in the file naming a model the box no longer pins. Nothing
+    // in multi style reads it, so it was a second, authoritative-looking answer.
+    const existing: RoutingConfig = {
+      runStyle: "single",
+      engines: { ollama: { kind: "ollama", baseUrl: "http://[::1]:11434", pinnedModel: "qwen3.8:27b" } },
+      routing: { [DEFAULT_SLOT]: { engine: "ollama", model: "qwen3.8:27b" } },
+    };
+    const table = deriveRoutingFromSetup({
+      runStyle: "multi", engines: { ollama },
+      selection: { engine: "ollama", model: "qwen3:14b" }, existing,
+    });
+
+    expect(table.runStyle).toBe("multi");
+    expect(table.engines.ollama.pinnedModel).toBeUndefined();
+    expect(table.routing[DEFAULT_SLOT]).toEqual({ engine: "ollama", model: "qwen3:14b" });
+  });
 });
 
 // ---------------------------------------------------------------------------
