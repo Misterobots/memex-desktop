@@ -3,6 +3,14 @@
 Date: 2026-09-22. Origin: `memex-desktop` branch `fix/pioneers`, commits `29990ad`..`4f69191`; installer `0.1.108`.
 Audience: whoever works in `C:\Users\panca\Documents\Github\Memex_Core` (branch `fix-sse-events` at the time of writing).
 
+> **Status of this document, 2026-09-25.** The tree it addresses is **being absorbed into the desktop app**,
+> so items here are app work landing in a second checkout rather than a handoff to another owner. Read the
+> items below as dated records of what was true when written; the forward plan and the naming rule are in
+> `plan-09-24-2026.md` (section "Absorption"). Two things in the body were later proved wrong and are
+> retracted in place where they appear: the `coordinate.py` placeholder hazard (item 4 — `church.py:1315`
+> already nulls a colonless `model`), and the claim that the desktop still sends `"swarm"` as a default
+> (retired by `06d86b8`).
+
 Two items. **Item 1 is optional hardening — one clause. Item 2 is a real, silent functional gap that needs porting, and the decision behind it is already made: this tree is the live, actively-developed runtime and `Agent_Swarm` is the incomplete split, so Gauntlet moves here rather than this deployment moving there.**
 
 **Status 2026-09-23 — both items are done in source and the port is live in the serving container.** Item 1 became `_routes_to_dev_harness()` (`agents/main.py:2466`, with `and not request.research_mode` at `:2497`, used at `:2546`). Item 2 landed on `fix-sse-events` at `10d3c128` (fast-forward merge of `worktree-keen-elm-b2e5f3`): the `422`-without-bar and handoff-id guard, `_gauntlet_prompt`, the immutable contract block, `create_run` before streaming, `gauntlet_bar` through `church.py` → `handlers/coordinate.py` → the coordinator, the critic verdict with `VERDICT: PASS` parsing plus the repair and re-check passes, and the `swarm_runs.gauntlet_bar` column, `swarm_gauntlet_reviews` table and `record_gauntlet_review()` writer. `tests/test_gauntlet_critic_gate.py` and `tests/test_gauntlet_routing.py` add 43 cases. Two notes on the state of that verification, both cross-referenced in the desktop plan's `Mode contract fix` checkpoint:
