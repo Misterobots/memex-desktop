@@ -322,37 +322,42 @@ deployment was never inspected and may already run the `Agent_Swarm` code.
 
 # Item 4 — D1c: `model` is carrying two meanings at once (raised 2026-09-24)
 
-Read-only inspection of this tree's working copy, which is what `agent_runtime` serves. Two facts, and
-the second is a hazard rather than a preference:
+Read-only inspection of this tree's working copy, which is what `agent_runtime` serves.
 
-1. **`agents/handlers/coordinate.py:131` passes `selected_model=ctx.get("model")` — the request's `model`
-   used as a model id.** With the single-binding change now in the tree
-   (`role_model_resolver.snapshot_role_models(selected_model=…, team_builder_roles=False)`), that value
-   binds **all seven** `_SWARM_ROLES` and `coordination/executor.py:196` hands it to `Ollama(id=…)`.
-2. **The desktop still sends `"swarm"` there when no model is resolved**
-   (`memex-desktop/src/lib/sse-stream.ts:169` — `model: opts.model || "swarm"`). `"swarm"` is not an
-   Ollama tag. It is the pre-existing routing sentinel that `_routes_to_dev_harness()` exempts.
+> **Retraction, 2026-09-24, after reading further down the same file.** The hazard claimed below was
+> **wrong**, and anything built on it would have been wasted. `agents/church.py:1315` sanitises the value
+> before it ever reaches the ctx dict:
+>
+> ```python
+> _handler_model = model if (model and ":" in model and model != "hive-fast") else None
+> ctx = { ..., "model": _handler_model, ... }
+> ```
+>
+> `"swarm"` and `"default"` contain no colon, so `ctx.get("model")` at `handlers/coordinate.py:131` is
+> already `None` for both, and the comment immediately above that line says it exists precisely to stop a
+> handler invoking a non-existent Ollama model. **No placeholder guard is needed in `coordinate.py`.** I
+> read the consumer without reading the producer, and stated a bug that the producer prevents.
 
-So one field is both "which orchestrator serves this turn" and "which weights to load", and the failure
-mode of the second reading is not a validation error — it is seven roles pointed at a nonexistent model.
-Today it is latent, because `InputBar.tsx:431` always passes a real selection; it becomes reachable the
-moment any caller omits one.
+What *is* true, and is the only reason D1c still needs a runtime change:
 
-**Fix 1, one line, do it first — it makes the rest safe to sequence.** In `handlers/coordinate.py`, treat
-the non-model placeholders as absent:
+1. **`ctx["model"]` is the desktop's only channel to role binding**, and `ChatRequest` has no field for a
+   role map. `coordinate.py:131` receives a single model id; `snapshot_role_models` then binds it to all
+   seven `_SWARM_ROLES`. Per-role variety is unreachable from a client no matter what it sends.
+2. **The sanitiser is a name heuristic and is untested.** `":" in model` is load-bearing: an engine alias
+   without a colon — llama.cpp's `--alias coder`, or any single-word tag — is silently nulled and the run
+   falls back to environment defaults, while the desktop's table says a model was chosen. That mismatch is
+   worth two named tests, not a patch.
 
-```python
-_model = (ctx.get("model") or "").strip().lower()
-selected_model=None if _model in ("", "swarm", "default") else _model,
-```
+**Fix 1, rewritten as the test the code actually needs.** In `tests/test_gauntlet_routing.py`'s style:
 
-`"swarm"` is the desktop's legacy sentinel; **`"default"` is `ChatRequest.model`'s pydantic default**
-(`main.py:654` — `model: str = "default"`), and it fails the same way: seven roles bound to a tag that
-cannot load. So the desktop must not "fix" this by omitting `model` either — silence arrives as
-`"default"`, which looks like a choice and is not one. Anything left over falls through to team-builder /
-env resolution exactly as it did before the single-binding change. Add named tests in
-`tests/test_gauntlet_routing.py`'s style for both strings: a coordination request whose `model` is
-`"swarm"` or `"default"` must not produce a snapshot bound to that value.
+- `model="swarm"` and `model="default"` must reach `coordinate_task` as `selected_model=None`;
+- `model="qwen3:14b"` must reach it unchanged;
+- **a colonless alias** (e.g. `--alias coder`) must be reported rather than quietly dropped — the case that
+  will bite first once the llama.cpp lane is a supported install shape.
+
+The field still carries two meanings — "which orchestrator serves this turn" and "which weights to load" —
+and separating them is what `role_models` below is for. The placeholder hazard that occupied the earlier
+version of this item does not exist; see the retraction at the top.
 
 **Why the sentinel is already redundant for routing — verified in this tree, not from the older desktop
 notes.** `main.py:2451-2462`:
