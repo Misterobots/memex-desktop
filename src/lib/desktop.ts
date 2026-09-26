@@ -15,9 +15,10 @@ import type {
 // discovery verdict is one shape decided in electron/engine-discovery.ts.
 import type { EngineDiscovery } from "../../electron/engine-discovery";
 import type { CapabilityReport } from "../../electron/model-capabilities";
+import type { RuntimeTopology } from "../../electron/runtime-nodes";
 export type {
   RoutingConfig, RoutingIssue, RoutingResult, RoutingRow, RoutingState, RuneRole, RunStyle, EngineDiscovery,
-  CapabilityReport,
+  CapabilityReport, RuntimeTopology,
 };
 export type { RunRecord, RunEvent, EvalCase, EvalResult };
 
@@ -390,6 +391,14 @@ export interface MemexBridge {
     set:      (next: RoutingConfig) => Promise<RoutingResult>;
     validate: (next: unknown) => Promise<RoutingIssue[]>;
     runMap:   () => Promise<Record<string, string>>;
+  };
+
+  /** D5 — the model hosts the *runtime* reports, read from the active profile's
+   * own address. An empty `nodes` list means unread, not unavailable: the role
+   * editor must keep working when this cannot be read. Nothing here is stored —
+   * placement is decided by the runtime, not commanded from the app. */
+  runtime: {
+    nodes:    () => Promise<RuntimeTopology>;
   };
 
   ollama: {

@@ -42,6 +42,7 @@ import { collectResidentModels, type OllamaPsModel } from "./ollama-residency";
 import { discoverEngineModels, engineDescriptors, enginesModelsFor } from "./engine-registry";
 import { enginesCapabilitiesFor, type CapabilityReport } from "./model-capabilities";
 import { runRoleMap, validateRouting } from "./routing-config";
+import { readRuntimeTopology } from "./runtime-nodes";
 import { fireHooks }                   from "./hooks-runner";
 import { runOpenScad, type RenderParams } from "./openscad-runner";
 import { autoWireStore }                  from "./ipc-autowire";
@@ -632,6 +633,11 @@ export function registerAllIpc(ctx: IpcContext): void {
   // role->model object; it takes no argument, so the renderer cannot ask main to
   // resolve a routing table that was never saved.
   ipcMain.handle("routing:runMap", () => runRoleMap(config.getRouting()));
+  // Runtime-reported node topology (D5). Takes no argument: main reads the active
+  // profile's own stored address, so the renderer cannot aim this at a host of its
+  // choosing. Read-only and never written to `config.json` — which hosts exist and
+  // what they hold is runtime state, not user intent.
+  ipcMain.handle("runtime:nodes", () => readRuntimeTopology(config.getUrls().agentRuntime, fetch));
 
   // ── Ollama model list ─────────────────────────────────────────────────────
   // No renderer call site remains — the picker reads `engines:models` now. Left

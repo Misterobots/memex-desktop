@@ -273,6 +273,12 @@ contextBridge.exposeInMainWorld("memex", {
     runMap:    () => ipcRenderer.invoke("routing:runMap") as Promise<Record<string, string>>,
   },
 
+  // The model hosts the runtime itself reports (D5). No arguments — main fetches
+  // the active profile's own address, so this cannot be pointed elsewhere.
+  runtime: {
+    nodes: () => ipcRenderer.invoke("runtime:nodes"),
+  },
+
   // Ollama model list
   ollama: {
     listModels:      () => ipcRenderer.invoke("ollama:listModels"),
