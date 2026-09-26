@@ -41,6 +41,10 @@ import {
   capabilityCacheKey, evaluateFeature, FEATURE_REQUIREMENTS, isUnverifiable, requirementForRoutingRow,
   type FeatureVerdict,
 } from "../../../electron/model-capabilities";
+// D5's node report, imported rather than restated for the same reason as the matrix
+// above: one rule for "which hosts say they hold this model", shared with the Settings
+// screen that shows it.
+import { hostsReportingModel, type RuntimeNode } from "../../../electron/runtime-nodes";
 
 // ---------------------------------------------------------------------------
 // Shared step layout
@@ -219,12 +223,15 @@ function dedupe(items: string[]): string[] {
  * returned rather than from a transient error.
  */
 function AssignRow({
-  row, table, catalogue, capabilityReports, laneIds, busy, onAssign,
+  row, table, catalogue, capabilityReports, runtimeNodes, laneIds, busy, onAssign,
 }: {
   row: RoutingRow;
   table: RoutingConfig;
   catalogue: Record<string, string[]>;
   capabilityReports: Record<string, CapabilityReport>;
+  /** D5 — what the runtime says its hosts hold, or `null` when never read. Used only
+   * to make the sentence below accurate; it never gates the write (see the rule above). */
+  runtimeNodes: RuntimeNode[] | null;
   laneIds: string[];
   busy: boolean;
   onAssign: (rowKey: string, target: RouteTarget) => void;
@@ -233,6 +240,10 @@ function AssignRow({
   const reported = at.engine ? catalogue[at.engine] : undefined;
   const candidates = dedupe([...(reported ?? []), at.model ?? ""]);
   const unreported = !!at.model && !!reported?.length && !reported.includes(at.model);
+  /** Which hosts the runtime itself says hold this row's model. Empty here means
+   * "none of the reported hosts" — but the sentence below is only reached when the
+   * report was read, because `runtimeNodes === null` is unknown, not absence. */
+  const runtimeHosts = at.model && runtimeNodes ? hostsReportingModel(runtimeNodes, at.model) : [];
   /** The asserted-capability chips are collapsed per row (see the header's toggle): a
    * row is a select until the user asks what it can be told, and nine rows of five
    * chips was a screen of controls nobody had asked for. What a click writes is
@@ -353,9 +364,18 @@ function AssignRow({
             : `Set in routing.${at.via}.`}
       </p>
       {unreported && (
-        <p className="text-[11px] text-yellow">
-          routing.{row.key} names {at.model}, which {at.engine} does not report — it was saved, and will fail
-          until that model exists on the lane.
+        <p className="text-[11px] text-yellow" data-runtime-reach={runtimeNodes ? (runtimeHosts.length ? "held" : "missing") : "unknown"}>
+          routing.{row.key} names {at.model}, which {at.engine} does not report — it was saved, and{" "}
+          {runtimeHosts.length > 0
+            // The runtime resolves a host from the model itself, so a lane that does not
+            // list it is not the place it will necessarily load from. Saying "will fail on
+            // the lane" here would overstate what this app knows.
+            ? `the runtime reports it on ${runtimeHosts.map((host) => host.name).join(" and ")}, so that lane is not necessarily where it loads.`
+            : runtimeNodes
+              // Every reported host was asked and none has it — the strongest thing this
+              // screen can honestly say, and still not a refusal.
+              ? "no host the runtime reports holds it either, so it will fail until one does."
+              : "will fail until that model exists on the lane."}
         </p>
       )}
       {incapable && (
@@ -508,6 +528,10 @@ export function SetupWizard({ onComplete }: Props) {
   /** D4 — what each lane reported about each candidate, keyed `engineId:model`. Asked
    * once per model for the whole session (main caches it), never per render. */
   const [capabilityReports, setCapabilityReports] = useState<Record<string, CapabilityReport>>({});
+  /** D5 — the hosts the *runtime* reports, or `null` when that has never been read.
+   * `null` and `[]` are different claims: an unread topology must not become evidence
+   * that a model is missing, so a row says nothing about hosts it never saw. */
+  const [runtimeNodes, setRuntimeNodes] = useState<RuntimeNode[] | null>(null);
   const [showAddresses, setShowAddresses] = useState(false);
   const [localUrls, setLocalUrls] = useState({
     harnessUrl: "http://[::1]:8008",
@@ -721,6 +745,23 @@ export function SetupWizard({ onComplete }: Props) {
     }
     return () => { live = false; };
   }, [bridge, step, storedRouting]);
+
+  // D5 — ask the orchestrator which hosts it can reach and what they hold, once per
+  // visit to this step. Guarded like the capability call above: a preload older than D5
+  // has no such method, and the rows then carry no runtime claim at all — which is
+  // "unknown", not "no host has it". A failed read is treated the same way on purpose.
+  useEffect(() => {
+    if (!bridge || step !== 1) return;
+    const read = bridge.runtime?.nodes;
+    if (!read) { setRuntimeNodes(null); return; }
+    let live = true;
+    void read().then((report) => {
+      if (live) setRuntimeNodes(report.nodes.length > 0 ? report.nodes : null);
+    }).catch(() => {
+      if (live) setRuntimeNodes(null);
+    });
+    return () => { live = false; };
+  }, [bridge, step]);
 
   const handleFinish = useCallback(async () => {
     if (!bridge) { onComplete(); return; }
@@ -984,7 +1025,7 @@ export function SetupWizard({ onComplete }: Props) {
                 {ROUTING_ROWS.map((row) => (
                   <AssignRow
                     key={row.key} row={row} table={storedRouting} catalogue={catalogue}
-                    capabilityReports={capabilityReports}
+                    capabilityReports={capabilityReports} runtimeNodes={runtimeNodes}
                     laneIds={laneIds} busy={localBusy} onAssign={assignRow}
                   />
                 ))}
@@ -992,10 +1033,11 @@ export function SetupWizard({ onComplete }: Props) {
                   Unassigned roles stay on <span className="font-mono">{hostWords}</span>&apos;s own environment
                   defaults — this desktop cannot override them.
                 </p>
-                <p className="text-[11px] text-yellow">
-                  Not on the wire yet: the runtime does not accept a client-supplied role map, so these rows write
-                  config.json and are read by this desktop, while each role keeps reading its own host environment
-                  until that change lands (plan D1c).
+                <p className="text-[11px] text-muted">
+                  A role assigned here travels to the runtime as <span className="font-mono">role_models</span> on
+                  every turn (plan D1c); one left unassigned keeps reading its own host environment. Which host
+                  actually loads a model stays the runtime&apos;s choice — it resolves that from the model itself,
+                  and this desktop does not send a lane with it (plan D5).
                 </p>
               </div>
             )}

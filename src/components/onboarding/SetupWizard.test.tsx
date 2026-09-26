@@ -5,7 +5,8 @@ import userEvent from "@testing-library/user-event";
 import { SetupWizard } from "./SetupWizard";
 import { ROUTING_ROWS, validateRouting } from "../../../electron/routing-config";
 import type {
-  CapabilityReport, EngineDiscovery, EngineModel, LocalLlmInspection, RoutingConfig, RoutingResult, RunStyle, RuntimeProfile,
+  CapabilityReport, EngineDiscovery, EngineModel, LocalLlmInspection, RoutingConfig, RoutingResult, RunStyle,
+  RuntimeProfile, RuntimeTopology,
 } from "../../lib/desktop";
 
 /**
@@ -69,6 +70,10 @@ function mount(options: {
    * every existing test in this file runs that way — a row with no verdict is not a
    * row that passed. */
   capabilities?: (lane: { id: string; model: string }) => Promise<CapabilityReport>;
+  /** D5's node report. Absent by default for the same reason `capabilities` is: no
+   * `runtime` on the bridge is the older-preload case, and an unread topology must
+   * change nothing about what a row is allowed to say or save. */
+  runtime?: { nodes: () => Promise<RuntimeTopology> };
 } = {}) {
   const written: RoutingConfig[] = [];
   const activated: Array<Record<string, string>> = [];
@@ -118,6 +123,7 @@ function mount(options: {
       openOllamaDownload: async () => {},
     },
     health: { check: async () => ({ agentRuntime: "connected", mempalace: "disconnected", ollama: "connected", checkedAt: "" }) },
+    ...(options.runtime ? { runtime: options.runtime } : {}),
   } as unknown as typeof window.memex;
 
   return { written, activated, lanesAsked, storeReads: () => routingGets };
@@ -380,9 +386,22 @@ describe("SetupWizard step 1 — assignments", () => {
     const host = await screen.findByText(/Unassigned roles stay on/);
     expect(host.textContent).toContain("[::1]:8008");   // the active profile's runtime, not this app
     expect(screen.getByText(/this desktop cannot override them/)).toBeTruthy();
-    // The wire is not there yet, and an editor that implied otherwise is the defect
-    // this repo keeps recording.
-    expect(screen.getByText(/Not on the wire yet/)).toBeTruthy();
+    // D1c invalidated the sentence this test used to assert ("Not on the wire yet: the
+    // runtime does not accept a client-supplied role map") and the check stayed green,
+    // because it matched only the leading words. Now an assigned role *does* travel as
+    // `role_models`, an unassigned one still keeps the host's own defaults, and which
+    // host loads a model is still the runtime's choice — asserted together so a stale
+    // claim cannot come back disguised as a passing test.
+    // Matched on the paragraph itself: the sentence contains an inline
+    // <span class="font-mono">role_models</span>, which splits its text across nodes,
+    // and the default matcher skips elements that have element children.
+    const wire = await screen.findByText(
+      (_content, element) => element?.tagName === "P"
+        && (element.textContent ?? "").includes("travels to the runtime as"),
+    );
+    expect(wire.textContent).toContain("stays the runtime's choice");
+    expect(wire.textContent).toContain("does not send a lane");
+    expect(screen.queryByText(/Not on the wire yet/)).toBeNull();
   });
 
   it("asks candidates of the id lookup, never of an address", async () => {
@@ -460,12 +479,85 @@ describe("SetupWizard step 1 — assignments", () => {
     const pick = await modelPick("researcher");
     expect(pick.value).toBe("llama-experimental:7b");
     expect(screen.getByText(/does not report/)).toBeTruthy();
+    // With no node report read, the row keeps only the claim this app can support — the
+    // lane does not have it — and says nothing about hosts it never asked.
+    expect(screen.getByText(/will fail until that model exists on the lane/)).toBeTruthy();
+    expect(pick.disabled).toBe(false);
 
     // Choosing a reported model clears the reason, because the row is derived from the
     // table the write returned.
     await user.selectOptions(pick, "qwen3:14b");
     await waitFor(() => expect(screen.queryByText(/does not report/)).toBeNull());
     expect((await modelPick("researcher")).value).toBe("qwen3:14b");
+  });
+
+  /** D5 — a node report in the shape the orchestrator actually answers, with the
+   * `vram_mb: null` it really returns today. */
+  function topology(modelsByHost: Record<string, string[]>): RuntimeTopology {
+    return {
+      checkedAt: "2026-09-26T00:00:00.000Z",
+      reason: null,
+      nodes: Object.entries(modelsByHost).map(([name, availableModels]) => ({
+        name, host: `http://${name.toLowerCase()}:11434`, healthy: true, vramMb: null,
+        vramSource: "unknown", loadedModels: [], availableModels,
+      })),
+    };
+  }
+
+  const UNREPORTED_ROW: RoutingConfig = {
+    runStyle: "multi",
+    engines: { ollama: { kind: "ollama", baseUrl: "http://[::1]:11434", label: "Ollama" } },
+    routing: {
+      default: { engine: "ollama", model: "qwen3:14b" },
+      researcher: { engine: "ollama", model: "llama-experimental:7b" },
+    },
+  };
+
+  it("stops predicting failure for a model a reported host actually holds", async () => {
+    mount({
+      scanned: TWO_LANES(), stored: UNREPORTED_ROW, catalogue: { ollama: ["qwen3:14b"] },
+      runtime: { nodes: async () => topology({ Lovelace: ["llama-experimental:7b", "qwen3:14b"], Turing: ["phi4-mini:latest"] }) },
+    });
+    render(<SetupWizard onComplete={vi.fn()} />);
+    await assign("multi");
+
+    // The lane still does not report it — that stays said — but "will fail" was this
+    // app overreaching: the runtime resolves a host from the model, so a lane that
+    // lacks it is not where it necessarily loads.
+    expect(await screen.findByText(/which ollama does not report/)).toBeTruthy();
+    const line = await screen.findByText(/the runtime reports it on Lovelace/);
+    expect(line.textContent).toContain("not necessarily where it loads");
+    expect(screen.queryByText(/will fail until that model exists on the lane/)).toBeNull();
+  });
+
+  it("says plainly when every reported host was asked and none holds it", async () => {
+    mount({
+      scanned: TWO_LANES(), stored: UNREPORTED_ROW, catalogue: { ollama: ["qwen3:14b"] },
+      runtime: { nodes: async () => topology({ Lovelace: ["qwen3:14b"], Turing: ["phi4-mini:latest"] }) },
+    });
+    render(<SetupWizard onComplete={vi.fn()} />);
+    await assign("multi");
+
+    const line = await screen.findByText(/no host the runtime reports holds it either/);
+    expect(line.textContent).toContain("does not report");
+    // Stated, not gated: D3a-2's rule outranks my own acceptance criterion — an
+    // unlisted tag is frequently one the user is about to pull.
+    expect((await modelPick("researcher")).disabled).toBe(false);
+    expect((await modelPick("researcher")).value).toBe("llama-experimental:7b");
+  });
+
+  it("treats an unread node report as unknown, keeping the lane-only sentence", async () => {
+    mount({
+      scanned: TWO_LANES(), stored: UNREPORTED_ROW, catalogue: { ollama: ["qwen3:14b"] },
+      runtime: { nodes: async () => ({ checkedAt: "", reason: "Could not read the runtime's node report.", nodes: [] }) },
+    });
+    render(<SetupWizard onComplete={vi.fn()} />);
+    await assign("multi");
+
+    expect(await screen.findByText(/does not report/)).toBeTruthy();
+    expect(screen.getByText(/will fail until that model exists on the lane/)).toBeTruthy();
+    expect(screen.queryByText(/no host the runtime reports/)).toBeNull();
+    expect(screen.queryByText(/the runtime reports it on/)).toBeNull();
   });
 
   it("accumulates role writes and carries a hand-written slot through them, with no row for it", async () => {
