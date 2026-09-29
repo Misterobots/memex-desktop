@@ -17,12 +17,12 @@ import type { EngineDiscovery } from "../../electron/engine-discovery";
 import type { CapabilityReport } from "../../electron/model-capabilities";
 import type { RuntimeTopology } from "../../electron/runtime-nodes";
 import type {
-  ConnectResult, ProviderCatalog, ProviderInfo, ProviderModel,
+  ConnectResult, ProviderCatalog, ProviderInfo, ProviderModel, SelectionResult,
 } from "../../electron/provider-keys";
 export type {
   RoutingConfig, RoutingIssue, RoutingResult, RoutingRow, RoutingState, RuneRole, RunStyle, EngineDiscovery,
   CapabilityReport, RuntimeTopology,
-  ConnectResult, ProviderCatalog, ProviderInfo, ProviderModel,
+  ConnectResult, ProviderCatalog, ProviderInfo, ProviderModel, SelectionResult,
 };
 export type { RunRecord, RunEvent, EvalCase, EvalResult };
 
@@ -200,6 +200,10 @@ export interface RuntimeProfile {
   llamaCpp?:    string;
   /** Last model deliberately selected for this routing profile. */
   defaultModel?: string;
+  /** D7 — whether `defaultModel` names a local lane's model or a gateway provider's.
+   * Absent means `engine`, which is the pre-D7 state and keeps the routing table's
+   * precedence. See the longer note on the same field in electron/config-store.ts. */
+  defaultModelSource?: "engine" | "gateway";
   localServices?: { openWebUi?: string; comfyUi?: string };
   apiKey?:      string; // only present when providerType === "external"
   readonly?:    boolean;
@@ -412,6 +416,10 @@ export interface MemexBridge {
     catalog:    () => Promise<ProviderCatalog>;
     connect:    (provider: string, apiKey: string, label: string) => Promise<ConnectResult>;
     disconnect: (provider: string) => Promise<ConnectResult>;
+    /** D7 — replace the offered subset of a gateway's catalogue. The whole list goes
+     * on every write because the runtime stores it as one value; an empty array is the
+     * answer "offer none", not a no-op. */
+    setSelection: (provider: string, models: string[]) => Promise<SelectionResult>;
   };
 
   ollama: {

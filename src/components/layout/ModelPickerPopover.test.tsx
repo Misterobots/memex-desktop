@@ -7,8 +7,11 @@ import { useStore } from "../../lib/store";
 import type { CapabilityReport, EngineDescriptor, EngineModel, RoutingConfig, RuntimeProfile } from "../../lib/desktop";
 
 // Every runtime URL is refused: this is the machine state where the user's own
-// engine is up and the orchestrator is down. A picker that still asks the
-// runtime for its list fails the tests below loudly, not silently.
+// engine is up and the orchestrator is down. Since D7 the picker does ask the runtime
+// one question — which models a connected provider key offers — so what these tests
+// hold is the weaker and still load-bearing claim: that ask may only add rows. A dead
+// orchestrator that empties the lane list, or turns it into an error row, fails the
+// tests below loudly, not silently.
 const { apiFetch, getMyPermissions } = vi.hoisted(() => ({
   apiFetch: vi.fn(),
   getMyPermissions: vi.fn(),
@@ -83,7 +86,10 @@ const OLLAMA_ONLY = (model: string): RoutingConfig => ({
   routing: { default: { engine: "ollama", model } },
 });
 
-describe("ModelPickerPopover", () => {
+/** The shared machine for both describes: an external profile, `qwen3:8b` resident in
+ * VRAM, and an orchestrator that answers nothing at all. A test that needs a different
+ * install layers on top — `useLocalEngines`, `useRouting`, or its own `getActive`. */
+function baseSetup() {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
@@ -120,6 +126,10 @@ describe("ModelPickerPopover", () => {
       },
     } as unknown as typeof window.memex;
   });
+}
+
+describe("ModelPickerPopover", () => {
+  baseSetup();
 
   afterEach(cleanup);
 
@@ -180,9 +190,16 @@ describe("ModelPickerPopover", () => {
 
     // Not merely "unbroken by" the dead runtime — never consulted. Had the list
     // still come from it, `apiFetch` rejects and an error row replaces both models.
-    expect(apiFetch).not.toHaveBeenCalled();
+    //
+    // D7 changed what that sentence is about. The picker now *also* asks the runtime,
+    // for what a connected provider key offers, so the claim that matters is the one
+    // underneath: a stopped orchestrator may not empty or corrupt the lane list. The
+    // read happened, added nothing, and left the engine claim closed — the trigger's
+    // "not offered" chip is only ever rendered on a `loaded` catalogue.
+    expect(apiFetch).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/Fetch Error|Unrecognized API response|Error 5/)).toBeNull();
     expect(models).toHaveBeenCalledWith("ollama");
+    expect(document.querySelector("[data-catalogue='absent']")).not.toBeNull();
   });
 
   it("selects an engine row without qualifying the model on the wire", async () => {
@@ -578,5 +595,181 @@ describe("ModelPickerPopover", () => {
     await waitFor(() => expect(screen.getByText("Fetch Error: fetch failed")).toBeTruthy());
     expect(absentChip()).toBeNull();
     expect(document.querySelector("[data-catalogue='absent-note']")).toBeNull();
+  });
+});
+
+/**
+ * D7's desktop half: the picker has to be able to *reach* a model the user selected on
+ * the Model providers screen, which it could not do while it read only the local lanes.
+ *
+ * The machine state every test below keeps is the one the picker was rewritten to
+ * survive — Ollama up, orchestrator reachable or not — so the gateway read must only
+ * ever add rows. What is asserted is the two ways that could go wrong: the runtime's own
+ * operational list being duplicated into the lanes, and a choice the routing table
+ * cannot express being silently reverted by it on the next load.
+ */
+describe("ModelPickerPopover — gateway models", () => {
+  baseSetup();
+  afterEach(cleanup);
+
+  /** A `/v1/models` answer as the harness writes it: the runtime's own rows tagged
+   * `MarsRL`, a provider row tagged with the provider id. */
+  const modelsPayload = (rows: Record<string, unknown>[]) => ({
+    ok: true, status: 200, json: async () => ({ data: rows }),
+  }) as unknown as Response;
+
+  const GATEWAY_ROW = {
+    id: "meta-llama/llama-3.1-70b-instruct",
+    owned_by: "openrouter",
+    label: "Meta: Llama 3.1 70B Instruct",
+  };
+  const GATEWAY_TITLE = "meta-llama/llama-3.1-70b-instruct — served by your openrouter key, not by an engine lane";
+  const absentChip = () => document.querySelector("[data-catalogue='absent']");
+
+  /** A routing stub that records every write, so "the table was left alone" is an
+   * observation rather than an absence of evidence. */
+  function recordRouting(initial: RoutingConfig) {
+    const written: RoutingConfig[] = [];
+    window.memex!.routing = {
+      get:      async () => ({ routing: initial, errors: [] }),
+      set:      async (next: unknown) => { written.push(next as RoutingConfig); return { ok: true, routing: initial, issues: [] }; },
+      validate: async () => [],
+      runMap:   async () => ({}),
+    };
+    return { written };
+  }
+
+  it("lists what a connected key offers, without duplicating the runtime's own rows", async () => {
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b")]);
+    apiFetch.mockResolvedValue(modelsPayload([
+      { id: "Home-AI-Swarm", owned_by: "MarsRL", label: "Memex default" },
+      { id: "qwen3:14b", owned_by: "MarsRL", label: "qwen3:14b" },
+      GATEWAY_ROW,
+    ]));
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 8b/i }));
+
+    await waitFor(() => expect(screen.getByTitle(GATEWAY_TITLE)).toBeTruthy());
+    // The row says who answers it, and says it as a key rather than as a lane.
+    const chip = screen.getByTitle(GATEWAY_TITLE).querySelector("[data-source='gateway']");
+    expect(chip?.textContent).toBe("openrouter");
+    // `owned_by: MarsRL` is the runtime's own operational catalogue, already covered by
+    // the lanes. Merging it would list qwen3:14b twice as two different machines.
+    expect(screen.getAllByTitle(/qwen3:14b — on Ollama/)).toHaveLength(1);
+    expect(screen.queryAllByTitle("qwen3:14b — served by your MarsRL key, not by an engine lane")).toHaveLength(0);
+  });
+
+  it("records a gateway pick on the profile and leaves the routing table alone", async () => {
+    // `routing.<slot>.engine` must name a configured lane, so the table has no way to
+    // hold this choice. Writing the local engine beside it would claim Ollama serves a
+    // model it has never heard of — and in single style the pin would name it too.
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b")]);
+    const routing = recordRouting(OLLAMA_ONLY("qwen3:14b"));
+    apiFetch.mockResolvedValue(modelsPayload([GATEWAY_ROW]));
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    // The table's `default` names qwen3:14b, so that is what the trigger carries here —
+    // the point of the test is that a gateway pick does not go into that field.
+    await user.click(await screen.findByRole("button", { name: /qwen3 14b/i }));
+    await user.click(await screen.findByTitle(GATEWAY_TITLE));
+
+    await waitFor(() => expect(useStore.getState().selectedModel).toBe("meta-llama/llama-3.1-70b-instruct"));
+    expect(window.memex!.config.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultModel: "meta-llama/llama-3.1-70b-instruct",
+        defaultModelSource: "gateway",
+      }),
+    );
+    expect(routing.written).toHaveLength(0);
+  });
+
+  it("keeps a gateway pick across a restart, which the routing table would otherwise undo", async () => {
+    // The regression this whole field exists for: `routing.default` still names the last
+    // engine model, and the table outranked the profile. Without the provenance the
+    // gateway choice reverts on the next launch with nothing said about it.
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b")]);
+    useRouting(OLLAMA_ONLY("qwen3:14b"));
+    window.memex!.config.getActive = vi.fn().mockResolvedValue({
+      ...LOCAL_PROFILE,
+      defaultModel: "meta-llama/llama-3.1-70b-instruct",
+      defaultModelSource: "gateway",
+    });
+    apiFetch.mockResolvedValue(modelsPayload([GATEWAY_ROW]));
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    const trigger = await screen.findByRole("button", { name: /meta-llama\/llama-3\.1-70b-instruct/i });
+    expect(useStore.getState().selectedModel).toBe("meta-llama/llama-3.1-70b-instruct");
+
+    await user.click(trigger);
+    // Both facts at once: who serves this one, and what the table still resolves for
+    // everything it can express.
+    await waitFor(() => expect(screen.getByText(/served by your openrouter key/)).toBeTruthy());
+    expect(screen.getByText(/served by your openrouter key/).textContent)
+      .toContain("routing.default still names qwen3:14b");
+    expect(screen.queryByText(/^routed from routing\.default on Ollama$/)).toBeNull();
+  });
+
+  it("marks a gateway id an engine lane already answers, and keeps the row", async () => {
+    // The runtime resolves a registry entry before it consults a provider, so this row
+    // cannot win the turn. Hidden, the gap is unexplainable; unmarked, picking it looks
+    // like a choice.
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b")]);
+    apiFetch.mockResolvedValue(modelsPayload([
+      { id: "qwen3:14b", owned_by: "nvidia", label: "Qwen3 14B (NIM)" },
+    ]));
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 8b/i }));
+
+    const row = await screen.findByTitle("qwen3:14b — served by your nvidia key, not by an engine lane");
+    expect(row.textContent).toContain("answered elsewhere");
+    expect(row.querySelector("[data-source='gateway']")).not.toBeNull();
+    // The lane's own row is untouched — the mark sits on the row that cannot win.
+    expect(screen.getByTitle("qwen3:14b — on Ollama").textContent).not.toContain("answered elsewhere");
+  });
+
+  it("says nothing about a gateway pick it could not check", async () => {
+    // Engines answered, the gateway did not: the pick is absent from `models` because the
+    // list that would carry it never arrived, not because nothing offers it.
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b")]);
+    useRouting(OLLAMA_ONLY("qwen3:14b"));
+    window.memex!.config.getActive = vi.fn().mockResolvedValue({
+      ...LOCAL_PROFILE,
+      defaultModel: "meta-llama/llama-3.1-70b-instruct",
+      defaultModelSource: "gateway",
+    });
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    const trigger = await screen.findByRole("button", { name: /meta-llama\/llama-3\.1-70b-instruct/i });
+    await user.click(trigger);
+
+    await waitFor(() => expect(screen.getByTitle("qwen3:14b — on Ollama")).toBeTruthy());
+    expect(absentChip()).toBeNull();
+    expect(trigger.title).not.toContain("not offered");
+  });
+
+  it("offers no VRAM preload for a model that does not run on a lane", async () => {
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b")]);
+    window.memex!.config.getActive = vi.fn().mockResolvedValue({
+      ...LOCAL_PROFILE,
+      defaultModel: "meta-llama/llama-3.1-70b-instruct",
+      defaultModelSource: "gateway",
+    });
+    apiFetch.mockResolvedValue(modelsPayload([GATEWAY_ROW]));
+    window.memex!.ollama!.getLoadedModels = vi.fn().mockResolvedValue([]);
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    const trigger = await screen.findByRole("button", { name: /meta-llama\/llama-3\.1-70b-instruct/i });
+    await user.click(trigger);
+
+    await waitFor(() => expect(screen.getByText(/nothing here to load into VRAM/i)).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /pre-load/i })).toBeNull();
   });
 });

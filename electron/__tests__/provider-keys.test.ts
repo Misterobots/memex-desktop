@@ -11,6 +11,7 @@ import {
   disconnectProvider,
   parseProviderCatalog,
   readProviderCatalog,
+  setProviderSelection,
   shadowedCount,
 } from "../provider-keys";
 
@@ -218,5 +219,132 @@ describe("disconnectProvider", () => {
     expect(method).toBe("DELETE");
     expect(url).toBe("http://[::1]:8008/api/v1/provider-keys/open%20router");
     expect(result.ok).toBe(true);
+  });
+});
+
+/**
+ * D7: which of a gateway's models the user is offered. The read half is the checkbox
+ * state (`/list` carries `selected_models`); the write half is the PUT. Both are tested
+ * for the same failure mode: an empty selection being read or sent as something it is
+ * not.
+ */
+describe("selected_models on the read", () => {
+  it("carries the chosen subset beside a connected provider", () => {
+    const providers = parseProviderCatalog(CATALOG, {
+      providers: [
+        { provider: "openrouter", label: "OpenRouter", connected_at: "2026-09-28T00:00:00Z", selected_models: ["meta-llama/llama-3.1-70b-instruct"] },
+      ],
+    });
+    expect(providers.find((p) => p.id === "openrouter")?.selectedModels).toEqual(["meta-llama/llama-3.1-70b-instruct"]);
+    // A provider with no row has no selection either way, and says so with an empty
+    // list rather than an invented one.
+    expect(providers.find((p) => p.id === "nvidia")?.selectedModels).toEqual([]);
+  });
+
+  it("reads an absent column as nothing chosen, never as unknown", () => {
+    // A runtime predating the migration answers `list` without the field. That is the
+    // same offer the user sees — nothing — and not a read failure to hedge about.
+    const providers = parseProviderCatalog(CATALOG, {
+      providers: [{ provider: "openrouter", label: "OpenRouter", connected_at: "2026-09-28T00:00:00Z" }],
+    });
+    const openrouter = providers.find((p) => p.id === "openrouter");
+    expect(openrouter?.connected).toBe(true);
+    expect(openrouter?.selectedModels).toEqual([]);
+  });
+
+  it("drops a non-string from the reported selection instead of stringifying it", () => {
+    const providers = parseProviderCatalog(CATALOG, {
+      providers: [
+        { provider: "openrouter", connected_at: null, selected_models: [" a ", null, 42, "", {}, "b"] },
+      ],
+    });
+    expect(providers.find((p) => p.id === "openrouter")?.selectedModels).toEqual(["a", "b"]);
+  });
+
+  it("keeps every row unknown when the connection list was refused", () => {
+    const providers = parseProviderCatalog(CATALOG, null);
+    expect(providers.every((p) => p.connected === null)).toBe(true);
+    expect(providers.every((p) => p.selectedModels.length === 0)).toBe(true);
+  });
+});
+
+describe("setProviderSelection", () => {
+  it("puts the whole normalised list at the provider's selection path", async () => {
+    let url = "";
+    let method = "";
+    let body = "";
+    let auth = "";
+    const fetchFn = (async (target: string, init?: RequestInit) => {
+      url = String(target);
+      method = String(init?.method);
+      body = String(init?.body);
+      auth = new Headers(init?.headers).get("X-authentik-uid") ?? "";
+      return response({ status: "updated", provider: "openrouter", selected: ["a", "b"] });
+    }) as never;
+    const result = await setProviderSelection(
+      "http://[::1]:8008/", "Justin", "open router", ["b", " a ", "a", "", "b"], fetchFn,
+    );
+    expect(method).toBe("PUT");
+    expect(url).toBe("http://[::1]:8008/api/v1/provider-keys/open%20router/selection");
+    expect(auth).toBe("Justin");
+    // Deduplicated, trimmed, empties gone: what the runtime stores is what it was sent.
+    expect(JSON.parse(body)).toEqual({ models: ["a", "b"] });
+    expect(result.ok).toBe(true);
+    expect(result.selected).toEqual(["a", "b"]);
+  });
+
+  it("sends an empty selection as an answer rather than skipping the write", async () => {
+    let called = 0;
+    let body = "";
+    const fetchFn = (async (_url: string, init?: RequestInit) => {
+      called += 1;
+      body = String(init?.body);
+      return response({ status: "updated", provider: "openrouter", selected: [] });
+    }) as never;
+    const result = await setProviderSelection("http://[::1]:8008", "Justin", "openrouter", [], fetchFn);
+    expect(called).toBe(1);
+    expect(JSON.parse(body)).toEqual({ models: [] });
+    expect(result.ok).toBe(true);
+    // The sentence the user needs: this is not "nothing happened".
+    expect(result.detail).toMatch(/will offer none/);
+  });
+
+  it("reports what the runtime accepted, not what was asked for", async () => {
+    const fetchFn = (async () => response({
+      status: "updated", provider: "openrouter", selected: ["meta-llama/llama-3.1-70b-instruct"],
+    })) as never;
+    const result = await setProviderSelection(
+      "http://[::1]:8008", "Justin", "openrouter",
+      ["meta-llama/llama-3.1-70b-instruct", "deepseek/deepseek-chat"], fetchFn,
+    );
+    expect(result.selected).toEqual(["meta-llama/llama-3.1-70b-instruct"]);
+    expect(result.detail).toBe("openrouter: 1 model selected.");
+  });
+
+  it("carries the runtime's reason when the write is refused", async () => {
+    const fetchFn = (async () => response({
+      detail: "No openrouter key is connected, so there is nothing to select against.",
+    }, 400)) as never;
+    const result = await setProviderSelection("http://[::1]:8008", "Justin", "openrouter", ["a"], fetchFn);
+    expect(result.ok).toBe(false);
+    expect(result.detail).toMatch(/nothing to select against/);
+    expect(result.selected).toEqual([]);
+  });
+
+  it("survives a refusal that is not JSON", async () => {
+    const fetchFn = (async () => ({
+      ok: false, status: 502, json: async () => { throw new Error("not json"); },
+    })) as unknown as never;
+    const result = await setProviderSelection("http://[::1]:8008", "Justin", "openrouter", ["a"], fetchFn);
+    expect(result.ok).toBe(false);
+    expect(result.detail).toBe("The runtime answered 502.");
+  });
+
+  it("refuses a profile with no usable address and a provider with no name", async () => {
+    let called = 0;
+    const fetchFn = (async () => { called += 1; return response({}); }) as never;
+    expect((await setProviderSelection("", "Justin", "openrouter", ["a"], fetchFn)).ok).toBe(false);
+    expect((await setProviderSelection("http://[::1]:8008", "Justin", "  ", ["a"], fetchFn)).ok).toBe(false);
+    expect(called).toBe(0);
   });
 });

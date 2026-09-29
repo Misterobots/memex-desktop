@@ -8,7 +8,7 @@
  * screen was never ported, so the app silently ignored three providers the user's
  * own harness was already serving. See plan `D6`.
  *
- * Two rules this module keeps.
+ * Three rules this module keeps.
  *
  * **The key is a pass-through, never a store.** It arrives on IPC from the connect
  * form and goes straight to the harness. Nothing here writes it to `config.json`, and
@@ -22,6 +22,12 @@
  * `list` does, so the two calls fail independently. Reporting "not connected" when the
  * runtime answered 401 would let the UI claim an absence it never observed — the same
  * discipline `runtime-nodes.ts` applies to a model it cannot see.
+ *
+ * **An empty selection is a choice, not a gap.** D7 put the offered subset of a
+ * gateway's catalogue beside the key that earned it, so `selected_models: []` means
+ * *offer none* — the state immediately after connecting, reached by adding a credential
+ * without rewriting anyone's picker. Nothing here may read it as "unknown" and fall back
+ * to the full list, which is the firehose the item exists to remove.
  */
 
 import type { FetchLike } from "./engine-registry";
@@ -53,6 +59,11 @@ export interface ProviderInfo {
   /** Live (fetched) rather than curated (declared) catalogue. */
   live: boolean;
   catalog: ProviderCatalogState | null;
+  /** D7 — the subset of `models` this user chose to be offered. Empty means the
+   * runtime named none, which for a live provider is a *choice* (connecting offers
+   * nothing until models are selected), not a gap in the read. Only meaningful
+   * beside `connected: true`; a curated provider has no selection to report. */
+  selectedModels: string[];
 }
 
 export interface ProviderCatalog {
@@ -66,6 +77,11 @@ export interface ConnectResult {
   ok: boolean;
   /** For the user, not for logs: never contains the key. */
   detail: string;
+}
+
+export interface SelectionResult extends ConnectResult {
+  /** What the runtime says is selected now — its answer, not what was asked for. */
+  selected: string[];
 }
 
 function isHttpUrl(value: string): boolean {
@@ -111,14 +127,24 @@ export function parseProviderCatalog(
   // else (a 401 body, an error page) yields no map, which every row below reads as
   // `unknown` rather than as "not connected".
   const rows = (connectedPayload as { providers?: unknown } | null)?.providers;
-  const connected = new Map<string, string | null>();
+  const connected = new Map<string, { at: string | null; selected: string[] }>();
   if (Array.isArray(rows)) {
     for (const row of rows) {
       if (!row || typeof row !== "object") continue;
       const entry = row as Record<string, unknown>;
       const id = trimmed(entry.provider, 200);
       if (!id) continue;
-      connected.set(id, typeof entry.connected_at === "string" ? entry.connected_at : null);
+      connected.set(id, {
+        at: typeof entry.connected_at === "string" ? entry.connected_at : null,
+        // D7. Non-strings are dropped rather than stringified: the runtime's own
+        // `normalize_selection` does the same, and a client that invented `"None"`
+        // here would render a checkbox for a model that does not exist.
+        selected: Array.isArray(entry.selected_models)
+          ? entry.selected_models
+              .filter((m): m is string => typeof m === "string" && m.trim().length > 0)
+              .map((m) => m.trim())
+          : [],
+      });
     }
   }
 
@@ -145,15 +171,16 @@ export function parseProviderCatalog(
           };
         })()
       : null;
-    const known = connected.has(id);
+    const known = connected.get(id);
     acc.push({
       id,
       label,
       models,
       connected: known ? true : connectedPayload === undefined || connectedPayload === null ? null : false,
-      connectedAt: known ? connected.get(id) ?? null : null,
+      connectedAt: known ? known.at : null,
       live: info.live_models === true,
       catalog,
+      selectedModels: known ? known.selected : [],
     });
     return acc;
   }, []);
@@ -280,4 +307,71 @@ export async function disconnectProvider(
 export function shadowedCount(provider: ProviderInfo): number {
   if (typeof provider.catalog?.shadowed === "number") return provider.catalog.shadowed;
   return provider.models.filter((m) => m.routesHere === false).length;
+}
+
+/**
+ * Choose which of a gateway's models this user is offered (plan D7).
+ *
+ * The whole list is sent on every write, not a delta: the runtime's
+ * `set_selection` replaces the column, so a delta would need a read to be correct and
+ * a stale read would silently drop a model the user did choose. An empty list is a
+ * real answer — it is the state right after connecting — and is sent as such rather
+ * than treated as "nothing to do" and skipped.
+ */
+export async function setProviderSelection(
+  agentRuntimeUrl: string,
+  uid: string,
+  provider: string,
+  models: string[],
+  fetchFn: FetchLike = fetch,
+): Promise<SelectionResult> {
+  const base = (agentRuntimeUrl || "").trim().replace(/\/+$/, "");
+  const none: SelectionResult = { ok: false, detail: "", selected: [] };
+  if (!isHttpUrl(base)) return { ...none, detail: "The active profile has no usable runtime address." };
+  const target = trimmed(provider, 200);
+  if (!target) return { ...none, detail: "No provider was named." };
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const identity = trimmed(uid, 200);
+  if (identity) headers["X-authentik-uid"] = identity;
+
+  // Deduplicated and trimmed here so the count the UI reports matches what goes out,
+  // even though the runtime normalises the same way.
+  const chosen = [...new Set((Array.isArray(models) ? models : []).map((m) => (m ?? "").trim()).filter(Boolean))].sort();
+
+  try {
+    const response = await fetchFn(
+      `${base}/api/v1/provider-keys/${encodeURIComponent(target)}/selection`,
+      {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ models: chosen }),
+        signal: AbortSignal.timeout(10000),
+      },
+    );
+    let body: unknown = null;
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+    if (!response.ok) {
+      const detail = trimmed((body as { detail?: unknown } | null)?.detail) || `The runtime answered ${response.status}.`;
+      return { ok: false, detail, selected: [] };
+    }
+    const accepted = (body as { selected?: unknown } | null)?.selected;
+    const selected = Array.isArray(accepted)
+      ? accepted.filter((m): m is string => typeof m === "string" && m.trim().length > 0).map((m) => m.trim())
+      : [];
+    return {
+      ok: true,
+      detail: selected.length === 0
+        ? `${target}: no models selected, so the runtime will offer none from it.`
+        : `${target}: ${selected.length} model${selected.length === 1 ? "" : "s"} selected.`,
+      selected,
+    };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return { ok: false, detail: `Could not reach the runtime: ${trimmed(detail)}`, selected: [] };
+  }
 }

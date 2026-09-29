@@ -43,7 +43,7 @@ import { discoverEngineModels, engineDescriptors, enginesModelsFor } from "./eng
 import { enginesCapabilitiesFor, type CapabilityReport } from "./model-capabilities";
 import { runRoleMap, validateRouting } from "./routing-config";
 import { readRuntimeTopology } from "./runtime-nodes";
-import { connectProvider, disconnectProvider, readProviderCatalog } from "./provider-keys";
+import { connectProvider, disconnectProvider, readProviderCatalog, setProviderSelection } from "./provider-keys";
 import { fireHooks }                   from "./hooks-runner";
 import { runOpenScad, type RenderParams } from "./openscad-runner";
 import { autoWireStore }                  from "./ipc-autowire";
@@ -653,6 +653,18 @@ export function registerAllIpc(ctx: IpcContext): void {
     connectProvider(config.getUrls().agentRuntime, getCurrentUid(), provider, apiKey, label, fetch));
   ipcMain.handle("providers:disconnect", (_e, provider: string) =>
     disconnectProvider(config.getUrls().agentRuntime, getCurrentUid(), provider, fetch));
+  // D7 — which of a gateway's models this user is offered. Same no-address rule as
+  // above, and the array is passed through a guard rather than trusted: this channel
+  // can write a preference, and a non-array from a compromised renderer still cannot
+  // aim the request anywhere the profile does not already point.
+  ipcMain.handle("providers:selection", (_e, provider: string, models: unknown) =>
+    setProviderSelection(
+      config.getUrls().agentRuntime,
+      getCurrentUid(),
+      provider,
+      Array.isArray(models) ? models as string[] : [],
+      fetch,
+    ));
 
   // ── Ollama model list ─────────────────────────────────────────────────────
   // No renderer call site remains — the picker reads `engines:models` now. Left

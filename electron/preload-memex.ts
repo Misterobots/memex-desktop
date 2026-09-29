@@ -282,11 +282,14 @@ contextBridge.exposeInMainWorld("memex", {
   // Model providers the runtime supports and which of them this user has connected
   // (D6). `connect` is the only bridge call that carries a secret; it goes to main
   // and no further — nothing on this side of the bridge can read a key back.
+  // D7's `setSelection` carries no secret at all: just which ids to offer.
   providers: {
     catalog:    () => ipcRenderer.invoke("providers:catalog"),
     connect:    (provider: string, apiKey: string, label: string) =>
       ipcRenderer.invoke("providers:connect", provider, apiKey, label),
     disconnect: (provider: string) => ipcRenderer.invoke("providers:disconnect", provider),
+    setSelection: (provider: string, models: string[]) =>
+      ipcRenderer.invoke("providers:selection", provider, models),
   },
 
   // Ollama model list

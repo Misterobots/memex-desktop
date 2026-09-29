@@ -41,6 +41,18 @@ export interface RuntimeProfile {
   /** Last model deliberately selected for this routing profile. Kept in step with
    * the picker by `ModelPickerPopover`; the routing table outranks it. */
   defaultModel?: string;
+  /** What kind of thing `defaultModel` names, so the routing table knows when it is
+   * not allowed to outrank it.
+   *
+   * `engine` (or absent, which is every profile written before D7) means a model on
+   * one of the local lanes, so `routing.default` — which names an engine — is the
+   * better-informed claim and wins on load. `gateway` means a model served by a
+   * provider key the runtime holds, which no engine in the table can name: the
+   * validator requires `routing.<slot>.engine` to be one of `engines`, so writing a
+   * gateway id there would state that a local lane serves it. On such a pick the
+   * profile's own `defaultModel` is the only honest record of the choice, and the
+   * picker leaves the table alone. */
+  defaultModelSource?: "engine" | "gateway";
   /** Optional local companion services configured by Local LLM setup. */
   localServices?: { openWebUi?: string; comfyUi?: string };
   apiKey?:      string;   // plaintext in memory/IPC; encrypted only in the persisted file

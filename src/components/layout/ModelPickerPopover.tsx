@@ -46,6 +46,15 @@ type CatalogModel = {
    * hold the same tag, so the name alone does not identify the entry. */
   engineId?: string;
   engineLabel?: string;
+  /** D7 — the provider this row is reached through, when it is not a local lane at
+   * all. Carried separately from `engineLabel` because a gateway row has no lane to
+   * preload, no VRAM, and no `/api/show` to answer a capability question. */
+  gateway?: string;
+  /** D7 — this id is answered by something other than the source this row came from,
+   * which outranks it: the runtime resolves a model registry entry before it consults
+   * a provider, and a provider id another provider already owns binds there. Listed
+   * and marked, never hidden. */
+  answeredElsewhere?: boolean;
 };
 
 /** How much the picker actually knows about the model list it is holding.
@@ -71,6 +80,62 @@ type CatalogueState = "idle" | "loading" | "loaded" | "failed";
  * source, and a provider's model list is not an engine's. */
 type CatalogueSource = "engines" | "provider";
 
+/** How much the picker knows about the *gateway* list specifically (D7).
+ *
+ * Kept apart from `CatalogueState` on purpose. That one closes a claim about the local
+ * engine lanes — "no engine lane reports X" stays sound while the orchestrator is down,
+ * which is the exact machine state the picker was rewritten to survive. Folding a failed
+ * gateway read into it would let a stopped runtime un-say a fact about Ollama. */
+type GatewayState = "idle" | "loading" | "loaded" | "failed";
+
+/** What `/v1/models` puts in `owned_by` for the rows the runtime serves itself — the
+ * swarm default and the curated operational catalogue. Anything else names a provider
+ * reached through a key, which is the only thing the engine lanes cannot already answer.
+ *
+ * A wire contract, not an invention: see `list_models` in `agents/main.py`, which tags
+ * its own rows `MarsRL` and each provider loop with the provider id. */
+const LOCAL_OWNER = "MarsRL";
+
+const normaliseId = (value: string): string => value.replace(/^ollama\//, "").trim().toLowerCase();
+
+/**
+ * The models this user is offered through a connected provider key.
+ *
+ * The runtime is the only thing that knows — a gateway's catalogue is fetched, per-user
+ * keys decide what is offered at all, and D7's selection narrows it to the ids chosen on
+ * the Model providers screen. So this reads `/v1/models` rather than repeating any of
+ * that here, and throws when the answer is not readable, which the caller renders as
+ * silence about a list it never saw.
+ */
+async function readGatewayModels(): Promise<CatalogModel[]> {
+  const base = getAgentRuntime().trim().replace(/\/+$/, "");
+  const response = await apiFetch(`${base}/v1/models`, { signal: AbortSignal.timeout(8000) });
+  if (!response.ok) throw new Error(`the runtime answered ${response.status}`);
+  const data = await response.json();
+  const rows: unknown[] = Array.isArray(data)
+    ? data
+    : Array.isArray((data as { data?: unknown })?.data)
+      ? (data as { data: unknown[] }).data
+      : Array.isArray((data as { models?: unknown })?.models)
+        ? (data as { models: unknown[] }).models
+        : [];
+  if (rows.length === 0) throw new Error("the runtime's model list could not be read");
+  return rows.reduce<CatalogModel[]>((acc, row) => {
+    if (!row || typeof row !== "object") return acc;
+    const entry = row as Record<string, unknown>;
+    const id = typeof entry.id === "string" ? entry.id.trim() : "";
+    const owner = typeof entry.owned_by === "string" ? entry.owned_by.trim() : "";
+    if (!id || !owner || owner === LOCAL_OWNER) return acc;
+    acc.push({
+      id,
+      label: typeof entry.label === "string" && entry.label.trim() ? entry.label : id,
+      owned_by: owner,
+      gateway: owner,
+    });
+    return acc;
+  }, []);
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -85,6 +150,14 @@ export function ModelPickerPopover() {
   /** Which kind of source answered for the current rows, so an absence can be phrased
    * about the thing that was actually asked. */
   const [catalogueFrom, setCatalogueFrom] = useState<CatalogueSource | null>(null);
+  /** D7 — did the gateway list come in? Read apart from `catalogueState`, which is a
+   * claim about engine lanes only. */
+  const [gatewayState, setGatewayState] = useState<GatewayState>("idle");
+  /** D7 — whether the standing choice names a gateway model. The routing table cannot
+   * express one (`routing.<slot>.engine` must name a configured lane), so on such a
+   * pick the profile's own `defaultModel` is the record and the table must not
+   * silently outrank it on the next load. */
+  const [pickSource, setPickSource] = useState<"engine" | "gateway">("engine");
   const [canSelectModels, setCanSelectModels] = useState(false);
   const [accessResolved, setAccessResolved] = useState(false);
   const [query,  setQuery]  = useState("");
@@ -132,7 +205,19 @@ export function ModelPickerPopover() {
       if (!alive) return;
       setRouted(resolved);
 
-      const model = resolved?.route.target?.model || profile.defaultModel || useStore.getState().selectedModel;
+      // D7: a gateway model is not something the routing table can hold — its entries
+      // name a local lane — so when the profile records a gateway pick, that record
+      // outranks `routing.default` here. Without this the table, still naming whatever
+      // engine model was picked before, would revert the choice on every load.
+      const gatewayPick = profile.defaultModelSource === "gateway"
+        ? (profile.defaultModel ?? "").trim()
+        : "";
+      setPickSource(gatewayPick ? "gateway" : "engine");
+
+      const model = gatewayPick
+        || resolved?.route.target?.model
+        || profile.defaultModel
+        || useStore.getState().selectedModel;
       if (model !== useStore.getState().selectedModel) setSelectedModel(model);
       // Upgrade older profiles lazily so their current explicit selection is
       // captured once and becomes independent of other profiles thereafter.
@@ -254,11 +339,39 @@ export function ModelPickerPopover() {
           }
         }));
         const rows = perEngine.flat();
-        setModels(rows.map((row) => ({
+        const engineRows: CatalogModel[] = rows.map((row) => ({
           id: row.model,
           engineId: row.engineId,
           engineLabel: row.engineLabel,
-        })));
+        }));
+        // D7 — what the runtime offers through a connected provider key. Asked for
+        // alongside the lanes, not instead of them: a gateway row has no engine to
+        // preload, and a runtime that will not answer must not take Ollama's list with
+        // it. So this read can only ever add rows, and its failure is recorded
+        // separately rather than degrading `catalogueState`.
+        setGatewayState("loading");
+        let gateway: CatalogModel[] = [];
+        try {
+          const fetched = await readGatewayModels();
+          // An id two sources both list is the shadow case: the runtime resolves a
+          // registry entry before a provider, and a provider id another provider owns
+          // binds to that owner. Both rows stay, each marked with the other's claim.
+          const seen = new Map<string, Set<string>>();
+          for (const row of [...engineRows, ...fetched]) {
+            const key = normaliseId(row.id);
+            const owners = seen.get(key) ?? new Set<string>();
+            owners.add(row.gateway ? `provider:${row.gateway}` : `engine:${row.engineId ?? ""}`);
+            seen.set(key, owners);
+          }
+          gateway = fetched.map((row) => {
+            const owners = seen.get(normaliseId(row.id)) ?? new Set<string>();
+            return owners.size > 1 ? { ...row, answeredElsewhere: true } : row;
+          });
+          setGatewayState("loaded");
+        } catch {
+          setGatewayState("failed");
+        }
+        setModels([...engineRows, ...gateway]);
         setCatalogueState(unansweredLane ? "failed" : "loaded");
         void probeCapabilities(rows);
       } catch (e) {
@@ -300,13 +413,18 @@ export function ModelPickerPopover() {
         // `models` empty, and only one of them licenses a sentence about absence.
         setModels([{ id: "Error: Unrecognized API response", label: "Error" }]);
         setCatalogueState("failed");
+        setGatewayState("failed");
       } else {
         setModels(mList);
         setCatalogueState("loaded");
+        // On this branch the list *is* the provider's, so there is no second source
+        // whose silence could make an absence unprovable.
+        setGatewayState("loaded");
       }
     } catch (e) {
       setModels([{ id: `Fetch Error: ${e instanceof Error ? e.message : String(e)}`, label: "Error" }]);
       setCatalogueState("failed");
+      setGatewayState("failed");
     }
   }, [canSelectModels, probeCapabilities]);
 
@@ -407,19 +525,38 @@ export function ModelPickerPopover() {
   }, [open]);
 
   const filtered = models.filter((m) =>
-    !query || `${m.label ?? ""} ${m.id} ${m.engineLabel ?? ""}`.toLowerCase().includes(query.toLowerCase())
+    !query || `${m.label ?? ""} ${m.id} ${m.engineLabel ?? ""} ${m.gateway ?? ""}`.toLowerCase().includes(query.toLowerCase())
   );
 
-  const chooseModel = async (model: string, engineId?: string) => {
+  const chooseModel = async (model: string, engineId?: string, gateway?: string) => {
     setSelectedModel(model);
+    setPickSource(gateway ? "gateway" : "engine");
     const bridge = desktop();
     if (bridge) {
       try {
         const profile = await bridge.config.getActive();
-        await bridge.config.save({ ...profile, defaultModel: model });
+        await bridge.config.save({
+          ...profile,
+          defaultModel: model,
+          // Written on every pick, not only on a gateway one: an engine pick has to
+          // hand precedence back to the routing table.
+          defaultModelSource: gateway ? "gateway" : "engine",
+        });
       } catch {
         // The local store is still persisted, so selection remains stable even
         // if the native profile write is temporarily unavailable.
+      }
+      if (gateway) {
+        // The table is deliberately left alone. `routing.<slot>.engine` must name a
+        // configured lane, so writing this id there would record that a local engine
+        // serves a model it cannot serve — and in `runStyle: "single"` the pin would
+        // then name a model the lane was never launched with. The profile's
+        // `defaultModel` above is the honest record of the choice, and `applyProfile`
+        // reads it back with the same provenance.
+        setWriteNotice("");
+        setOpen(false);
+        setQuery("");
+        return;
       }
       // The routing table — not the profile — is what this picker follows on the next
       // load, so a choice that never reaches config.json is silently reverted. In
@@ -470,7 +607,15 @@ export function ModelPickerPopover() {
   // because a routing table can answer a slot with another slot's model, and the
   // picker showing that model without saying so is the silent substitution D2's
   // `resolveRoute` exists to make visible.
-  const routingNote = routed?.route.slot ? `routed from routing.${routed.route.slot} on ${routed.engineLabel}` : "";
+  //
+  // D7: a gateway pick is the one choice the table cannot describe, so the line says
+  // who actually serves it and names what the table still resolves for everything else
+  // — the two are different models, and a note that only mentioned one would hide that.
+  const selectedRow = models.find((row) => matchesModel(row.id, selectedModel));
+  const gatewayOwner = pickSource === "gateway" ? (selectedRow?.gateway ?? "provider") : null;
+  const routingNote = gatewayOwner
+    ? `served by your ${gatewayOwner} key · routing.${routed?.route.slot ?? DEFAULT_SLOT} still names ${routed?.route.target?.model ?? "(nothing)"}`
+    : routed?.route.slot ? `routed from routing.${routed.route.slot} on ${routed.engineLabel}` : "";
 
   // D4's assertion, read off the entry that answered. It is a claim about one
   // (engine, model) pair, so it can only be applied to the row that pair names:
@@ -487,7 +632,11 @@ export function ModelPickerPopover() {
    * holding. Suppressed for every state but `loaded`, including the case that reads as
    * empty — a catalogue nobody asked for yet, or one a lane refused to answer. */
   const inCatalogue = models.some((row) => matchesModel(row.id, selectedModel));
-  const notOffered = catalogueState === "loaded" && !inCatalogue;
+  // D7: a gateway pick whose gateway read never answered is not an absence. The row may
+  // well exist on a list this picker did not get to see, and a chip reading "not offered"
+  // there would be the app contradicting a choice it recorded itself.
+  const gatewayUnchecked = pickSource === "gateway" && gatewayState !== "loaded";
+  const notOffered = catalogueState === "loaded" && !inCatalogue && !gatewayUnchecked;
   const notOfferedNote = !notOffered ? "" :
     // Phrased about what was actually asked. `engines.list()` answers from the registry,
     // which is not the routing table — a box with lanes but no table would otherwise be
@@ -623,7 +772,7 @@ export function ModelPickerPopover() {
                 ))}
               </div>
 
-              {!isSelectedLoaded && (
+              {!isSelectedLoaded && !gatewayOwner && (
                 <div className="mt-2 pt-2 border-t border-border/40">
                   <button
                     onClick={(e) => {
@@ -655,6 +804,13 @@ export function ModelPickerPopover() {
                 <span className="text-xs font-semibold text-muted uppercase tracking-wide">Model</span>
                 <span className="text-[10px] text-muted font-mono">VRAM idle</span>
               </div>
+              {gatewayOwner ? (
+                // Nothing to preload: this model does not run on a lane this machine
+                // owns, so the button would ask Ollama for a tag it has never heard of.
+                <p className="text-[11px] text-muted">
+                  Served by your {gatewayOwner} key — there is nothing here to load into VRAM.
+                </p>
+              ) : (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -675,6 +831,7 @@ export function ModelPickerPopover() {
                   </>
                 )}
               </button>
+              )}
             </div>
           )}
 
@@ -743,20 +900,41 @@ export function ModelPickerPopover() {
               const contradicted = verdict?.disagreement ?? "";
               return (
                 <button
-                  key={`${m.engineId ?? ""}:${m.id}`}
+                  key={`${m.engineId ?? ""}:${m.gateway ?? ""}:${m.id}`}
                   disabled={m.available === false}
-                  onClick={() => { void chooseModel(m.id, m.engineId); }}
-                  title={m.engineLabel ? `${m.id} — on ${m.engineLabel}` : m.id}
+                  onClick={() => { void chooseModel(m.id, m.engineId, m.gateway); }}
+                  title={m.gateway
+                    ? `${m.id} — served by your ${m.gateway} key, not by an engine lane`
+                    : m.engineLabel ? `${m.id} — on ${m.engineLabel}` : m.id}
                   className={`w-full text-left flex items-center justify-between gap-2 px-3 py-2 transition-colors disabled:opacity-45 disabled:cursor-not-allowed
                     ${m.id === selectedModel ? "bg-accent/10 text-text" : "text-text/80 hover:bg-surface2/60"}`}
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs font-medium truncate">{m.label ?? m.id}</span>
-                      {m.engineLabel && (
-                        <span className="text-[9px] px-1 py-0.5 rounded bg-surface border border-border/40 text-muted/90 font-mono flex-shrink-0">
-                          {m.engineLabel}
+                      {(m.engineLabel || m.gateway) && (
+                        // A lane and a key are different kinds of answer, so they do not
+                        // wear the same chip: one is a card in this room, the other is a
+                        // provider the runtime sends the turn to.
+                        <span
+                          data-source={m.gateway ? "gateway" : "engine"}
+                          className={`text-[9px] px-1 py-0.5 rounded border font-mono flex-shrink-0 ${
+                            m.gateway
+                              ? "bg-surface/60 border-border/40 border-dashed text-muted"
+                              : "bg-surface border-border/40 text-muted/90"
+                          }`}
+                        >
+                          {m.gateway ?? m.engineLabel}
                         </span>
+                      )}
+                      {m.answeredElsewhere && (
+                        // Listed, not hidden — but the row that wins is elsewhere: the
+                        // runtime resolves a registry entry before a provider, and a
+                        // gateway id another provider owns binds to that owner.
+                        <span
+                          className="text-[9px] uppercase tracking-wide text-yellow flex-shrink-0"
+                          title="Another source answers this id on your runtime, and it is the one that gets the turn."
+                        >answered elsewhere</span>
                       )}
                       {isLoaded && (
                         <span className="px-1.5 py-0.2 text-[9px] font-mono rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 flex-shrink-0">
