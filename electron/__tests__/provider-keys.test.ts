@@ -19,6 +19,7 @@ import {
   readProviderCatalog,
   setProviderSelection,
   shadowedCount,
+  splitModelIds,
 } from "../provider-keys";
 
 const CATALOG = {
@@ -283,6 +284,26 @@ describe("selected_models on the read", () => {
     const providers = parseProviderCatalog(CATALOG, null);
     expect(providers.every((p) => p.connected === null)).toBe(true);
     expect(providers.every((p) => p.selectedModels.length === 0)).toBe(true);
+  });
+});
+
+describe("splitModelIds", () => {
+  it("splits on every separator a pasted list arrives with, and keeps the id intact", () => {
+    // A model id carries slashes, colons, dots and hyphens; none of them separate.
+    expect(splitModelIds("meta-llama/llama-3.1-70b-instruct, qwen/qwen3-235b-a22b:free")).toEqual([
+      "meta-llama/llama-3.1-70b-instruct", "qwen/qwen3-235b-a22b:free",
+    ]);
+    expect(splitModelIds("a/b\nc/d;e/f  g/h")).toHaveLength(4);
+  });
+
+  it("trims, drops blanks and de-duplicates", () => {
+    expect(splitModelIds("  a/b ,, a/b ,   , c/d ")).toEqual(["a/b", "c/d"]);
+  });
+
+  it("reads an empty or absent field as no ids rather than one empty id", () => {
+    expect(splitModelIds("")).toEqual([]);
+    expect(splitModelIds("   \n , ")).toEqual([]);
+    expect(splitModelIds(undefined as unknown as string)).toEqual([]);
   });
 });
 

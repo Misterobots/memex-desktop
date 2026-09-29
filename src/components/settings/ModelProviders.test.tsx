@@ -157,26 +157,36 @@ describe("ModelProviders", () => {
 });
 
 /**
- * D7: a gateway lists 460 models, so the key alone must not decide what the picker
- * offers. These cover the parts a user would otherwise read backwards — a saved
- * selection rendering as an empty offer, an id another provider owns being offered as a
- * choice that cannot take effect, and a refused write looking like an abandoned edit.
+ * D7: a gateway lists 464 models, so the key alone must not decide what the picker
+ * offers, and a list of 464 checkboxes is not the answer either. These cover the parts a
+ * user would otherwise read backwards — a saved selection rendering as an empty offer, a
+ * typo'd id being stored silently and refused three screens later, an id another provider
+ * owns being accepted as a choice that cannot take effect, and a refused write looking
+ * like an abandoned edit.
  */
-describe("ModelProviders — which gateway models are offered", () => {
-  it("renders the stored selection as checked and counts it", async () => {
+const ADD_BOX = "Add OpenRouter models by id";
+
+describe("ModelProviders — choosing which gateway models are offered", () => {
+  it("shows the stored selection as chips, labelled", async () => {
     stubBridge({ catalog: async () => CONNECTED });
     render(<ModelProviders />);
     await waitFor(() => expect(screen.getByText("OpenRouter")).toBeTruthy());
 
-    expect((screen.getByLabelText("meta-llama/llama-3.1-70b-instruct") as HTMLInputElement).checked).toBe(true);
-    expect((screen.getByLabelText("deepseek/deepseek-chat") as HTMLInputElement).checked).toBe(false);
-    expect(screen.getByText("1 of 3 offered")).toBeTruthy();
-    expect(screen.getByText("1 selected")).toBeTruthy();
+    // The catalogue's label, not the raw id: what the user chose is what they read.
+    // Queried through the chip's own hook because the browse list renders the same label
+    // and id in the DOM even while collapsed.
+    const chips = document.querySelectorAll("[data-chip]");
+    expect(chips).toHaveLength(1);
+    expect(chips[0].textContent).toContain("Llama 3.1 70B");
+    expect(chips[0].textContent).toContain("meta-llama/llama-3.1-70b-instruct");
+    expect(chips[0].getAttribute("data-chip")).toBe("known");
+    expect(screen.getByText("1 offered")).toBeTruthy();
+    expect(screen.getByLabelText("Stop offering meta-llama/llama-3.1-70b-instruct")).toBeTruthy();
     // Nothing was edited, so there is nothing to send.
     expect((screen.getByRole("button", { name: /no changes/i }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("sends the whole list on save rather than only the change", async () => {
+  it("adds a typed id and sends the whole list on save", async () => {
     const setSelection = vi.fn().mockResolvedValue({
       ok: true, detail: "openrouter: 2 models selected.",
       selected: ["deepseek/deepseek-chat", "meta-llama/llama-3.1-70b-instruct"],
@@ -186,37 +196,88 @@ describe("ModelProviders — which gateway models are offered", () => {
     render(<ModelProviders />);
     await waitFor(() => expect(screen.getByText("OpenRouter")).toBeTruthy());
 
-    fireEvent.click(screen.getByLabelText("deepseek/deepseek-chat"));
-    expect(screen.getByText("2 selected")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /save selection/i }));
+    fireEvent.change(screen.getByLabelText(ADD_BOX), { target: { value: "deepseek/deepseek-chat" } });
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    expect(screen.getByText("2 offered")).toBeTruthy();
+    // The box empties after a commit, so the next id starts clean.
+    expect((screen.getByLabelText(ADD_BOX) as HTMLInputElement).value).toBe("");
 
+    fireEvent.click(screen.getByRole("button", { name: /save selection/i }));
     // The pre-existing choice travels with the new one: the runtime replaces the whole
     // value, so a delta would have quietly dropped Llama.
     await waitFor(() => expect(setSelection).toHaveBeenCalledWith(
       "openrouter", ["meta-llama/llama-3.1-70b-instruct", "deepseek/deepseek-chat"],
     ));
     expect(await screen.findByText("openrouter: 2 models selected.")).toBeTruthy();
-    expect(catalog.mock.calls.length).toBeGreaterThan(1); // re-read, so the row shows the runtime's answer
+    expect(catalog.mock.calls.length).toBeGreaterThan(1);
   });
 
-  it("will not offer a model another provider already answers", async () => {
-    const setSelection = vi.fn();
-    stubBridge({ catalog: async () => CONNECTED, setSelection });
+  it("adds every id in a pasted comma list, not just the last", async () => {
+    // Each add would otherwise read the draft before React had written the previous one.
+    stubBridge({ catalog: async () => CONNECTED });
     render(<ModelProviders />);
     await waitFor(() => expect(screen.getByText("OpenRouter")).toBeTruthy());
 
-    const shadowed = screen.getByLabelText("openai/gpt-4o") as HTMLInputElement;
-    expect(shadowed.disabled).toBe(true);
-    expect(shadowed.checked).toBe(false);
-    // Listed and labelled, not removed: the row is where the user learns why picking
-    // it elsewhere would not send the turn here.
-    expect(screen.getByText("answered elsewhere")).toBeTruthy();
-    fireEvent.click(shadowed);
-    expect(screen.getByText("1 selected")).toBeTruthy();
-    expect(setSelection).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText(ADD_BOX), { target: { value: "acme/one, acme/two ,acme/three" } });
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+
+    // Three unknown ids plus the one the catalogue knows: the summary counts what is
+    // offered and names how many of them the fetched list has never heard of, rather
+    // than producing "4 of 3 offered".
+    expect(screen.getByText("4 offered · 3 not in the fetched list")).toBeTruthy();
+    for (const id of ["acme/one", "acme/two", "acme/three"]) {
+      expect(screen.getByLabelText(`Stop offering ${id}`)).toBeTruthy();
+    }
   });
 
-  it("says a connected key offers nothing until models are chosen", async () => {
+  it("accepts an id the fetched list does not carry, and says so on the chip", async () => {
+    stubBridge({ catalog: async () => CONNECTED });
+    render(<ModelProviders />);
+    await waitFor(() => expect(screen.getByText("OpenRouter")).toBeTruthy());
+
+    fireEvent.change(screen.getByLabelText(ADD_BOX), { target: { value: "vendor/brand-new-2026" } });
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+
+    // Refusing it would be wrong — the catalogue is fetched and can be behind upstream.
+    // Storing it silently would be worse: the runtime accepts anything, lists nothing
+    // for it, and refuses a turn on it with a message naming neither provider nor
+    // selection. So the chip carries the caveat where the id was typed.
+    const chip = document.querySelector("[data-chip='unknown']");
+    expect(chip?.textContent).toContain("vendor/brand-new-2026");
+    expect(chip?.textContent).toContain("not in the fetched list");
+    expect(document.querySelector("[data-chip='known']")).not.toBeNull();
+  });
+
+  it("refuses an id another provider answers, with the reason", async () => {
+    stubBridge({ catalog: async () => CONNECTED });
+    render(<ModelProviders />);
+    await waitFor(() => expect(screen.getByText("OpenRouter")).toBeTruthy());
+
+    fireEvent.change(screen.getByLabelText(ADD_BOX), { target: { value: "openai/gpt-4o" } });
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+
+    expect(await screen.findByText(/answered by another provider on your runtime/)).toBeTruthy();
+    expect(screen.getByText("1 offered")).toBeTruthy();
+    expect(document.querySelector("[data-chip='unknown']")).toBeNull();
+  });
+
+  it("adds from the browse list and marks what is already offered", async () => {
+    stubBridge({ catalog: async () => CONNECTED });
+    render(<ModelProviders />);
+    await waitFor(() => expect(screen.getByText("OpenRouter")).toBeTruthy());
+
+    // Chosen rows say so instead of offering a second add; the shadowed one is labelled
+    // and carries no button, because it could never route here.
+    expect(screen.getByText("offered")).toBeTruthy();
+    expect(screen.getByText("answered elsewhere")).toBeTruthy();
+    const addable = screen.getAllByRole("button", { name: /\+ add/ });
+    expect(addable).toHaveLength(1);
+
+    fireEvent.click(addable[0]);
+    expect(screen.getByText("2 offered")).toBeTruthy();
+  });
+
+  it("says a connected key offers nothing until models are named", async () => {
     const none: ProviderCatalog = {
       ...CONNECTED,
       providers: CONNECTED.providers.map((p) => ({ ...p, selectedModels: [] })),
@@ -225,10 +286,11 @@ describe("ModelProviders — which gateway models are offered", () => {
     render(<ModelProviders />);
 
     // The state right after connecting, stated as a choice rather than as a gap.
-    await waitFor(() => expect(screen.getByText(/0 of 3 offered — select the models to use/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/nothing offered yet/)).toBeTruthy());
+    expect(screen.getByText(/Nothing is offered yet/)).toBeTruthy();
   });
 
-  it("keeps the edit on screen when the runtime refuses the write", async () => {
+  it("keeps the chips on screen when the runtime refuses the write", async () => {
     const setSelection = vi.fn().mockResolvedValue({
       ok: false, detail: "No openrouter key is connected, so there is nothing to select against.", selected: [],
     });
@@ -236,23 +298,36 @@ describe("ModelProviders — which gateway models are offered", () => {
     render(<ModelProviders />);
     await waitFor(() => expect(screen.getByText("OpenRouter")).toBeTruthy());
 
-    fireEvent.click(screen.getByLabelText("deepseek/deepseek-chat"));
+    fireEvent.change(screen.getByLabelText(ADD_BOX), { target: { value: "deepseek/deepseek-chat" } });
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
     fireEvent.click(screen.getByRole("button", { name: /save selection/i }));
 
     expect(await screen.findByText(/nothing to select against/)).toBeTruthy();
-    // A failed write that cleared the checkboxes would read as an edit the user undid.
-    expect((screen.getByLabelText("deepseek/deepseek-chat") as HTMLInputElement).checked).toBe(true);
+    // A failed write that dropped the chip would read as an edit the user undid.
+    expect(screen.getByLabelText("Stop offering deepseek/deepseek-chat")).toBeTruthy();
     expect(screen.getByRole("button", { name: /save selection/i })).toBeTruthy();
   });
 
-  it("offers no selection for a curated provider", async () => {
+  it("discards an unsaved edit back to what the runtime reported", async () => {
+    stubBridge({ catalog: async () => CONNECTED });
+    render(<ModelProviders />);
+    await waitFor(() => expect(screen.getByText("OpenRouter")).toBeTruthy());
+
+    fireEvent.change(screen.getByLabelText(ADD_BOX), { target: { value: "deepseek/deepseek-chat" } });
+    fireEvent.click(screen.getByRole("button", { name: /^add$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /discard/i }));
+
+    expect(screen.getByText("1 offered")).toBeTruthy();
+  });
+
+  it("offers no selection editor for a curated provider", async () => {
     stubBridge({ catalog: async () => CONNECTED });
     render(<ModelProviders />);
     await waitFor(() => expect(screen.getByText("NVIDIA NIM")).toBeTruthy());
 
-    // Three to eight models is already a menu; opt-in there would be a behaviour
-    // change wearing a new control, so the row says what happens instead.
-    expect(screen.queryByLabelText("mistralai/mistral-nemotron")).toBeNull();
+    // Three to eight models is already a menu; opt-in there would be a behaviour change
+    // wearing a new control, so the row says what happens instead.
+    expect(screen.queryByLabelText("Add NVIDIA NIM models by id")).toBeNull();
     expect(screen.getByText(/All of these are offered while the key is connected/)).toBeTruthy();
   });
 
@@ -263,9 +338,42 @@ describe("ModelProviders — which gateway models are offered", () => {
     expect((screen.getByRole("button", { name: /no changes/i }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("renders a gateway list a screenful at a time, with the chosen rows on top", async () => {
-    // The real shape is 464 rows. Rendering all of them to reach the filter is a
-    // settings pane that stutters on open, so the list is capped until asked.
+  it("names models while connecting, and sends the key and the list in one action", async () => {
+    const connect = vi.fn().mockResolvedValue({ ok: true, detail: "openrouter connected." });
+    const setSelection = vi.fn().mockResolvedValue({
+      ok: true, detail: "openrouter: 1 model selected.", selected: ["deepseek/deepseek-chat"],
+    });
+    stubBridge({ catalog: async () => CATALOG, connect, setSelection });
+    render(<ModelProviders />);
+    await waitFor(() => expect(screen.getByText("OpenRouter")).toBeTruthy());
+
+    // CATALOG has anthropic and openrouter unconnected; openrouter is the second.
+    fireEvent.click(screen.getAllByRole("button", { name: /^connect$/i })[1]);
+    fireEvent.change(await screen.findByLabelText("OpenRouter API key"), { target: { value: "sk-or-secret-123" } });
+    fireEvent.change(screen.getByLabelText("OpenRouter model ids"), {
+      target: { value: "deepseek/deepseek-chat" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save key/i }));
+
+    await waitFor(() => expect(connect).toHaveBeenCalledWith("openrouter", "sk-or-secret-123", ""));
+    await waitFor(() => expect(setSelection).toHaveBeenCalledWith("openrouter", ["deepseek/deepseek-chat"]));
+    expect(await screen.findByText(/connected with 1 model offered/)).toBeTruthy();
+    expect(document.body.textContent).not.toContain("sk-or-secret-123");
+  });
+
+  it("keeps the model field off a curated provider's connect form", async () => {
+    stubBridge({ catalog: async () => CATALOG });
+    render(<ModelProviders />);
+    await waitFor(() => expect(screen.getByText("Anthropic (Claude)")).toBeTruthy());
+
+    fireEvent.click(screen.getAllByRole("button", { name: /^connect$/i })[0]);
+    await screen.findByLabelText("Anthropic (Claude) API key");
+    expect(screen.queryByLabelText("Anthropic (Claude) model ids")).toBeNull();
+  });
+
+  it("renders the browse list a screenful at a time", async () => {
+    // The real shape is 464 rows. Scrolling all of them to find one id is the thing the
+    // typed box solves, so browsing stays capped and the filter is the way in.
     const many = Array.from({ length: 120 }, (_, i) => ({
       id: `vendor/model-${i}`, label: `Model ${i}`, context: 8000, routesHere: true,
     }));
@@ -280,17 +388,32 @@ describe("ModelProviders — which gateway models are offered", () => {
     };
     stubBridge({ catalog: async () => big });
     render(<ModelProviders />);
-    await waitFor(() => expect(screen.getByText("1 of 120 offered")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("1 offered")).toBeTruthy());
 
-    expect(document.querySelectorAll("input[type=checkbox]")).toHaveLength(60);
-    // Chosen rows sort first, so the one already selected is on screen without a search.
-    expect((screen.getByLabelText("vendor/model-7") as HTMLInputElement).checked).toBe(true);
-
+    // 60 rows rendered, one of which is already offered and says so rather than adding.
+    expect(screen.getAllByRole("button", { name: /\+ add/ })).toHaveLength(59);
     fireEvent.click(screen.getByRole("button", { name: /show all 120 models/i }));
-    expect(document.querySelectorAll("input[type=checkbox]")).toHaveLength(120);
+    expect(screen.getAllByRole("button", { name: /\+ add/ })).toHaveLength(119);
 
     fireEvent.change(screen.getByLabelText("Filter OpenRouter models"), { target: { value: "model-11" } });
-    // 11 and 110-119, by id: a filter narrows the whole list, not the rendered page.
-    expect(document.querySelectorAll("input[type=checkbox]")).toHaveLength(11);
+    // 11 and 110-119, by id: the filter narrows the whole list, not the rendered page.
+    expect(screen.getAllByRole("button", { name: /\+ add/ })).toHaveLength(11);
+  });
+
+  it("suggests catalogue matches while typing, and never suggests an unaddable one", async () => {
+    stubBridge({ catalog: async () => CONNECTED });
+    render(<ModelProviders />);
+    await waitFor(() => expect(screen.getByText("OpenRouter")).toBeTruthy());
+
+    fireEvent.change(screen.getByLabelText(ADD_BOX), { target: { value: "llama" } });
+    // `meta-llama/llama-3.1-70b-instruct` matches but is already offered, so it is not
+    // proposed again; nothing else in the fixture carries "llama".
+    expect(screen.queryByRole("list", { name: "Matching models" })).toBeNull();
+
+    fireEvent.change(screen.getByLabelText(ADD_BOX), { target: { value: "deepseek" } });
+    const suggestion = await screen.findByRole("button", { name: /DeepSeek Chat/ });
+    expect(suggestion.textContent).toContain("+ add");
+    fireEvent.click(suggestion);
+    expect(screen.getByText("2 offered")).toBeTruthy();
   });
 });

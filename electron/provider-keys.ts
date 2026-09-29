@@ -307,6 +307,33 @@ export async function disconnectProvider(
   }
 }
 
+/**
+ * Read a user's typed model list into the array the runtime stores.
+ *
+ * Typed entry is the fast path for a gateway: someone who wants three models should type
+ * three ids rather than search 464 rows. Commas, semicolons, spaces and newlines all
+ * separate, because a person pasting from a provider's docs will use whichever the page
+ * used, and a model id itself never contains any of them.
+ *
+ * Nothing here checks that an id exists. The runtime's `set_selection` does not either,
+ * and an id the catalogue has not fetched yet is a real state rather than a mistake —
+ * the list is fetched and can be behind upstream — so the caller decides how to *say*
+ * that (see `knownIds`), not whether to allow it.
+ */
+export function splitModelIds(text: string): string[] {
+  return [...new Set((text ?? "")
+    .split(/[\s,;]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0))];
+}
+
+/** The ids the fetched catalogue carries, which is the only thing that separates "a
+ * model I want" from "a string the runtime will refuse with a message naming nothing".
+ * A set, because the UI asks membership per row, hundreds of times a render. */
+export function knownIds(provider: ProviderInfo): Set<string> {
+  return new Set(provider.models.map((m) => m.id));
+}
+
 /** Providers whose ids a gateway lists but another provider already owns. The
  * sentence the UI owes the user when they pick one, in the runtime's own count. */
 export function shadowedCount(provider: ProviderInfo): number {

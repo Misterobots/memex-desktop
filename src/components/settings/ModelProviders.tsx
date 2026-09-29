@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { desktop, type ProviderInfo, type ProviderModel } from "../../lib/desktop";
+import { splitModelIds } from "../../../electron/provider-keys";
 
 type ReadState = "idle" | "loading" | "loaded" | "failed";
 
@@ -34,21 +35,27 @@ function modelSummary(provider: ProviderInfo): string {
  * Only a connected live provider has a selection to summarise. For one that is
  * connected with nothing chosen, the sentence is the point of D7 — a key alone offers
  * zero rows — so it is stated rather than left for the user to infer from an empty
- * picker. */
+ * picker.
+ *
+ * No denominator here. An id can be offered that the fetched catalogue does not carry,
+ * and "4 of 3 offered" is the sentence that produces; the total lives on the browse
+ * control, where it describes the list being browsed. */
 function offeredSummary(provider: ProviderInfo, chosen: string[]): string | null {
   if (!provider.connected || !provider.live) return null;
-  const total = provider.models.length;
-  if (chosen.length === 0) return `0 of ${total} offered — select the models to use`;
-  return `${chosen.length} of ${total} offered`;
+  if (chosen.length === 0) return "nothing offered yet";
+  const known = new Set(provider.models.map((m) => m.id));
+  const unknown = chosen.filter((id) => !known.has(id)).length;
+  return `${chosen.length} offered${unknown > 0 ? ` · ${unknown} not in the fetched list` : ""}`;
 }
 
 const sameSet = (a: string[], b: string[]): boolean =>
   a.length === b.length && [...a].sort().every((v, i) => v === [...b].sort()[i]);
 
 /** An id the runtime will not route through this provider, because another provider
- * owns the binding. `routesHere === false` is the runtime saying so; `undefined` is it
- * not having said anything, which is not the same claim and never disables a row. */
-const notRoutable = (model: ProviderModel): boolean => model.routesHere === false;
+ * owns the binding. `routesHere === false` is the runtime saying so; `undefined` — an id
+ * the fetched catalogue does not carry at all — is not the same claim and never blocks
+ * an add, because a model added upstream can be perfectly real. */
+const notRoutable = (model: ProviderModel | undefined): boolean => model?.routesHere === false;
 
 /** How many unfiltered model rows a provider renders before it asks. */
 const SHOW_CAP = 60;
@@ -64,16 +71,21 @@ const SHOW_CAP = 60;
  * job — it keeps keys Fernet-encrypted in its own database, per user — so this screen
  * is a door to that, not a place keys live.
  *
- * The selection editor exists because a gateway lists 460 models and a picker showing
- * all of them is a firehose, not a menu. It is deliberately *not* applied to a curated
- * provider: three to eight models is already a menu, and making those users opt in
- * would be a behaviour change smuggled in beside a new control.
+ * The selection editor exists because a gateway lists 464 models and a picker showing
+ * all of them is a firehose, not a menu. It is typed-entry first rather than a list to
+ * tick: someone who knows the three models they want should type three ids, and browsing
+ * is only for finding an id they have not memorised. It is deliberately *not* applied to
+ * a curated provider — three to eight models is already a menu, and making those users
+ * opt in would be a behaviour change smuggled in beside a new control.
  *
- * The wording is deliberately not a gate. A model whose id another provider already
- * owns (every `openai/*` spelling on OpenRouter belongs to GitHub Models here) is
- * listed and labelled, not hidden: the app's authority is the sentence, per D3a-2. Its
- * checkbox is disabled rather than absent, because selecting it would be a choice that
- * cannot take effect — the runtime routes that id to its other owner regardless.
+ * Two refusals and one warning, because a stored id that cannot route is worse than no
+ * id at all. An id another provider owns (every `openai/*` spelling on OpenRouter belongs
+ * to GitHub Models here) is refused with the reason: the runtime resolves that binding
+ * whatever the selection says, so accepting it would be offering a choice that cannot
+ * take effect. An id the fetched catalogue does not carry is *accepted* — the list is
+ * fetched and can be behind upstream — and the chip says so, because the runtime stores
+ * anything, then refuses it at send time with a message naming neither the provider nor
+ * the selection. Silence there is the failure this screen exists to prevent.
  */
 export function ModelProviders() {
   const bridge = desktop();
@@ -91,6 +103,13 @@ export function ModelProviders() {
   const [draft, setDraft] = useState<Record<string, string[]>>({});
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  /** The typed-add box, per provider, before it is committed to the draft selection. */
+  const [typed, setTyped] = useState<Record<string, string>>({});
+  /** Why an add did not happen. Stated beside the control that caused it, because a
+   * model silently missing from the list is the failure this screen exists to avoid. */
+  const [notices, setNotices] = useState<Record<string, string>>({});
+  /** Models named while connecting, so a key and its menu are one action. */
+  const [connectModels, setConnectModels] = useState("");
   const [savingSelection, setSavingSelection] = useState<string | null>(null);
 
   const read = useCallback(async () => {
@@ -134,8 +153,9 @@ export function ModelProviders() {
   }, [bridge]);
 
   // Drop the typed key whenever the form changes target, so a half-typed secret does
-  // not sit in component state under a provider the user no longer means.
-  useEffect(() => { setKey(""); }, [target]);
+  // not sit in component state under a provider the user no longer means. The model
+  // list goes with it: it names models for whichever provider was meant.
+  useEffect(() => { setKey(""); setConnectModels(""); }, [target]);
 
   const submit = async () => {
     if (!bridge?.providers?.connect || !target || !key.trim()) return;
@@ -143,12 +163,29 @@ export function ModelProviders() {
     setResult(null);
     try {
       const outcome = await bridge.providers.connect(target, key.trim(), label.trim());
-      setResult(outcome);
-      if (outcome.ok) {
-        setKey("");
-        setLabel("");
-        await read();
+      if (!outcome.ok) {
+        setResult(outcome);
+        return;
       }
+      // A key and its menu in one action, but two calls: the runtime's `connect` route
+      // takes a credential only, and inventing a combined route would need a container
+      // restart to do what two requests already do correctly.
+      const wanted = splitModelIds(connectModels);
+      const provider = providers?.find((p) => p.id === target);
+      if (wanted.length > 0 && provider?.live && bridge.providers.setSelection) {
+        const saved = await bridge.providers.setSelection(target, wanted);
+        setResult(saved.ok
+          ? { ok: true, detail: `${target} connected with ${saved.selected.length} model${saved.selected.length === 1 ? "" : "s"} offered.` }
+          // The credential did land. Saying so is the difference between a retry that
+          // re-sends a key and one that only fixes the selection.
+          : { ok: true, detail: `${target} is connected, but its selection was not saved: ${saved.detail}` });
+      } else {
+        setResult(outcome);
+      }
+      setKey("");
+      setLabel("");
+      setConnectModels("");
+      await read();
     } finally {
       setBusy(false);
     }
@@ -171,16 +208,51 @@ export function ModelProviders() {
   const chosenFor = (provider: ProviderInfo): string[] =>
     draft[provider.id] ?? provider.selectedModels ?? [];
 
-  const toggleModel = (provider: ProviderInfo, model: ProviderModel, on: boolean) => {
-    // The row is already disabled for this case, but the invariant lives here rather
-    // than in the control: a selection holding an id the runtime routes elsewhere would
-    // be offered to the user as a choice that cannot take effect.
-    if (notRoutable(model)) return;
-    const current = chosenFor(provider);
-    const next = on
-      ? [...new Set([...current, model.id])]
-      : current.filter((m) => m !== model.id);
+  /**
+   * Add one id or a pasted batch, in a single pass over the draft.
+   *
+   * One function rather than a loop over `addModel`, because each call would read the
+   * draft before React had written the previous addition and all but the last id in a
+   * pasted list would vanish.
+   *
+   * Two refusals, both stated rather than swallowed: an id another provider owns cannot
+   * be routed here whatever the selection says (the runtime resolves that binding, not
+   * this screen), and a duplicate is not a second addition. An id the catalogue does not
+   * know is *accepted* — the list is fetched and can be behind upstream — and the chip
+   * says so, because the alternative is a model that silently never appears in the
+   * picker.
+   */
+  const applyAdds = (provider: ProviderInfo, ids: string[]) => {
+    const next = [...chosenFor(provider)];
+    const refused: string[] = [];
+    let duplicates = 0;
+    for (const raw of ids) {
+      const id = raw.trim();
+      if (!id) continue;
+      if (notRoutable(provider.models.find((m) => m.id === id))) {
+        refused.push(`${id} is answered by another provider on your runtime`);
+        continue;
+      }
+      if (next.includes(id)) { duplicates += 1; continue; }
+      next.push(id);
+    }
+    const parts = [...refused];
+    if (duplicates > 0) parts.push(`${duplicates} already offered`);
+    setNotices((n) => ({ ...n, [provider.id]: parts.join(" · ") }));
     setDraft((d) => ({ ...d, [provider.id]: next }));
+  };
+
+  const removeModel = (provider: ProviderInfo, id: string) => {
+    setNotices((n) => ({ ...n, [provider.id]: "" }));
+    setDraft((d) => ({ ...d, [provider.id]: chosenFor(provider).filter((m) => m !== id) }));
+  };
+
+  /** Commit whatever is in the typed box — one id or a pasted list of them. */
+  const commitTyped = (provider: ProviderInfo) => {
+    const ids = splitModelIds(typed[provider.id] ?? "");
+    if (ids.length === 0) return;
+    applyAdds(provider, ids);
+    setTyped((t) => ({ ...t, [provider.id]: "" }));
   };
 
   const saveSelection = async (provider: ProviderInfo) => {
@@ -241,11 +313,18 @@ export function ModelProviders() {
                 || m.id.toLowerCase().includes(needle))
               .sort((a, b) => (chosen.has(b.id) ? 1 : 0) - (chosen.has(a.id) ? 1 : 0)
                 || a.label.localeCompare(b.label));
-            // An unfiltered gateway list is rendered a screenful at a time. The control
-            // is the filter, and 464 checkboxes in the DOM to reach it is a settings
-            // pane that stutters on open — which is not the same feature, slower.
+            // The browse list is rendered a screenful at a time. Browsing is for
+            // finding an id you have not memorised, and 464 rows to scroll through to
+            // reach one is a pane that stutters on open — the filter is the way in.
             const expanded = expandedRows[provider.id] === true;
             const rows = !needle && !expanded ? matching.slice(0, SHOW_CAP) : matching;
+            // Suggestions are a convenience, not a gate: an id that matches nothing is
+            // still addable, and the chip says the catalogue does not carry it.
+            const typedText = (typed[provider.id] ?? "").trim().toLowerCase();
+            const suggestions = typedText.length === 0 ? [] : provider.models
+              .filter((m) => !chosen.has(m.id) && !notRoutable(m))
+              .filter((m) => m.id.toLowerCase().includes(typedText) || m.label.toLowerCase().includes(typedText))
+              .slice(0, 8);
             return (
               <li key={provider.id} className="px-3 py-2 rounded-lg border border-border/40 bg-surface2/40">
                 <div className="flex items-center gap-2">
@@ -271,68 +350,150 @@ export function ModelProviders() {
                 )}
 
                 {canEdit && (
-                  <div className="mt-2 space-y-1">
-                    <div className="flex items-center gap-2">
+                  <div className="mt-2 space-y-2">
+                    {/* What is offered now. A chip rather than a ticked row, because the
+                        chosen set is the thing worth reading and it survives a search. */}
+                    <div className="flex flex-wrap gap-1">
+                      {chosenList.length === 0 && (
+                        <span className="text-xs text-muted">
+                          Nothing is offered yet — type the models you want below.
+                        </span>
+                      )}
+                      {chosenList.map((id) => {
+                        const model = provider.models.find((m) => m.id === id);
+                        return (
+                          <span
+                            key={id}
+                            data-chip={model ? "known" : "unknown"}
+                            className="flex items-start gap-1.5 max-w-full px-2 py-1 rounded border border-border/50 bg-surface text-xs"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate">{model?.label ?? id}</span>
+                              {model && <code className="block text-[10px] text-muted truncate">{id}</code>}
+                              {!model && (
+                                // Loud here rather than quiet later: an id the fetched
+                                // catalogue does not carry is stored by the runtime and
+                                // then refused at send time by a message that names
+                                // neither the provider nor the selection.
+                                <span className="block text-[10px] text-yellow">
+                                  not in the fetched list — the runtime will refuse it until it appears there
+                                </span>
+                              )}
+                            </span>
+                            <button
+                              onClick={() => removeModel(provider, id)}
+                              aria-label={`Stop offering ${id}`}
+                              className="text-muted hover:text-text shrink-0"
+                            >×</button>
+                          </span>
+                        );
+                      })}
+                    </div>
+
+                    <div className="space-y-1">
+                      <input
+                        value={typed[provider.id] ?? ""}
+                        onChange={(e) => setTyped((t) => ({ ...t, [provider.id]: e.target.value }))}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitTyped(provider); } }}
+                        placeholder={`Add ${provider.label} models — one id, or several separated by commas`}
+                        aria-label={`Add ${provider.label} models by id`}
+                        spellCheck={false}
+                        autoComplete="off"
+                        className="w-full px-2 py-1 text-xs rounded border border-border/50 bg-surface text-text"
+                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => commitTyped(provider)}
+                          disabled={splitModelIds(typed[provider.id] ?? "").length === 0}
+                          className="px-3 py-1 text-xs rounded bg-accent text-surface disabled:opacity-50"
+                        >Add</button>
+                        <span className="text-[10px] text-muted ml-auto">Enter adds; commas separate a pasted list</span>
+                      </div>
+
+                      {notices[provider.id] && (
+                        <p className="text-[10px] text-yellow" data-add-notice>{notices[provider.id]}</p>
+                      )}
+
+                      {suggestions.length > 0 && (
+                        <ul className="space-y-0.5" aria-label="Matching models">
+                          {suggestions.map((m) => (
+                            <li key={m.id}>
+                              <button
+                                onClick={() => applyAdds(provider, [m.id])}
+                                className="w-full text-left flex items-center gap-2 px-2 py-1 rounded border border-border/40 bg-surface/50 hover:bg-surface2 text-xs"
+                              >
+                                <span className="truncate">{m.label}</span>
+                                <code className="text-[10px] text-muted truncate">{m.id}</code>
+                                <span className="ml-auto text-accent shrink-0">+ add</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    {/* Discovery, for an id you have not memorised. Clicking adds; nothing
+                        here is a checkbox, because choosing five models should not require
+                        scrolling through four hundred and sixty. */}
+                    <details className="text-xs text-muted">
+                      <summary className="cursor-pointer select-none">
+                        Browse all {provider.models.length} to find an id
+                      </summary>
                       <input
                         value={filters[provider.id] ?? ""}
                         onChange={(e) => setFilters((f) => ({ ...f, [provider.id]: e.target.value }))}
-                        placeholder="Filter models…"
+                        placeholder="Filter…"
                         aria-label={`Filter ${provider.label} models`}
-                        className="flex-1 min-w-0 px-2 py-1 text-xs rounded border border-border/50 bg-surface text-text"
+                        className="mt-1 w-full px-2 py-1 text-xs rounded border border-border/50 bg-surface text-text"
                       />
-                      <span className="text-[10px] text-muted shrink-0" data-selected-count>
-                        {chosenList.length} selected
-                      </span>
-                    </div>
-
-                    <ul className="max-h-56 overflow-y-auto pr-1 space-y-0.5 text-xs" aria-label={`${provider.label} models`}>
-                      {rows.map((model) => {
-                        const elsewhere = notRoutable(model);
-                        return (
-                          <li key={model.id}>
-                            <label className={`flex items-start gap-2 ${elsewhere ? "opacity-60" : "cursor-pointer"}`}>
-                              <input
-                                type="checkbox"
-                                checked={chosen.has(model.id)}
-                                disabled={elsewhere}
-                                onChange={(e) => toggleModel(provider, model, e.target.checked)}
-                                aria-label={model.id}
-                                title={elsewhere
-                                  ? `Another provider already answers ${model.id} on your runtime, so selecting it here does not route it through ${provider.label}.`
-                                  : undefined}
-                              />
+                      <ul className="mt-1 max-h-56 overflow-y-auto pr-1 space-y-0.5" aria-label={`${provider.label} models`}>
+                        {rows.map((model) => {
+                          const elsewhere = notRoutable(model);
+                          const isChosen = chosen.has(model.id);
+                          return (
+                            <li key={model.id} className="flex items-center gap-2">
                               <span className="min-w-0">
                                 <span className="block truncate">{model.label}</span>
                                 <code className="block text-[10px] text-muted truncate">{model.id}</code>
-                                {elsewhere && (
-                                  <span className="text-[9px] uppercase tracking-wide text-yellow">
-                                    answered elsewhere
-                                  </span>
+                              </span>
+                              <span className="ml-auto shrink-0">
+                                {isChosen ? (
+                                  <span className="text-[10px] text-accent">offered</span>
+                                ) : elsewhere ? (
+                                  <span
+                                    className="text-[9px] uppercase tracking-wide text-yellow"
+                                    title={`Another provider already answers ${model.id} on your runtime, so it cannot be offered through ${provider.label}.`}
+                                  >answered elsewhere</span>
+                                ) : (
+                                  <button
+                                    onClick={() => applyAdds(provider, [model.id])}
+                                    className="text-[10px] text-accent hover:text-accent/80"
+                                  >+ add</button>
                                 )}
                               </span>
-                            </label>
+                            </li>
+                          );
+                        })}
+                        {rows.length === 0 && (
+                          <li className="px-1 py-2 text-xs text-muted">
+                            No {provider.label} model matches “{filters[provider.id] ?? ""}”.
                           </li>
-                        );
-                      })}
-                      {rows.length === 0 && (
-                        <li className="px-1 py-2 text-xs text-muted">
-                          No {provider.label} model matches “{filters[provider.id] ?? ""}”.
-                        </li>
-                      )}
-                    </ul>
+                        )}
+                      </ul>
 
-                    {!needle && matching.length > rows.length && (
-                      <button
-                        onClick={() => setExpandedRows((e) => ({ ...e, [provider.id]: true }))}
-                        className="text-xs text-accent hover:text-accent/80"
-                      >Show all {matching.length} models</button>
-                    )}
-                    {!needle && expanded && matching.length > SHOW_CAP && (
-                      <button
-                        onClick={() => setExpandedRows((e) => ({ ...e, [provider.id]: false }))}
-                        className="text-xs text-muted hover:text-text"
-                      >Collapse to {SHOW_CAP}</button>
-                    )}
+                      {!needle && matching.length > rows.length && (
+                        <button
+                          onClick={() => setExpandedRows((e) => ({ ...e, [provider.id]: true }))}
+                          className="text-xs text-accent hover:text-accent/80"
+                        >Show all {matching.length} models</button>
+                      )}
+                      {!needle && expanded && matching.length > SHOW_CAP && (
+                        <button
+                          onClick={() => setExpandedRows((e) => ({ ...e, [provider.id]: false }))}
+                          className="text-xs text-muted hover:text-text"
+                        >Collapse to {SHOW_CAP}</button>
+                      )}
+                    </details>
 
                     <div className="flex items-center gap-2">
                       <button
@@ -430,8 +591,22 @@ export function ModelProviders() {
                         className="px-3 py-1 text-xs rounded bg-accent text-surface disabled:opacity-50"
                       >{busy ? "Sending…" : "Save key"}</button>
                     </div>
+
+                    {provider.live && (
+                      <input
+                        value={connectModels}
+                        onChange={(e) => setConnectModels(e.target.value)}
+                        placeholder="Model ids to offer (optional) — separated by commas"
+                        aria-label={`${provider.label} model ids`}
+                        spellCheck={false}
+                        autoComplete="off"
+                        className="w-full px-2 py-1 text-xs rounded border border-border/50 bg-surface text-text"
+                      />
+                    )}
+
                     <p className="text-[10px] text-muted">
                       Sent to the runtime and stored there. This app keeps no copy and cannot show it back.
+                      {provider.live && " A gateway offers nothing until you name models for it — leaving that field empty is a choice, not a gap."}
                     </p>
                   </div>
                 )}
