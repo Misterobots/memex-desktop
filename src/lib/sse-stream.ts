@@ -47,7 +47,8 @@ export interface StreamOptions {
   gauntletBar?: string;
   /** Desktop-owned continuation contract; the runtime may use it but does not own it. */
   gauntletHandoff?: { id: string; role: string; phase: string; goal: string; qualityBar: string; effort: Record<string, string>; clarifications?: string[] };
-  /** Ollama model id to route to (e.g. "qwen3-coder:30b"). Defaults to "swarm". */
+  /** Ollama model id to route to (e.g. "qwen3-coder:30b"). A turn with none
+   * resolved is refused by `streamChat`, never sent with a placeholder (plan D3c). */
   model?: string;
   /** D1c — roles the user assigned in this app's routing table, as role -> model
    * id (`{ coder: "qwen3-coder:30b", coordinator: "qwen3.6:27b" }`). Sent as
