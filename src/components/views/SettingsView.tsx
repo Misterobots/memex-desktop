@@ -11,6 +11,7 @@ import { Hooks } from "../settings/Hooks";
 import { MemoryView } from "./MemoryView";
 import { UnrealEngineSetup } from "../setup/UnrealEngineSetup";
 import { RuntimeNodes } from "../settings/RuntimeNodes";
+import { ModelProviders } from "../settings/ModelProviders";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -550,6 +551,10 @@ export function SettingsView() {
 
       <Section title="Model hosts">
         <RuntimeNodes />
+      </Section>
+
+      <Section title="Model providers">
+        <ModelProviders />
       </Section>
 
       <Section title="Development Tool Setup">

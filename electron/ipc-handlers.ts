@@ -43,6 +43,7 @@ import { discoverEngineModels, engineDescriptors, enginesModelsFor } from "./eng
 import { enginesCapabilitiesFor, type CapabilityReport } from "./model-capabilities";
 import { runRoleMap, validateRouting } from "./routing-config";
 import { readRuntimeTopology } from "./runtime-nodes";
+import { connectProvider, disconnectProvider, readProviderCatalog } from "./provider-keys";
 import { fireHooks }                   from "./hooks-runner";
 import { runOpenScad, type RenderParams } from "./openscad-runner";
 import { autoWireStore }                  from "./ipc-autowire";
@@ -638,6 +639,20 @@ export function registerAllIpc(ctx: IpcContext): void {
   // choosing. Read-only and never written to `config.json` — which hosts exist and
   // what they hold is runtime state, not user intent.
   ipcMain.handle("runtime:nodes", () => readRuntimeTopology(config.getUrls().agentRuntime, fetch));
+
+  // ── Model providers (D6) ──────────────────────────────────────────────────
+  // Same rule as `runtime:nodes`: no caller-supplied address. The runtime URL comes
+  // from the active profile and the identity header from the desktop's own uid, so
+  // the renderer can neither aim these at a host of its choosing nor act as another
+  // user. `connect` is the one channel that carries a secret: it is passed straight
+  // to the harness, which stores it encrypted, and nothing here writes it to
+  // `config.json` or returns it.
+  ipcMain.handle("providers:catalog", () =>
+    readProviderCatalog(config.getUrls().agentRuntime, getCurrentUid(), fetch));
+  ipcMain.handle("providers:connect", (_e, provider: string, apiKey: string, label: string) =>
+    connectProvider(config.getUrls().agentRuntime, getCurrentUid(), provider, apiKey, label, fetch));
+  ipcMain.handle("providers:disconnect", (_e, provider: string) =>
+    disconnectProvider(config.getUrls().agentRuntime, getCurrentUid(), provider, fetch));
 
   // ── Ollama model list ─────────────────────────────────────────────────────
   // No renderer call site remains — the picker reads `engines:models` now. Left

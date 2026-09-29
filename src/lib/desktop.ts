@@ -16,9 +16,13 @@ import type {
 import type { EngineDiscovery } from "../../electron/engine-discovery";
 import type { CapabilityReport } from "../../electron/model-capabilities";
 import type { RuntimeTopology } from "../../electron/runtime-nodes";
+import type {
+  ConnectResult, ProviderCatalog, ProviderInfo, ProviderModel,
+} from "../../electron/provider-keys";
 export type {
   RoutingConfig, RoutingIssue, RoutingResult, RoutingRow, RoutingState, RuneRole, RunStyle, EngineDiscovery,
   CapabilityReport, RuntimeTopology,
+  ConnectResult, ProviderCatalog, ProviderInfo, ProviderModel,
 };
 export type { RunRecord, RunEvent, EvalCase, EvalResult };
 
@@ -399,6 +403,15 @@ export interface MemexBridge {
    * placement is decided by the runtime, not commanded from the app. */
   runtime: {
     nodes:    () => Promise<RuntimeTopology>;
+  };
+
+  /* Model providers the harness supports (D6). The key is write-only from here: it
+   * goes to main, main hands it to the runtime, and no call on this side can read a
+   * stored key back — `catalog` reports connected/not/unknown, never the secret. */
+  providers: {
+    catalog:    () => Promise<ProviderCatalog>;
+    connect:    (provider: string, apiKey: string, label: string) => Promise<ConnectResult>;
+    disconnect: (provider: string) => Promise<ConnectResult>;
   };
 
   ollama: {

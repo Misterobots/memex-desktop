@@ -279,6 +279,16 @@ contextBridge.exposeInMainWorld("memex", {
     nodes: () => ipcRenderer.invoke("runtime:nodes"),
   },
 
+  // Model providers the runtime supports and which of them this user has connected
+  // (D6). `connect` is the only bridge call that carries a secret; it goes to main
+  // and no further — nothing on this side of the bridge can read a key back.
+  providers: {
+    catalog:    () => ipcRenderer.invoke("providers:catalog"),
+    connect:    (provider: string, apiKey: string, label: string) =>
+      ipcRenderer.invoke("providers:connect", provider, apiKey, label),
+    disconnect: (provider: string) => ipcRenderer.invoke("providers:disconnect", provider),
+  },
+
   // Ollama model list
   ollama: {
     listModels:      () => ipcRenderer.invoke("ollama:listModels"),
