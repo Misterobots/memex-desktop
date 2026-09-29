@@ -50,6 +50,9 @@ const sameSet = (a: string[], b: string[]): boolean =>
  * not having said anything, which is not the same claim and never disables a row. */
 const notRoutable = (model: ProviderModel): boolean => model.routesHere === false;
 
+/** How many unfiltered model rows a provider renders before it asks. */
+const SHOW_CAP = 60;
+
 /**
  * Which model providers the harness supports, which of them this user has connected
  * (plan D6), and — for a gateway whose catalogue is fetched rather than declared — which
@@ -87,6 +90,7 @@ export function ModelProviders() {
    * reported", so opening the screen never shows a selection nobody made. */
   const [draft, setDraft] = useState<Record<string, string[]>>({});
   const [filters, setFilters] = useState<Record<string, string>>({});
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [savingSelection, setSavingSelection] = useState<string | null>(null);
 
   const read = useCallback(async () => {
@@ -231,12 +235,17 @@ export function ModelProviders() {
             const needle = (filters[provider.id] ?? "").trim().toLowerCase();
             // Chosen first, then by label: on a 460-row gateway catalogue, a list sorted
             // only by name cannot show what is already picked without scrolling for it.
-            const rows = provider.models
+            const matching = provider.models
               .filter((m) => !needle
                 || m.label.toLowerCase().includes(needle)
                 || m.id.toLowerCase().includes(needle))
               .sort((a, b) => (chosen.has(b.id) ? 1 : 0) - (chosen.has(a.id) ? 1 : 0)
                 || a.label.localeCompare(b.label));
+            // An unfiltered gateway list is rendered a screenful at a time. The control
+            // is the filter, and 464 checkboxes in the DOM to reach it is a settings
+            // pane that stutters on open — which is not the same feature, slower.
+            const expanded = expandedRows[provider.id] === true;
+            const rows = !needle && !expanded ? matching.slice(0, SHOW_CAP) : matching;
             return (
               <li key={provider.id} className="px-3 py-2 rounded-lg border border-border/40 bg-surface2/40">
                 <div className="flex items-center gap-2">
@@ -311,6 +320,19 @@ export function ModelProviders() {
                         </li>
                       )}
                     </ul>
+
+                    {!needle && matching.length > rows.length && (
+                      <button
+                        onClick={() => setExpandedRows((e) => ({ ...e, [provider.id]: true }))}
+                        className="text-xs text-accent hover:text-accent/80"
+                      >Show all {matching.length} models</button>
+                    )}
+                    {!needle && expanded && matching.length > SHOW_CAP && (
+                      <button
+                        onClick={() => setExpandedRows((e) => ({ ...e, [provider.id]: false }))}
+                        className="text-xs text-muted hover:text-text"
+                      >Collapse to {SHOW_CAP}</button>
+                    )}
 
                     <div className="flex items-center gap-2">
                       <button

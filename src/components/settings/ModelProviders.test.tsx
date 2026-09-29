@@ -262,4 +262,35 @@ describe("ModelProviders — which gateway models are offered", () => {
     await waitFor(() => expect(screen.getByText(/cannot save a selection/i)).toBeTruthy());
     expect((screen.getByRole("button", { name: /no changes/i }) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it("renders a gateway list a screenful at a time, with the chosen rows on top", async () => {
+    // The real shape is 464 rows. Rendering all of them to reach the filter is a
+    // settings pane that stutters on open, so the list is capped until asked.
+    const many = Array.from({ length: 120 }, (_, i) => ({
+      id: `vendor/model-${i}`, label: `Model ${i}`, context: 8000, routesHere: true,
+    }));
+    const big: ProviderCatalog = {
+      reason: null,
+      checkedAt: "2026-09-29T00:00:00.000Z",
+      providers: [{
+        id: "openrouter", label: "OpenRouter", connected: true, connectedAt: "2026-09-28T00:00:00Z",
+        live: true, catalog: { known: 120, stale: false, shadowed: 0, lastError: null },
+        selectedModels: ["vendor/model-7"], models: many,
+      }],
+    };
+    stubBridge({ catalog: async () => big });
+    render(<ModelProviders />);
+    await waitFor(() => expect(screen.getByText("1 of 120 offered")).toBeTruthy());
+
+    expect(document.querySelectorAll("input[type=checkbox]")).toHaveLength(60);
+    // Chosen rows sort first, so the one already selected is on screen without a search.
+    expect((screen.getByLabelText("vendor/model-7") as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: /show all 120 models/i }));
+    expect(document.querySelectorAll("input[type=checkbox]")).toHaveLength(120);
+
+    fireEvent.change(screen.getByLabelText("Filter OpenRouter models"), { target: { value: "model-11" } });
+    // 11 and 110-119, by id: a filter narrows the whole list, not the rendered page.
+    expect(document.querySelectorAll("input[type=checkbox]")).toHaveLength(11);
+  });
 });

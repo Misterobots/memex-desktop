@@ -1,9 +1,15 @@
 // Unit tests for electron/provider-keys.ts (plan D6).
 //
-// The fixture is the shape captured from the live harness on 2026-09-28
-// (`GET :8008/api/v1/provider-keys/providers` → anthropic/google/nvidia, each with
-// `label` + `models[]`), extended with the `openrouter` entry this change adds:
-// `live_models`, a `catalog` block, and per-model `routes_here`.
+// The fixture is the shape captured from the live harness (`GET
+// :8008/api/v1/provider-keys/providers`), re-read on 2026-09-29:
+//   anthropic  -> label, models                       (3)
+//   google     -> label, models                       (8)
+//   nvidia     -> label, models                       (6)
+//   openrouter -> label, models, catalog              (464, each with routes_here)
+// Note what is *not* there: `live_models` is a field of the runtime's internal
+// PROVIDERS dict and is never echoed in the response. An earlier version of this
+// fixture asserted it anyway, and the reader trusted it — which is how D7's selection
+// editor shipped unable to render against a real runtime.
 import { describe, expect, it } from "vitest";
 
 import {
@@ -30,7 +36,6 @@ const CATALOG = {
   },
   openrouter: {
     label: "OpenRouter",
-    live_models: true,
     models: [
       { id: "meta-llama/llama-3.1-70b-instruct", label: "Llama 3.1 70B", context: 131072, routes_here: true },
       { id: "openai/gpt-4o", label: "GPT-4o", context: 128000, routes_here: false },
@@ -66,7 +71,9 @@ describe("parseProviderCatalog", () => {
     expect(providers.map((p) => p.connected)).toEqual([null, null, null]);
   });
 
-  it("keeps the live flag and the catalog block for a fetched provider only", () => {
+  it("recognises a fetched catalogue from the catalog block, which is all the runtime sends", () => {
+    // The regression this guards: `live_models` is not on the wire, so a reader keyed on
+    // it alone marks a 464-model gateway curated and the selection editor never renders.
     const providers = parseProviderCatalog(CATALOG, { providers: [] });
     const openrouter = providers.find((p) => p.id === "openrouter")!;
     const anthropic = providers.find((p) => p.id === "anthropic")!;
@@ -75,6 +82,17 @@ describe("parseProviderCatalog", () => {
     expect(openrouter.catalog?.shadowed).toBe(1);
     expect(anthropic.live).toBe(false);
     expect(anthropic.catalog).toBeNull();
+  });
+
+  it("still honours an explicit live_models flag if a runtime ever echoes one", () => {
+    const providers = parseProviderCatalog(
+      { openrouter: { label: "OpenRouter", live_models: true, models: [] } },
+      { providers: [] },
+    );
+    expect(providers.find((p) => p.id === "openrouter")?.live).toBe(true);
+    // An empty list with no catalog block is a gateway that has not fetched yet, and
+    // stays curated-looking rather than inventing a catalog state of its own.
+    expect(providers.find((p) => p.id === "openrouter")?.catalog).toBeNull();
   });
 
   it("carries routes_here as a boolean or as unknown, never coerced", () => {

@@ -172,13 +172,18 @@ export function parseProviderCatalog(
         })()
       : null;
     const known = connected.get(id);
+    // A fetched (gateway) catalogue is recognised by the `catalog` block the runtime
+    // attaches to exactly those entries — `live_models` is accepted too, but the live
+    // `/providers` payload carries no such field, and keying off it alone made every
+    // gateway read as curated, which hid D7's selection editor entirely.
+    const live = info.live_models === true || catalog !== null;
     acc.push({
       id,
       label,
       models,
       connected: known ? true : connectedPayload === undefined || connectedPayload === null ? null : false,
       connectedAt: known ? known.at : null,
-      live: info.live_models === true,
+      live,
       catalog,
       selectedModels: known ? known.selected : [],
     });
