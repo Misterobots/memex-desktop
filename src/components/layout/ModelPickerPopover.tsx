@@ -218,7 +218,16 @@ export function ModelPickerPopover() {
         || resolved?.route.target?.model
         || profile.defaultModel
         || useStore.getState().selectedModel;
-      if (model !== useStore.getState().selectedModel) setSelectedModel(model);
+
+      // D9: this is the profile default arriving, not a choice being made. Record it as
+      // the seed for new threads, and show it only on a thread that has picked nothing.
+      // Writing it through `setSelectedModel` would stamp it onto the current session
+      // and turn every later profile switch into a decision the user never took.
+      useStore.getState().setProfileDefaultModel(model);
+      const active = useStore.getState().activeSession();
+      if (!active?.model && model !== useStore.getState().selectedModel) {
+        useStore.setState({ selectedModel: model });
+      }
       // Upgrade older profiles lazily so their current explicit selection is
       // captured once and becomes independent of other profiles thereafter.
       if (!profile.defaultModel) {

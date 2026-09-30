@@ -215,6 +215,11 @@ export interface Session {
   messages: ChatMessage[];
   displayMode?: ChatDisplayMode;
   pinned?: boolean;
+  /** D9 — the model chosen *for this conversation*. Absent means "never chosen here",
+   * which resolves to the active profile's default; it is not the same state as a
+   * session someone set back to a different model. A thread you put on qwen3:14b
+   * should not move because another thread used something else. */
+  model?: string;
 }
 
 export interface ConnectionStatus {
