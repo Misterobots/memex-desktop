@@ -89,6 +89,15 @@ function NewTriggerForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
         rows={2}
         className="w-full px-3 py-1.5 rounded-lg bg-surface2 border border-border/60 text-sm text-text resize-none focus:outline-none focus:ring-1 focus:ring-accent/60"
       />
+      {/* D9(e): a schedule fires on the runtime's clock, with this app possibly closed and
+          some other thread focused if it is open. The model is therefore captured at
+          creation — which is only honest if it is visible at creation, or a task runs for
+          months on a model nobody chose knowingly. */}
+      <div className="text-[11px] text-muted">
+        Runs on <span className="font-mono text-text/80">{selectedModel || "(none selected)"}</span> —
+        the model this conversation is using, pinned when the task is created. Changing it in the
+        picker afterwards will not move this task.
+      </div>
       <div className="flex gap-2">
         {(["cron", "interval", "once"] as const).map((t) => (
           <button key={t} onClick={() => setType(t)}
@@ -208,6 +217,15 @@ export function ScheduledTasks() {
               {t.task_config?.prompt && (
                 <div className="text-xs text-text/60 truncate mt-0.5">"{t.task_config.prompt}"</div>
               )}
+              {/* D9(e): the model is pinned in task_config at creation, so it is part of
+                  what the task *is* — and a task created before this carried none, which
+                  means the runtime decides at fire time and the answer can change under
+                  the user. Both states are shown rather than left blank. */}
+              <div className="text-[10px] text-muted mt-0.5 font-mono truncate">
+                {t.task_config?.model
+                  ? t.task_config.model
+                  : "no model recorded — the runtime's default answers"}
+              </div>
               <div className="text-[10px] text-muted mt-0.5">
                 Fired {t.fire_count}× · last {fmtTimestamp(t.last_fired)}
                 {t.last_error && <span className="text-red-400"> · error: {t.last_error.slice(0, 60)}</span>}

@@ -274,7 +274,20 @@ export function EvalBenchView() {
                 placeholder={"qwen3:14b\ngemma3:12b"}
                 rows={3}
               />
-              <p className="text-[11px] text-muted">Entrants run one at a time to protect local GPU headroom.</p>
+              {/* D9(e): an empty entrant list is not "no model" — it silently means
+                  "whatever the picker is showing when Run is pressed", and since the model
+                  is now per-conversation, that value belongs to a thread rather than to
+                  this case. Named so a comparison is never run against an unrecorded
+                  entrant. */}
+              <p className="text-[11px] text-muted">
+                Entrants run one at a time to protect local GPU headroom.
+                {modelsForArena({ model: editing.model ?? "", models: editing.models }).length === 0 && (
+                  <> With no entrants listed, this case runs against the model selected in the
+                    picker at the moment you press Run — currently{" "}
+                    <span className="font-mono text-text/80">{selectedModel}</span>, which belongs to
+                    the conversation in view, not to this case. List it above to pin it.</>
+                )}
+              </p>
             </Field>
             <Field label="Expected notes">
               <TextArea value={editing.expectedNotes ?? ""} onChange={(v) => setEditing({ ...editing, expectedNotes: v })}
