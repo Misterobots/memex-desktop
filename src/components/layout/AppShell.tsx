@@ -15,6 +15,7 @@ import { UserPermissionsView } from "../views/UserPermissionsView";
 import { PullRequestsView } from "../views/PullRequestsView";
 import { SchedulesView } from "../views/SchedulesView";
 import { SkillsView } from "../views/SkillsView";
+import { LoadoutView } from "../views/LoadoutView";
 import { SitesView } from "../views/SitesView";
 import { DiffReviewModal } from "../shared/DiffReviewModal";
 import { ExportPanel }     from "../shared/ExportPanel";
@@ -72,6 +73,7 @@ function AppShellInner() {
             {activeTab === "pulls"     && <PullRequestsView />}
             {activeTab === "schedules" && <SchedulesView />}
             {activeTab === "skills"    && <SkillsView />}
+            {activeTab === "loadout"   && <LoadoutView />}
             {activeTab === "sites"     && <SitesView />}
             {activeTab === "admin"     && <UserPermissionsView />}
             {activeTab === "settings"  && <SettingsView />}

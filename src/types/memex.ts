@@ -1,4 +1,4 @@
-export type AppTab = "chat" | "dev" | "research" | "goals" | "design" | "art" | "memory" | "eval" | "pulls" | "schedules" | "skills" | "sites" | "admin" | "settings";
+export type AppTab = "chat" | "dev" | "research" | "goals" | "design" | "art" | "memory" | "eval" | "pulls" | "schedules" | "skills" | "sites" | "admin" | "settings" | "loadout";
 /** The top-level product workspace, independent from the selected destination. */
 export type AppShellMode = "chat" | "code";
 

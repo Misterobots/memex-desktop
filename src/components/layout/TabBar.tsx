@@ -7,7 +7,7 @@ import { SessionList } from "../sidebar/SessionList";
 
 // Tabs requiring the Electron native bridge (local terminal/editor/FS, local
 // run store) — hidden when running as a web app.
-const DESKTOP_ONLY: AppTab[] = ["dev", "eval"];
+const DESKTOP_ONLY: AppTab[] = ["dev", "eval", "loadout"];
 
 interface TabDef {
   id: AppTab;
@@ -17,7 +17,7 @@ interface TabDef {
 }
 
 const CHAT_TABS: AppTab[] = ["chat", "research", "goals", "art", "design"];
-const CODE_TABS: AppTab[] = ["dev", "skills", "goals", "eval", "pulls", "design"];
+const CODE_TABS: AppTab[] = ["dev", "skills", "goals", "eval", "pulls", "design", "loadout"];
 
 const TABS: TabDef[] = [
   {
@@ -119,6 +119,11 @@ const TABS: TabDef[] = [
     id: "skills",
     label: "Skills",
     icon: (<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 2.5h7.5a2 2 0 012 2V13l-3-1.5L6.5 13V4.5a2 2 0 00-2-2z" /><path d="M10 6h3M11.5 4.5v3" /></svg>),
+  },
+  {
+    id: "loadout",
+    label: "Loadout",
+    icon: (<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M8 1.5l5.5 2.8v4.2c0 3-2.3 5.1-5.5 5.9-3.2-.8-5.5-2.9-5.5-5.9V4.3L8 1.5z" /><path d="M5.8 7.6l1.6 1.6 2.9-3" /></svg>),
   },
   {
     id: "schedules",
