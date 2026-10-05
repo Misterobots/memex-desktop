@@ -21,6 +21,32 @@ describe("Pioneers Theatre event adapter", () => {
     ]);
   });
 
+  it("binds a worker-stamped tool event to that Pioneer's activity", () => {
+    // The 2026-10-05 recording: six Pioneers, every card reading "Waiting for the
+    // first update…" while its worker ran, because tool events arrived with no
+    // worker_id and were dropped as control-plane narration.
+    const workers = pioneersFromEvents([
+      event("swarm_worker_created", { worker_id: "w-3", role: "architect", pioneer_name: "Babbage", task: "Define the project structure" }),
+      event("tool_start", { worker_id: "w-3", pioneer_name: "Babbage", tool_name: "write_file", event_type: "tool" }, "write_file /workspace/user_projects/app/src/index.css"),
+      event("agent_event", { worker_id: "w-3", pioneer_name: "Babbage", event_type: "thinking" }, "The plan calls for a config directory, so I will add it."),
+    ]);
+    expect(workers).toHaveLength(1);
+    expect(workers[0].activities.map((activity) => activity.text)).toEqual([
+      "write_file /workspace/user_projects/app/src/index.css",
+      "The plan calls for a config directory, so I will add it.",
+    ]);
+    expect(workers[0].activities.map((activity) => activity.kind)).toEqual(["tool", "thought"]);
+  });
+
+  it("does not invent a Pioneer for an unattributed tool event", () => {
+    const workers = pioneersFromEvents([
+      event("swarm_worker_created", { worker_id: "w-4", role: "coder", pioneer_name: "Knuth", task: "Set up the codebase" }),
+      event("tool_start", { tool_name: "run_command" }, "run_command npm install"),
+    ]);
+    expect(workers.map((worker) => worker.worker_id)).toEqual(["w-4"]);
+    expect(workers[0].activities).toEqual([]);
+  });
+
   it("keeps activity attached when later events address a Pioneer by name", () => {
     const workers = pioneersFromEvents([
       event("swarm_worker_created", { worker_id: "w-2", role: "researcher", pioneer_name: "Grace", task: "Find evidence" }),

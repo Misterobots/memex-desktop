@@ -58,7 +58,13 @@ function stateFor(value: unknown): PioneerState {
   return "running";
 }
 
-function activityKind(type: string): PioneerActivity["kind"] {
+function activityKind(type: string, eventType?: string): PioneerActivity["kind"] {
+  // The runtime labels its own events (thinking / tool / result / status / error);
+  // trust that label before guessing from the wire type.
+  const label = (eventType || "").toLowerCase();
+  if (label === "thinking" || label === "thought") return "thought";
+  if (label === "tool") return "tool";
+  if (label === "result") return "result";
   if (type.includes("tool") || type.includes("command") || type.includes("file")) return "tool";
   if (type.includes("thought") || type.includes("reason")) return "thought";
   if (type.includes("result") || type.includes("complete") || type.includes("output")) return "result";
@@ -111,7 +117,7 @@ export function pioneersFromEvents(events: MessageEvent[]): PioneerWorker[] {
     const activity: PioneerActivity = {
       id: `${event.receivedAt ?? Date.now()}-${worker.worker_id}-${worker.activities.length}`,
       text: text.length > 240 ? `${text.slice(0, 237)}…` : text,
-      kind: activityKind(type),
+      kind: activityKind(type, str(event.data?.event_type)),
       at: event.receivedAt ?? Date.now(),
     };
     const next = worker.activities.filter((item) => item.text !== activity.text).slice(-39);

@@ -1,8 +1,37 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MODE_FLAGS, MODE_LABELS, modeLabel } from "../../types/memex";
-import { runRoleModels, streamChat } from "../sse-stream";
+import { normalizeSSEDelta, runRoleModels, streamChat } from "../sse-stream";
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe("Pioneer activity survives the trip to the roster", () => {
+  it("keeps worker identity and event label on a tool event's data payload", () => {
+    // The runtime stamps every worker event with worker_id + pioneer_name (2026-10-05
+    // fix). The roster reducer reads them off event.data, so the normaliser must not
+    // drop them while renaming the type — a tool_start that arrives as data-less
+    // tool_call_start text is invisible to a Pioneer card.
+    const event = normalizeSSEDelta({
+      type: "tool_start", tool_name: "write_file", tool_call_id: "c1",
+      worker_id: "w-3", pioneer_name: "Babbage", event_type: "tool",
+      content: "write_file /workspace/user_projects/app/src/index.css",
+    });
+    expect(event?.type).toBe("tool_call_start");
+    expect(event?.content).toBe("write_file /workspace/user_projects/app/src/index.css");
+    expect(event?.data).toMatchObject({
+      type: "tool_start", worker_id: "w-3", pioneer_name: "Babbage", event_type: "tool",
+    });
+    expect(event?.pioneer_name).toBe("Babbage");
+  });
+
+  it("keeps a worker-labelled thinking event readable", () => {
+    const event = normalizeSSEDelta({
+      type: "agent_event", content: "I will add the config directory first.",
+      worker_id: "w-3", pioneer_name: "Babbage", agent_name: "swarm:architect", event_type: "thinking",
+    });
+    expect(event?.type).toBe("agent_event");
+    expect(event?.data).toMatchObject({ worker_id: "w-3", event_type: "thinking" });
+  });
+});
 
 describe("Collective terminology and legacy wire compatibility", () => {
   it("labels legacy swarm values as Collective without changing serialization", () => {

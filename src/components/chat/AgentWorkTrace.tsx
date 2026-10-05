@@ -119,10 +119,15 @@ export function AgentWorkTrace({ events, active }: { events: MessageEvent[]; act
         </summary>
         {agent.task && <p className="ml-3.5 pb-1 text-muted">{agent.task}</p>}
         <ol className="ml-3.5 border-l border-border/60 pl-2.5 pb-1.5 text-muted">
-          {agent.events.slice(-12).map((event, index) => (
-            <li key={index} className="py-0.5 leading-5">{event.content || "Worker status updated."}</li>
-          ))}
-          {agent.events.length === 0 && <li className="py-0.5">Awaiting its first work update.</li>}
+          {(() => {
+            // An event with no text is not a sentence to invent. This used to render
+            // "Worker status updated." for every empty one, which is what a recorded
+            // run showed for every Pioneer — a fabricated line hiding a missing payload.
+            const shown = agent.events.filter((event) => event.content?.trim()).slice(-12);
+            return shown.length
+              ? shown.map((event, index) => <li key={index} className="py-0.5 leading-5">{event.content}</li>)
+              : <li className="py-0.5">Awaiting its first work update.</li>;
+          })()}
         </ol>
         {children.length > 0 && <div className="mt-1 space-y-1">{children.map((child) => renderAgent(child, depth + 1, nextAncestry))}</div>}
       </details>

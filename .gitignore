@@ -14,6 +14,12 @@ release*/
 # Agent runtime scratch (graphify caches, background-shell output)
 .qwen/
 
+# Screen recordings dropped into the repo root for review — one was 166 MB, and a
+# large blob in any pushed commit makes the whole branch unpublishable on GitHub.
+# Kept on disk, never committed.
+/Recording*.mp4
+/recording*.mp4
+
 # Personal CAD scratch for the sink/faucet water-slide project, worked in this repo
 # root but unrelated to Memex Desktop. Kept on disk, never committed. Patterns are
 # root-anchored so tracked sources (public/icon.png, patch_*.py, fix_pull_menu.py)
