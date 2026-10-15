@@ -156,6 +156,12 @@ contextBridge.exposeInMainWorld("memex", {
     start:       () => ipcRenderer.invoke("decomp:start"),
     connect:     (listOnly?: boolean) => ipcRenderer.invoke("decomp:connect", listOnly),
     installPage: () => ipcRenderer.invoke("decomp:installPage"),
+    setup:       () => ipcRenderer.invoke("decomp:setup"),
+    onSetupProgress: (cb: (line: string) => void) => {
+      const handler = (_e: unknown, line: string) => cb(line);
+      ipcRenderer.on("decomp:setup-progress", handler);
+      return () => ipcRenderer.removeListener("decomp:setup-progress", handler);
+    },
   },
 
   browserPane: {

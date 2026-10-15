@@ -50,7 +50,13 @@ export interface Hook {
 
 export type DecompStartResult =
   | { status: "ready"; url: string }
-  | { status: "missing" }
+  | { status: "missing"; canSetup: boolean }
+  | { status: "error"; message: string };
+
+export type DecompSetupResult =
+  | { status: "ok" }
+  | { status: "restart-required"; message: string }
+  | { status: "unsupported"; message: string }
   | { status: "error"; message: string };
 
 export interface BrowserPaneState {
@@ -245,6 +251,8 @@ export interface MemexBridge {
     start:       () => Promise<DecompStartResult>;
     connect:     (listOnly?: boolean) => Promise<{ status: "ok" | "missing" | "error"; output: string }>;
     installPage: () => Promise<void>;
+    setup:       () => Promise<DecompSetupResult>;
+    onSetupProgress: (cb: (line: string) => void) => () => void;
   };
 
   browserPane: {

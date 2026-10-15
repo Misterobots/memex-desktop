@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decompInvocation, parseDecompUrl, redactSecrets, wslListHasDecomp } from "../decomp-pure";
+import { decodeWslOutput, decompInvocation, pickDebianImage, toLf, toWslPath, parseDecompUrl, redactSecrets, wslListHasDecomp } from "../decomp-pure";
 
 describe("decomp.wtf address parsing", () => {
   const good = "http://127.0.0.1:6464/?k=abcDEF123_-xyz789";
@@ -50,5 +50,31 @@ describe("how decomp is invoked", () => {
     expect(wslListHasDecomp("decomp-wtf (Default)\n")).toBe(true);
     expect(wslListHasDecomp("Ubuntu\nDebian\n")).toBe(false);
     expect(wslListHasDecomp("my-decomp-wtf-2\n")).toBe(false);
+  });
+});
+
+describe("windows setup helpers", () => {
+  it("maps Windows folders to WSL mounts", () => {
+    expect(toWslPath("C:\\Users\\me\\AppData\\Local\\Temp\\x")).toBe("/mnt/c/Users/me/AppData/Local/Temp/x");
+    expect(toWslPath("\\\\server\\share")).toBeNull();
+  });
+
+  it("writes Linux scripts with LF endings", () => {
+    expect(toLf("a\r\nb\r\n")).toBe("a\nb\n");
+  });
+
+  it("decodes wsl.exe output in UTF-16 or UTF-8", () => {
+    expect(decodeWslOutput(Buffer.from("\uFEFFdecomp-wtf\r\n", "utf16le"))).toBe("decomp-wtf\r\n");
+    expect(decodeWslOutput(Buffer.from("decomp-wtf\n", "utf8"))).toBe("decomp-wtf\n");
+  });
+
+  const sha = "a".repeat(64);
+  it("picks the x64 Debian image only with an https URL and a real checksum", () => {
+    const info = (Url: unknown, Sha256: unknown) => ({ ModernDistributions: { Debian: [{ Name: "Debian", Amd64Url: { Url, Sha256 } }] } });
+    expect(pickDebianImage(info("https://example.org/d.tar.gz", sha.toUpperCase()))).toEqual({ url: "https://example.org/d.tar.gz", sha256: sha });
+    expect(pickDebianImage(info("http://example.org/d.tar.gz", sha))).toBeNull();
+    expect(pickDebianImage(info("https://example.org/d.tar.gz", "abc"))).toBeNull();
+    expect(pickDebianImage({})).toBeNull();
+    expect(pickDebianImage(null)).toBeNull();
   });
 });

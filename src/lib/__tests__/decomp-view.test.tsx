@@ -39,6 +39,29 @@ describe("DecompView", () => {
     await waitFor(() => expect(decomp.start).toHaveBeenCalledTimes(2));
   });
 
+  it("on Windows offers guided setup, lists what it does, and starts decomp.wtf when setup succeeds", async () => {
+    const start = vi.fn().mockResolvedValueOnce({ status: "missing", canSetup: true }).mockResolvedValue({ status: "ready", url });
+    const setup = vi.fn().mockResolvedValue({ status: "ok" });
+    const browserPane = install({ start, setup, onSetupProgress: vi.fn(() => () => {}), installPage: vi.fn() });
+    render(<DecompView />);
+    fireEvent.click(await screen.findByText("Set up decomp.wtf"));
+    expect(screen.getByText(/checked against Microsoft's SHA-256/)).toBeTruthy();
+    expect(setup).not.toHaveBeenCalled(); // nothing runs before the confirmation
+    fireEvent.click(screen.getAllByText("Set up decomp.wtf").slice(-1)[0]);
+    await waitFor(() => expect(setup).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(browserPane.open).toHaveBeenCalledWith(url));
+  });
+
+  it("reports a restart requirement instead of claiming success", async () => {
+    const start = vi.fn().mockResolvedValue({ status: "missing", canSetup: true });
+    const setup = vi.fn().mockResolvedValue({ status: "restart-required", message: "Restart Windows to finish." });
+    install({ start, setup, onSetupProgress: vi.fn(() => () => {}), installPage: vi.fn() });
+    render(<DecompView />);
+    fireEvent.click(await screen.findByText("Set up decomp.wtf"));
+    fireEvent.click(screen.getAllByText("Set up decomp.wtf").slice(-1)[0]);
+    expect(await screen.findByText("Restart Windows to finish.")).toBeTruthy();
+  });
+
   it("shows start failures with Retry instead of a permanent spinner", async () => {
     install({ start: vi.fn().mockRejectedValue(new Error("x")), installPage: vi.fn() });
     render(<DecompView />);

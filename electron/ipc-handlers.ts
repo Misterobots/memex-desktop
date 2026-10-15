@@ -28,6 +28,7 @@ import type { WorkspaceFirewall } from "./workspace-firewall";
 import type { LspManager }        from "./lsp-manager";
 import type { BrowserBridge }     from "./browser-bridge";
 import type { BrowserPane }       from "./browser-pane";
+import { setupDecomp } from "./decomp-setup";
 import { connectDecompAgents, startDecomp, DECOMP_INSTALL_PAGE } from "./decomp";
 import { getCurrentUid, setCurrentUid } from "./identity";
 import { updateNativeHostManifest }     from "./browser-bridge";
@@ -419,6 +420,7 @@ export function registerAllIpc(ctx: IpcContext): void {
   // itself is the sandboxed browserPane above.
   ipcMain.handle("decomp:start",   () => startDecomp());
   ipcMain.handle("decomp:connect", (_e, listOnly?: boolean) => connectDecompAgents(listOnly === true));
+  ipcMain.handle("decomp:setup", () => setupDecomp((line) => getMain()?.webContents.send("decomp:setup-progress", line)));
   ipcMain.handle("decomp:installPage", () => shell.openExternal(DECOMP_INSTALL_PAGE));
 
   // ── Permissions ───────────────────────────────────────────────────────────

@@ -7,14 +7,14 @@
  * `decomp url` prints in the sandboxed Browser pane.
  */
 import { execFile } from "node:child_process";
-import { decompInvocation, parseDecompUrl, redactSecrets, wslListHasDecomp } from "./decomp-pure";
+import { decodeWslOutput, decompInvocation, parseDecompUrl, redactSecrets, wslListHasDecomp } from "./decomp-pure";
 
 export const DECOMP_INSTALL_PAGE = "https://decomp.wtf";
 export const DECOMP_MCP_COMMAND = "claude mcp add decomp -- decomp mcp";
 
 export type DecompStartResult =
   | { status: "ready"; url: string }
-  | { status: "missing" }
+  | { status: "missing"; canSetup: boolean }
   | { status: "error"; message: string };
 
 export interface DecompCommandResult {
@@ -26,7 +26,7 @@ export interface DecompCommandResult {
 function windowsDistroPresent(): Promise<boolean> {
   return new Promise((resolve) => {
     execFile("wsl.exe", ["-l", "-q"], { timeout: 20_000, windowsHide: true, encoding: "buffer" }, (err, stdout) => {
-      resolve(!err && wslListHasDecomp(Buffer.from(stdout).toString("utf16le")));
+      resolve(!err && wslListHasDecomp(decodeWslOutput(stdout)));
     });
   });
 }
@@ -47,7 +47,7 @@ async function run(args: string[], timeoutMs: number): Promise<DecompCommandResu
 /** Detect the CLI and start (or reuse) the app; `decomp url` prints the address. */
 export async function startDecomp(timeoutMs = 90_000): Promise<DecompStartResult> {
   const result = await run(["url"], timeoutMs);
-  if (result.status === "missing") return { status: "missing" };
+  if (result.status === "missing") return { status: "missing", canSetup: process.platform === "win32" };
   if (result.status === "error") return { status: "error", message: "decomp.wtf did not start. " + redactSecrets(result.output).slice(-400) };
   const url = parseDecompUrl(result.output);
   return url ? { status: "ready", url } : { status: "error", message: "decomp.wtf did not return a local address." };
