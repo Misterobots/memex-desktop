@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDecompUrl, redactSecrets } from "../decomp-pure";
+import { decompInvocation, parseDecompUrl, redactSecrets, wslListHasDecomp } from "../decomp-pure";
 
 describe("decomp.wtf address parsing", () => {
   const good = "http://127.0.0.1:6464/?k=abcDEF123_-xyz789";
@@ -29,5 +29,26 @@ describe("decomp.wtf address parsing", () => {
 
   it("removes the session key from text shown to the user", () => {
     expect(redactSecrets(`failed at ${good}`)).toBe("failed at http://127.0.0.1:6464/?k=…");
+  });
+});
+
+describe("how decomp is invoked", () => {
+  it("goes through wsl.exe into the decomp-wtf distro on Windows, like decomp's own shim", () => {
+    expect(decompInvocation("win32", ["url"])).toEqual({
+      file: "wsl.exe",
+      args: ["-d", "decomp-wtf", "--cd", "~", "--exec", "/usr/local/bin/decomp", "url"],
+    });
+  });
+
+  it("uses the plain command elsewhere", () => {
+    expect(decompInvocation("darwin", ["connect", "--list"])).toEqual({ file: "decomp", args: ["connect", "--list"] });
+  });
+
+  it("finds the distro in wsl -l -q output (UTF-16 residue, BOM, default marker)", () => {
+    expect(wslListHasDecomp("\uFEFFDebian\r\ndecomp-wtf\r\n")).toBe(true);
+    expect(wslListHasDecomp("d\0e\0c\0o\0m\0p\0-\0w\0t\0f\0\r\0\n\0")).toBe(true);
+    expect(wslListHasDecomp("decomp-wtf (Default)\n")).toBe(true);
+    expect(wslListHasDecomp("Ubuntu\nDebian\n")).toBe(false);
+    expect(wslListHasDecomp("my-decomp-wtf-2\n")).toBe(false);
   });
 });

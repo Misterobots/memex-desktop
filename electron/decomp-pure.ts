@@ -25,3 +25,23 @@ export function parseDecompUrl(stdout: string): string | null {
 export function redactSecrets(text: string): string {
   return text.replace(/([?&]k=)[A-Za-z0-9_-]+/g, "$1…");
 }
+
+export const DECOMP_WSL_DISTRO = "decomp-wtf";
+export const DECOMP_WSL_BINARY = "/usr/local/bin/decomp";
+
+/**
+ * How to run `decomp <args>`.  On Windows decomp.wtf is a WSL 2 distribution
+ * (`decomp-wtf`); its own `decomp.cmd` shim just calls wsl.exe like this, so
+ * Memex does the same instead of relying on that shim being on Electron's PATH.
+ * Elsewhere (Linux, macOS where the installer provides a `decomp` command) it is the plain command.
+ */
+export function decompInvocation(platform: NodeJS.Platform, args: string[]): { file: string; args: string[] } {
+  return platform === "win32"
+    ? { file: "wsl.exe", args: ["-d", DECOMP_WSL_DISTRO, "--cd", "~", "--exec", DECOMP_WSL_BINARY, ...args] }
+    : { file: "decomp", args };
+}
+
+/** `wsl -l -q` prints UTF-16 with NULs and sometimes a BOM; true when the decomp.wtf distro is registered. */
+export function wslListHasDecomp(output: string): boolean {
+  return output.replace(/\0/g, "").replace(/^﻿/, "").split(/\r?\n/).some((l) => l.trim().replace(/ \(Default\)$/, "") === DECOMP_WSL_DISTRO);
+}

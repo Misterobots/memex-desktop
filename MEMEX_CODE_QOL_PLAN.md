@@ -455,3 +455,5 @@ Status: see handoff block below (updated as work proceeds).
 
 Checks run: `tsc --noEmit` clean; `vitest run` 33 files / 156 tests pass; `vite build` succeeds (compilation only). Environment: Linux sandbox, no Electron binary, no decomp.wtf, Docker or WSL. Not performed: DevView toggle DOM test, packaged Electron run, real-install run, Windows/macOS reachability, independent review.
 Next action: on a desktop build with decomp.wtf installed, open Dev → Decomp, confirm UI loads and live view works; run Settings → Connect agents.
+
+X01 update (Windows invocation): `decomp` is now run on Windows via `wsl.exe -d decomp-wtf --cd ~ --exec /usr/local/bin/decomp …` (what decomp's own `decomp.cmd` shim does), with the distro's presence checked via `wsl -l -q`; elsewhere the plain `decomp` command. Verified: tsc clean, vitest 33 files / 159 tests (invocation + distro-list parsing unit-tested). Not performed: run against a real WSL install. Open decision: whether Memex should also drive the install itself (see chat); no installer logic duplicated.
