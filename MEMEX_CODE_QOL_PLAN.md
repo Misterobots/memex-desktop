@@ -424,3 +424,34 @@ For each item being worked, append or link an evidence record with:
 Do not mark a milestone accepted until its exit gate and all mandatory item checks pass. User-approved deferrals must be explicit. Preserve historical evidence but mark it stale when affected code changes.
 
 Current handoff: source work now includes the AgentDock geometry/persistence slice, task-board recovery state, keyboard-complete command palette, and parent-aware conversation worker hierarchy. The Code-mode UI plan is unfinished. Next action is installed-app verification of `0.1.88` at the supported window/layout matrix, including dock/composer non-overlap and task-board retry behavior, then continue the remaining M1–M6 criteria. Native UI access is unavailable in this session because no targetable Memex Desktop window is exposed; source/tests/package evidence must not be reported as installed visual acceptance. No additional installer should be described as resolving an issue without that verification.
+
+## X01. decomp.wtf integration (user-requested, 2026-10-15)
+
+Objective: bring https://github.com/i12bp8/decomp.wtf (MIT; local Python app + web UI + `decomp mcp` stdio server; Linux toolchain, runs in WSL 2 on Windows / Docker on macOS) into Memex Desktop **as an integration with a separately installed copy**, not vendored code. Placement: Dev bottom pane beside Browser (user stated no preference).
+
+Expected user behavior and acceptance ledger (status: implementation / verification / packaging / installed acceptance tracked separately):
+
+| ID | Expected behavior | Acceptance checks | Evidence required |
+| --- | --- | --- | --- |
+| X01a | Dev toolbar has a **Decomp** pane toggle (works without a project folder). | Toggle opens/closes pane; closing hides the native view; other panes unaffected. | DOM test; packaged check |
+| X01b | Pane detects the `decomp` CLI, starts the app via `decomp url`, and shows its live UI in the sandboxed native pane. | Output parser accepts only `http://127.0.0.1:<port>/?k=<secret>`; anything else is rejected. Missing CLI → "Install decomp.wtf" state, no crash. Start failure/timeout → error state with Retry. | Unit tests (parser, states); packaged check with a real install |
+| X01c | Not installed state links to the official installer page and never runs an installer for the user. | Link opens in system browser; no install command executed by Memex. | DOM test |
+| X01d | Settings → "decomp.wtf agents": shows `decomp connect --list`, runs `decomp connect` on click, offers copyable `claude mcp add decomp -- decomp mcp`. | Missing CLI explained; output shown verbatim; no secret persisted. | DOM test; packaged check |
+| X01e | The secret URL is never logged or persisted by Memex. | grep of main/renderer for logging of URL; no config-store write. | Code review |
+
+Dependencies / known gaps: Memex's own agent runtime lives in the backend; registering `decomp mcp` into that backend's MCP client config is a backend/service action outside this UI scope and stays an explicit gap (X01d only drives decomp's own `connect` for Claude Code/Codex/etc.). Windows (WSL) and macOS (Docker) reachability of `127.0.0.1:<port>` from the Electron process is unverified. This sandbox cannot reach decomp.wtf, Docker or WSL, so real-install and packaged-Electron acceptance is **pending** until run on a desktop build.
+
+Status: see handoff block below (updated as work proceeds).
+
+### X01 status / handoff (2026-10-15, branch `ccr-a4a24fed-5k553t`)
+
+| ID | Implemented | Verified | Packaged | Installed acceptance |
+| --- | --- | --- | --- | --- |
+| X01a Decomp toolbar toggle | yes | typecheck only; no DevView DOM test | not performed | not performed |
+| X01b detect/start/embed | yes (`electron/decomp.ts`, `decomp-pure.ts`, `DecompView`) | URL parser + view states unit/DOM-tested (jsdom, mocked bridge) | not performed | not performed (needs real `decomp` install) |
+| X01c missing-install state | yes | DOM-tested (installer link, Retry) | not performed | not performed |
+| X01d Settings connect | yes (`DecompConnect`) | DOM-tested with mocked bridge | not performed | not performed |
+| X01e secret not logged/persisted | yes: address hidden in pane, `redactSecrets` on shown output | code review by author only | n/a | n/a |
+
+Checks run: `tsc --noEmit` clean; `vitest run` 33 files / 156 tests pass; `vite build` succeeds (compilation only). Environment: Linux sandbox, no Electron binary, no decomp.wtf, Docker or WSL. Not performed: DevView toggle DOM test, packaged Electron run, real-install run, Windows/macOS reachability, independent review.
+Next action: on a desktop build with decomp.wtf installed, open Dev → Decomp, confirm UI loads and live view works; run Settings → Connect agents.

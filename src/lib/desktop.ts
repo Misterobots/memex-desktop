@@ -48,6 +48,11 @@ export interface Hook {
   createdAt: string;
 }
 
+export type DecompStartResult =
+  | { status: "ready"; url: string }
+  | { status: "missing" }
+  | { status: "error"; message: string };
+
 export interface BrowserPaneState {
   url: string;
   title: string;
@@ -234,6 +239,12 @@ export interface MemexBridge {
     getExtensionIds: () => Promise<string[]>;
     setExtensionIds: (ids: string[]) => Promise<void>;
     onMessage:       (cb: (msg: Record<string, unknown>) => void) => () => void;
+  };
+
+  decomp: {
+    start:       () => Promise<DecompStartResult>;
+    connect:     (listOnly?: boolean) => Promise<{ status: "ok" | "missing" | "error"; output: string }>;
+    installPage: () => Promise<void>;
   };
 
   browserPane: {

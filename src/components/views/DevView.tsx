@@ -9,6 +9,7 @@ import { NotebookEditor } from "../dev/NotebookEditor";
 import { WorkspaceSafetyBadge } from "../dev/WorkspaceSafetyBadge";
 import { ProjectTasksPane } from "../dev/ProjectTasksPane";
 import { BrowserView } from "./BrowserView";
+import { DecompView } from "./DecompView";
 import { ipc } from "../../lib/ipc";
 import { desktop } from "../../lib/desktop";
 import { SessionList } from "../sidebar/SessionList";
@@ -20,7 +21,7 @@ import { PioneersView } from "../swarm/PioneersView";
 import { explorerWidthForPointer } from "./dev-layout";
 
 type PrimaryPane = "projects" | "chat" | "editor" | "tasks" | "print";
-type BottomPane  = "terminal" | "browser" | "none";
+type BottomPane  = "terminal" | "browser" | "decomp" | "none";
 
 export function DevView() {
   const { cwd, setCwd, sidebarOpen, activeSession, setActiveTab, streamingSessions } = useStore();
@@ -260,6 +261,11 @@ export function DevView() {
             </svg>
             Browser
           </button>
+          <button
+            onClick={() => setBottomPane((p) => (p === "decomp" ? "none" : "decomp"))}
+            className={`px-2.5 py-1 text-xs rounded-md transition-colors ${bottomPane === "decomp" ? "text-accent bg-accent/10" : "text-faint hover:text-text"}`}
+            title="Decompile games you own with AI agents (decomp.wtf)"
+          >Decomp</button>
         </div>
 
         {worktreesOpen && cwd && <WorktreePanel repoPath={cwd} onSelect={(path) => { changeProject(path); setWorktreesOpen(false); }} />}
@@ -334,7 +340,7 @@ export function DevView() {
                   className="h-5 w-4 -ml-2 mr-1 touch-none cursor-row-resize rounded hover:bg-accent/20 focus:outline-none focus:bg-accent/20"
                   title="Drag to resize project tools"
                 />
-                <span className="text-xs text-faint font-medium">{bottomPane === "terminal" ? "Terminal" : `Browser · ${folderName ?? "Project"}`}</span>
+                <span className="text-xs text-faint font-medium">{bottomPane === "terminal" ? "Terminal" : bottomPane === "decomp" ? "decomp.wtf" : `Browser · ${folderName ?? "Project"}`}</span>
                 <div className="flex-1" />
                 {bottomPane === "terminal" && <button
                   type="button"
@@ -354,6 +360,7 @@ export function DevView() {
                 </button>
               </div>
               {bottomPane === "browser" && <BrowserView />}
+              {bottomPane === "decomp" && <DecompView />}
             </div>
           )}
           {/* Single persistent TerminalPane instance, rendered from one fixed

@@ -152,6 +152,12 @@ contextBridge.exposeInMainWorld("memex", {
     },
   },
 
+  decomp: {
+    start:       () => ipcRenderer.invoke("decomp:start"),
+    connect:     (listOnly?: boolean) => ipcRenderer.invoke("decomp:connect", listOnly),
+    installPage: () => ipcRenderer.invoke("decomp:installPage"),
+  },
+
   browserPane: {
     open:     (url?: string) => ipcRenderer.invoke("browser-pane:open", url),
     navigate: (url: string)  => ipcRenderer.invoke("browser-pane:navigate", url),

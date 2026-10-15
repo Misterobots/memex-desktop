@@ -28,6 +28,7 @@ import type { WorkspaceFirewall } from "./workspace-firewall";
 import type { LspManager }        from "./lsp-manager";
 import type { BrowserBridge }     from "./browser-bridge";
 import type { BrowserPane }       from "./browser-pane";
+import { connectDecompAgents, startDecomp, DECOMP_INSTALL_PAGE } from "./decomp";
 import { getCurrentUid, setCurrentUid } from "./identity";
 import { updateNativeHostManifest }     from "./browser-bridge";
 import type { RunStore }               from "./run-store";
@@ -412,6 +413,13 @@ export function registerAllIpc(ctx: IpcContext): void {
   ipcMain.handle("browser-pane:reload",   () => browserPane.reload());
   ipcMain.handle("browser-pane:stop",     () => browserPane.stop());
   ipcMain.handle("browser-pane:getState", () => browserPane.getState());
+
+  // decomp.wtf: a separately installed local app. The renderer only learns the
+  // loopback address `decomp url` printed (validated in decomp.ts); the pane
+  // itself is the sandboxed browserPane above.
+  ipcMain.handle("decomp:start",   () => startDecomp());
+  ipcMain.handle("decomp:connect", (_e, listOnly?: boolean) => connectDecompAgents(listOnly === true));
+  ipcMain.handle("decomp:installPage", () => shell.openExternal(DECOMP_INSTALL_PAGE));
 
   // ── Permissions ───────────────────────────────────────────────────────────
   ipcMain.handle("permission:request", async (_e, opts: {

@@ -5,6 +5,7 @@ import { getAgentRuntime } from "../../lib/runtime-urls";
 import { apiFetch } from "../../lib/api-fetch";
 import { SkillRegistry } from "../settings/SkillRegistry";
 import { McpBridge } from "../settings/McpBridge";
+import { DecompConnect } from "../settings/DecompConnect";
 import { ShortcutCapture } from "../settings/ShortcutCapture";
 import { GitHubPushConnect } from "../settings/GitHubPushConnect";
 import { Hooks } from "../settings/Hooks";
@@ -755,6 +756,10 @@ export function SettingsView() {
       {/* ── GitHub — Pull Requests ── */}
       <Section title="MCP Bridge">
         <McpBridge />
+      </Section>
+
+      <Section title="decomp.wtf agents">
+        <DecompConnect />
       </Section>
 
       <Section title="GitHub — Pull Requests">
