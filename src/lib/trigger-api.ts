@@ -15,6 +15,8 @@ export interface TriggerTaskConfig {
   session_id?:     string;
   model?:          string;
   swarm_mode?:     boolean;
+  /** Carried with swarm_mode for a Collective; alone, swarm_mode is the build path. */
+  research_mode?:  boolean;
   dev_mode?:       boolean;
   ultraplan_mode?: boolean;
 }

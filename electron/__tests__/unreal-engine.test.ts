@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("fs", () => ({ existsSync: () => false, readdirSync: () => [] }));
+vi.mock("fs", () => ({ existsSync: () => false, readdirSync: () => [], readFileSync: () => "" }));
 vi.mock("path", () => ({
   normalize: (value: string) => value.replace(/\//g, "\\"),
   join: (...parts: string[]) => parts.join("\\").replace(/\\+/g, "\\"),

@@ -41,4 +41,19 @@ describe("AgentWorkTrace", () => {
     expect(markup.indexOf("Ada")).toBeLessThan(markup.indexOf("Tess"));
     expect(markup).toContain("Tess is checking the build.");
   });
+
+  it("does not invent a sentence for an event that carried no text", () => {
+    // "Worker status updated." was a frontend fallback over an empty payload. In the
+    // 2026-10-05 recording it filled every Pioneer row, which made the trace look
+    // informative at exactly the moment the runtime had sent nothing to show.
+    const silent: MessageEvent[] = [
+      { type: "status", content: "Plan assigned.", data: { type: "swarm_task_list", workers: [
+        { worker_id: "w-9", pioneer_name: "Codd", role: "analyst", task: "Document the goals", status: "running" },
+      ] } },
+      { type: "agent_event", content: "", data: { type: "agent_event", worker_id: "w-9", status: "running" } },
+    ];
+    const markup = renderToStaticMarkup(<AgentWorkTrace events={silent} active />);
+    expect(markup).not.toContain("Worker status updated");
+    expect(markup).toContain("Awaiting its first work update.");
+  });
 });

@@ -2,8 +2,6 @@ import { useState } from "react";
 import { useStore } from "../../lib/store";
 import { ConversationPane } from "../chat/ConversationPane";
 import { InputBar } from "../layout/InputBar";
-import { SessionList } from "../sidebar/SessionList";
-import { WorkspaceSidebar } from "../sidebar/WorkspaceSidebar";
 import { SitesView } from "./SitesView";
 
 /**
@@ -26,9 +24,6 @@ export function DesignView() {
         <span className="ml-2 text-[11px] text-muted">Product and site creation live together in Design.</span>
       </div>
       <div className="flex min-h-0 flex-1">
-      <WorkspaceSidebar>
-        <SessionList experience="product_design" newLabel="New product design" />
-      </WorkspaceSidebar>
       <main className="flex min-w-0 flex-1 flex-col min-h-0">
         {empty ? (
           <div className="flex flex-1 flex-col items-center justify-center px-6 text-center select-none">

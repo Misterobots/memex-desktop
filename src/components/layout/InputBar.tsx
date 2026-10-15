@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { defaultRunPreferences, sessionScopeKey, useStore } from "../../lib/store";
-import { streamChat } from "../../lib/sse-stream";
+import { runRoleModels, streamChat } from "../../lib/sse-stream";
 import { desktop, type GauntletHandoff } from "../../lib/desktop";
 import { pushSession } from "../../lib/conv-sync";
 import { extractConversationMemory } from "../../lib/memex-client";
@@ -11,11 +11,18 @@ import { RunControls } from "../chat/VerbosityControl";
 
 /** General conversation intentionally excludes production-only Gauntlet work. */
 export const CHAT_MODES: MemexMode[] = ["chat", "swarm", "research", "design", "think", "plan"];
-/** Code owns the Pioneer Gauntlet because its output is a reviewed project change. */
-export const CODE_MODES: MemexMode[] = ["swarm", "gauntlet"];
+/**
+ * Code is its own mode, not a side effect of the orchestrators: one coordinator
+ * drives the project and calls Pioneers in as the scope needs them. Collective
+ * and Gauntlet sit beside it for perspective research and for reviewed project
+ * work respectively, and Plan/Think stay available because both are things you
+ * can want about an open project.
+ */
+export const CODE_MODES: MemexMode[] = ["code", "swarm", "gauntlet", "plan", "think"];
 
 const MODE_DOT: Record<MemexMode, string> = {
   chat:     "bg-muted",
+  code:     "bg-sky-400",
   swarm:    "bg-accent",
   research: "bg-green",
   design:   "bg-yellow",
@@ -25,12 +32,14 @@ const MODE_DOT: Record<MemexMode, string> = {
   workshop: "bg-accent",
 };
 
-// One-line descriptions so the picker makes clear which mode does what — e.g.
-// Code tasks belong in Collective, not Research (which forces a research pipeline).
+// One-line descriptions so the picker makes clear which mode does what. These
+// describe the pipeline the runtime actually selects from the request flags,
+// not what the button is nearest to.
 const MODE_DESC: Record<MemexMode, string> = {
   chat:     "General conversation & Q&A",
-  swarm:    "Build & write code with agents",
-  research: "Web/doc research & synthesis",
+  code:     "Direct project work — one agent reads, edits, runs, and calls Pioneers as needed",
+  swarm:    "Coordinator researches through multiple Pioneer perspectives, then reconciles them",
+  research: "Single-pass web/doc research & synthesis",
   design:   "Generate UI / HTML mockups",
   think:    "Extended step-by-step reasoning",
   plan:     "Plan a build before executing",
@@ -42,6 +51,165 @@ function syncSessionById(sessionId: string): void {
   const session = useStore.getState().sessions.find((item) => item.id === sessionId);
   if (session) pushSession(session);
 }
+
+export interface SlashCommand {
+  cmd: string;
+  label: string;
+  category: "Flow" | "Workflow" | "Utility";
+  description: string;
+  targetMode?: MemexMode;
+}
+
+export const SLASH_COMMANDS: SlashCommand[] = [
+  // Agent Flows
+  {
+    cmd: "/flow-blockout",
+    label: "Blockout Flow",
+    category: "Flow",
+    description: "Rough, rapid first-pass draft of nonexistent structure (schemas, folder layouts, configs). Output is judged/refined by human.",
+    targetMode: "plan",
+  },
+  {
+    cmd: "/flow-batch-edit",
+    label: "Batch Edit Flow",
+    category: "Flow",
+    description: "Apply one mechanical change across N existing files/records matching a predicate. Always states rollback before first write.",
+    targetMode: "chat",
+  },
+  {
+    cmd: "/flow-audit",
+    label: "Audit Flow",
+    category: "Flow",
+    description: "Read-only sweep checking a large set against explicit rules (dead links, broken exports, policy violations). Never mutates.",
+    targetMode: "code",
+  },
+  {
+    cmd: "/flow-scaffold",
+    label: "Scaffold Flow",
+    category: "Flow",
+    description: "Generate boilerplate skeleton for one new unit (component, service, route, module) with structure in place but logic empty.",
+    targetMode: "code",
+  },
+  {
+    cmd: "/flow-variants",
+    label: "Variants Flow",
+    category: "Flow",
+    description: "Generate N named derivatives from one parent template plus a parameter table. Pattern is identical, only values change.",
+    targetMode: "chat",
+  },
+  {
+    cmd: "/agent-flows",
+    label: "Agent Flows Guide",
+    category: "Flow",
+    description: "Routing guide and 3-part selection gate (enumerable, mechanical, verifiable) for picking the right agent flow.",
+    targetMode: "chat",
+  },
+
+  // Memex Workflows
+  {
+    cmd: "/build",
+    label: "Code Build",
+    category: "Workflow",
+    description: "Direct project work: the Code agent plans, edits, runs, and calls Pioneers where the scope needs them.",
+    targetMode: "code",
+  },
+  {
+    cmd: "/swarm",
+    label: "Collective (legacy alias)",
+    category: "Workflow",
+    description: "Alias for Collective: the coordinator researches the question through multiple Pioneer perspectives.",
+    targetMode: "swarm",
+  },
+  {
+    cmd: "/collective",
+    label: "Collective",
+    category: "Workflow",
+    description: "Pioneer perspectives research the same question from different domains, then the coordinator reconciles it.",
+    targetMode: "swarm",
+  },
+  {
+    cmd: "/plan",
+    label: "Plan Mode",
+    category: "Workflow",
+    description: "Explicit planning and exploration phase with ultraplan before modifying files.",
+    targetMode: "plan",
+  },
+  {
+    cmd: "/workshop",
+    label: "Product Workshop",
+    category: "Workflow",
+    description: "Two-phase discovery: interactive grill-me questions → Product Brief → pipeline actions.",
+    targetMode: "workshop",
+  },
+  {
+    cmd: "/grill",
+    label: "Grill Me",
+    category: "Workflow",
+    description: "Deep discovery interview to align on requirements and eliminate ambiguity.",
+    targetMode: "workshop",
+  },
+  {
+    cmd: "/design",
+    label: "Design Studio",
+    category: "Workflow",
+    description: "Generate self-contained UI/HTML mockups and Open Design projects.",
+    targetMode: "design",
+  },
+  {
+    cmd: "/research",
+    label: "Deep Research",
+    category: "Workflow",
+    description: "Single-agent web and documentation research with synthesis. For multi-perspective analysis, use Collective.",
+    targetMode: "research",
+  },
+  {
+    cmd: "/think",
+    label: "Extended Thinking",
+    category: "Workflow",
+    description: "Extended step-by-step reasoning for difficult problems before responding.",
+    targetMode: "think",
+  },
+  {
+    cmd: "/gauntlet",
+    label: "Pioneer Gauntlet",
+    category: "Workflow",
+    description: "Pioneer builders and critics iterate against an explicit quality bar.",
+    targetMode: "gauntlet",
+  },
+  {
+    cmd: "/cad",
+    label: "CAD Modeling",
+    category: "Workflow",
+    description: "Generate OpenSCAD 3D models with 2D preview renders and STL export.",
+    targetMode: "chat",
+  },
+
+  // Utilities
+  {
+    cmd: "/compact",
+    label: "Compact Context",
+    category: "Utility",
+    description: "Summarize earlier conversation turns to reclaim token budget.",
+  },
+  {
+    cmd: "/clear",
+    label: "Clear Thread",
+    category: "Utility",
+    description: "Clear active conversation messages and reset thread state.",
+  },
+  {
+    cmd: "/model",
+    label: "Model Info / Switch",
+    category: "Utility",
+    description: "Show active model and context window or switch model.",
+  },
+  {
+    cmd: "/help",
+    label: "Help",
+    category: "Utility",
+    description: "List all available slash commands, workflows, and shortcuts.",
+  },
+];
 
 interface InputBarProps {
   /** Extra request flags merged into every send (e.g. { dev_mode: true }). */
@@ -68,14 +236,17 @@ interface InputBarProps {
 export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder, experience = "chat", workspaceKey, disabledReason, prefillText, modeOptions, defaultMode }: InputBarProps) {
   const [text, setText] = useState("");
   const [modeOpen, setModeOpen] = useState(false);
+  const [modeNotice, setModeNotice] = useState("");
+  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [gauntletBar, setGauntletBar] = useState("");
   const [gauntletError, setGauntletError] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modeRef = useRef<HTMLDivElement>(null);
+  const plusMenuRef = useRef<HTMLDivElement>(null);
   const {
     mode: globalMode, setMode, createSession,
     addMessage, appendEvent, updateMessageContent, updateMessageRunId, setMessageUsage,
-    setStreaming, streamingSessions, stopStreams, activeSession, selectedModel, workspaceRunPreferences,
+    setStreaming, streamingSessions, stopStreams, activeSession, selectedModel, workspaceRunPreferences, cwd
   } = useStore();
 
   const availableModes = modeOptions ?? CHAT_MODES;
@@ -149,10 +320,21 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
 
   useEffect(() => {
     if (!modeOpen) return;
-    const h = (e: MouseEvent) => { if (!modeRef.current?.contains(e.target as Node)) setModeOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
+    const handler = (e: MouseEvent) => {
+      if (!modeRef.current?.contains(e.target as Node)) setModeOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, [modeOpen]);
+
+  useEffect(() => {
+    if (!plusMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!plusMenuRef.current?.contains(e.target as Node)) setPlusMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [plusMenuOpen]);
 
   const submit = useCallback(async () => {
     const content = text.trim();
@@ -167,6 +349,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
     useStore.getState().clearWorkspaceDraft(gauntletDraftKey);
     setText("");
     setGauntletBar("");
+    setModeNotice("");
 
     const session = activeSession(experience, workspaceKey);
     const sessionId = session?.id ?? createSession(experience, workspaceKey);
@@ -223,7 +406,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
         ? await bridge.gauntlet.resume(previous.id, content) ?? previous
         : previous ?? await bridge.gauntlet.create({
         sessionId, workspaceKey, role: "coordinator", goal: continuationText, qualityBar: gauntletBar.trim(),
-        effort: { model: selectedModel ?? "swarm", outputDetail: runPreferences.outputDetail, reasoningSummary: runPreferences.reasoningSummary, reasoningEffort: runPreferences.reasoningEffort },
+        effort: { model: selectedModel, outputDetail: runPreferences.outputDetail, reasoningSummary: runPreferences.reasoningSummary, reasoningEffort: runPreferences.reasoningEffort },
       });
       // Coordinator ownership is bookkeeping for durable recovery, not a
       // decision the user should have to make before their requested work can
@@ -242,10 +425,12 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       });
       syncSession();
     }
+    const roleModels = await runRoleModels();
     const stop = streamChat({
       messages: history,
       mode,
       model: selectedModel,
+      roleModels,
       // Routines are ordinary repeatable-work requests, not Product Workshop
       // discovery sessions. Tell the router to keep this workspace in the
       // conversational path even when the prompt is ambiguous.
@@ -257,7 +442,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
         goal: handoffPacket?.goal ?? content,
         qualityBar: handoffPacket?.qualityBar ?? gauntletBar.trim(),
           effort: {
-          model: handoffPacket?.effort.model ?? selectedModel ?? "swarm",
+          model: handoffPacket?.effort.model ?? selectedModel,
           outputDetail: handoffPacket?.effort.outputDetail ?? runPreferences.outputDetail,
           reasoningSummary: handoffPacket?.effort.reasoningSummary ?? runPreferences.reasoningSummary,
           reasoningEffort: handoffPacket?.effort.reasoningEffort ?? runPreferences.reasoningEffort,
@@ -267,6 +452,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
       modeFlags: { ...MODE_FLAGS[mode], ...extraFlags, ...(runPreferences.reasoningEffort === "high" ? { ultrathink_mode: true } : {}) },
       sessionId,
       workspaceKey,
+      currentProjectId: cwd ?? undefined,
       runMeta: { profile: "default" },
       onRunStarted: (runId) => {
         updateMessageRunId(sessionId, assistantId, runId);
@@ -339,7 +525,60 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
     setStreaming(sessionId, true, stop);
   }, [text, streaming, disabledReason, mode, experience, workspaceKey, extraFlags, runPreferences, gauntletBar, draftKey, gauntletDraftKey]);
 
+  const [slashIndex, setSlashIndex] = useState(0);
+  const [slashDismissed, setSlashDismissed] = useState(false);
+
+  const isSlash = text.startsWith("/") && !text.trimStart().includes(" ") && !slashDismissed;
+  const slashQuery = isSlash ? text.trimStart().slice(1).toLowerCase() : "";
+  const slashMatches = isSlash
+    ? SLASH_COMMANDS.filter((c) => c.cmd.slice(1).toLowerCase().startsWith(slashQuery) || c.label.toLowerCase().includes(slashQuery))
+    : [];
+
+  useEffect(() => {
+    setSlashIndex(0);
+  }, [slashQuery]);
+
+  const selectSlashCommand = useCallback((cmd: SlashCommand) => {
+    setText(cmd.cmd + " ");
+    if (cmd.targetMode && availableModes.includes(cmd.targetMode)) {
+      setMode(cmd.targetMode);
+      setModeNotice("");
+    } else if (cmd.targetMode) {
+      // The runtime reads slash prefixes from the message text itself, so an
+      // unoffered command still shapes the run while the composer keeps showing
+      // this workspace's mode. Say so instead of completing it silently.
+      setModeNotice(lockMode
+        ? `${cmd.cmd} selects ${MODE_LABELS[cmd.targetMode]}, but this composer always runs ${MODE_LABELS[lockMode]}.`
+        : `${cmd.cmd} selects ${MODE_LABELS[cmd.targetMode]}, which this workspace doesn't offer — the command can still steer the run while the mode shown stays ${MODE_LABELS[mode]}.`);
+    }
+    setSlashDismissed(true);
+    textareaRef.current?.focus();
+  }, [availableModes, lockMode, mode, setMode]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (isSlash && slashMatches.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSlashIndex((i) => (i + 1) % slashMatches.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSlashIndex((i) => (i - 1 + slashMatches.length) % slashMatches.length);
+        return;
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault();
+        selectSlashCommand(slashMatches[slashIndex]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setSlashDismissed(true);
+        return;
+      }
+    }
+
     // Enter sends; Shift+Enter inserts a newline. Skip while an IME composition
     // is active so Enter can confirm candidates instead of sending.
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -360,21 +599,98 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
   return (
     <div className="memex-composer px-6 pb-5 pt-2 flex-shrink-0">
       <div className="max-w-conversation mx-auto">
-        <div className="bg-surface border border-border rounded-2xl px-3 pt-3 pb-2 focus-within:border-accent/50 transition-colors shadow-lg shadow-black/10">
+        <div className="bg-surface border border-border rounded-2xl px-3 pt-3 pb-2 focus-within:border-accent/50 transition-colors shadow-lg shadow-black/10 relative">
+          {isSlash && slashMatches.length > 0 && (
+            <div
+              className="absolute bottom-full mb-2 left-0 right-0 max-h-72 overflow-y-auto rounded-xl border border-border/80 bg-surface shadow-2xl z-50 py-1 divide-y divide-border/20 backdrop-blur-md"
+              role="listbox"
+              aria-label="Slash commands"
+            >
+              {slashMatches.map((cmd, idx) => (
+                <button
+                  key={cmd.cmd}
+                  type="button"
+                  role="option"
+                  aria-selected={idx === slashIndex}
+                  onMouseEnter={() => setSlashIndex(idx)}
+                  onClick={() => selectSlashCommand(cmd)}
+                  className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-start gap-2.5 group ${
+                    idx === slashIndex ? "bg-accent/15 text-text" : "text-text/85 hover:bg-surface2/60"
+                  }`}
+                  title={cmd.description}
+                >
+                  <span className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-semibold text-accent">{cmd.cmd}</span>
+                      <span className="font-medium text-text/90">{cmd.label}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                        cmd.category === "Flow"
+                          ? "bg-purple-500/15 text-purple-400 border border-purple-500/30"
+                          : cmd.category === "Workflow"
+                          ? "bg-accent/15 text-accent border border-accent/30"
+                          : "bg-surface2 text-muted border border-border/50"
+                      }`}>
+                        {cmd.category}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-muted leading-relaxed line-clamp-2 group-hover:text-text/80">
+                      {cmd.description}
+                    </p>
+                  </span>
+                  <span className="text-[10px] font-mono text-muted/60 px-1.5 py-0.5 rounded bg-surface2/80 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    Tab ↹
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {modeNotice && (
+            <p role="status" className="mb-2 px-2 text-xs text-yellow">
+              {modeNotice}
+              <button onClick={() => setModeNotice("")} className="ml-2 text-muted underline hover:text-text">Dismiss</button>
+            </p>
+          )}
           {mode === "gauntlet" && <label className="mb-2 block px-2 text-xs text-muted">Quality bar
             <input aria-label="Gauntlet quality bar" value={gauntletBar} onChange={(event) => { setGauntletBar(event.target.value); setGauntletError(""); }} placeholder="A named, fetchable reference — URL, product, repo, or publication" className="mt-1 w-full rounded-md border border-border/60 bg-canvas px-2 py-1.5 text-xs text-text placeholder-faint focus:outline-none focus:border-accent" />
             {gauntletError && <span role="alert" className="mt-1 block text-xs text-yellow">{gauntletError}</span>}
           </label>}
-          <textarea
-            ref={textareaRef}
-            value={text}
-            disabled={!!disabledReason}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={disabledReason ?? placeholder ?? (streaming ? "Streaming… (Esc to stop)" : "Message Memex…")}
-            rows={1}
-            className="w-full bg-transparent px-2 text-text text-[15px] resize-none focus:outline-none placeholder-faint min-h-[24px] leading-relaxed"
-          />
+          <div className="flex items-start gap-2">
+            <div className="relative" ref={plusMenuRef}>
+              <button 
+                className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface2 text-faint hover:text-text hover:bg-surface2/80 transition-colors"
+                title="Attach"
+                onClick={() => setPlusMenuOpen(!plusMenuOpen)}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"></path></svg>
+              </button>
+              {plusMenuOpen && (
+                <div className="absolute bottom-full left-0 mb-2 w-52 rounded-xl border border-border bg-surface/95 shadow-2xl z-50 p-2 text-sm text-text flex flex-col gap-0.5 backdrop-blur-md">
+                  <div className="px-2 py-1 text-[10px] font-bold tracking-widest text-muted uppercase">Add</div>
+                  <button onClick={() => { setPlusMenuOpen(false); }} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-xs font-medium hover:bg-surface2/60 transition-colors text-text/90 hover:text-text"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-faint"><path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8.4l-6.6-6.6z"></path><path d="M14 2v7h7"></path></svg>Attach File/Folder</button>
+                  <div className="h-px bg-border/40 my-1 mx-2" />
+                  <div className="px-2 py-1 text-[10px] font-bold tracking-widest text-muted uppercase">Tools</div>
+                  <button onClick={() => { setPlusMenuOpen(false); setText("/sites "); textareaRef.current?.focus(); }} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-xs font-medium hover:bg-surface2/60 transition-colors text-text/90 hover:text-text"><span className="text-sm">🌐</span>Sites</button>
+                  <button onClick={() => { setPlusMenuOpen(false); setText("/apps "); textareaRef.current?.focus(); }} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-xs font-medium hover:bg-surface2/60 transition-colors text-text/90 hover:text-text"><span className="text-sm">📱</span>Apps</button>
+                  <button onClick={() => { setPlusMenuOpen(false); setText("/plugins "); textareaRef.current?.focus(); }} className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-xs font-medium hover:bg-surface2/60 transition-colors text-text/90 hover:text-text"><span className="text-sm">🔌</span>Plugins</button>
+                </div>
+              )}
+            </div>
+            <textarea
+              ref={textareaRef}
+              value={text}
+              disabled={!!disabledReason}
+              onChange={(e) => {
+                setText(e.target.value);
+                if (!e.target.value.startsWith("/")) {
+                  setSlashDismissed(false);
+                }
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder={disabledReason ?? placeholder ?? (streaming ? "Streaming… (Esc to stop)" : "Message Memex…")}
+              rows={1}
+              className="flex-1 min-w-0 bg-transparent px-1 text-text text-[15px] resize-none focus:outline-none placeholder-faint min-h-[24px] leading-relaxed"
+            />
+          </div>
           <div className="flex items-center justify-between mt-1.5">
             {/* Mode selector + model picker */}
             <div className="flex items-center gap-1">
@@ -402,7 +718,7 @@ export function InputBar({ extraFlags = {}, lockMode, lockModeLabel, placeholder
                       {availableModes.map((m) => (
                         <button
                           key={m}
-                          onClick={() => { setMode(m); setModeOpen(false); }}
+                          onClick={() => { setMode(m); setModeOpen(false); setModeNotice(""); }}
                           className={`w-full text-left flex items-start gap-2 px-3 py-1.5 text-xs transition-colors
                             ${m === globalMode ? "bg-accent/10 text-text" : "text-text/80 hover:bg-surface2/60"}`}
                         >

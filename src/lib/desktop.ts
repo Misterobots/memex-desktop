@@ -4,6 +4,26 @@
  * Gracefully no-ops when not running in Electron.
  */
 import type { RunRecord, RunEvent, EvalCase, EvalResult, ConnectionStatus } from "../types/memex";
+// The D2 routing types are re-exported rather than mirrored here, because the
+// renderer resolves routes with the main process's own `resolveRoute` from
+// electron/routing-config.ts. Two copies of the shape would mean two copies of the
+// fallback rules; a pure, Electron-free module is what makes one copy possible.
+import type {
+  RoutingConfig, RoutingIssue, RoutingResult, RoutingRow, RoutingState, RuneRole, RunStyle,
+} from "../../electron/routing-config";
+// Re-exported rather than mirrored, same reason as the routing types above: the
+// discovery verdict is one shape decided in electron/engine-discovery.ts.
+import type { EngineDiscovery } from "../../electron/engine-discovery";
+import type { CapabilityReport } from "../../electron/model-capabilities";
+import type { RuntimeTopology } from "../../electron/runtime-nodes";
+import type {
+  ConnectResult, ProviderCatalog, ProviderInfo, ProviderModel, SelectionResult,
+} from "../../electron/provider-keys";
+export type {
+  RoutingConfig, RoutingIssue, RoutingResult, RoutingRow, RoutingState, RuneRole, RunStyle, EngineDiscovery,
+  CapabilityReport, RuntimeTopology,
+  ConnectResult, ProviderCatalog, ProviderInfo, ProviderModel, SelectionResult,
+};
 export type { RunRecord, RunEvent, EvalCase, EvalResult };
 
 export type PermissionMode = "trusted" | "workspace" | "ask";
@@ -108,6 +128,33 @@ export interface OllamaModel {
   modifiedAt:    string;
 }
 
+export interface LoadedOllamaModel {
+  name: string;
+  model: string;
+  sizeGb: number;
+  vramGb: number;
+  host: string;
+  expiresAt?: string;
+}
+
+/** Mirrors electron/engine-registry.ts — an inference engine this install runs. */
+export interface EngineDescriptor {
+  id: string;
+  kind: "ollama" | "llama.cpp";
+  baseUrl: string;
+  label?: string;
+}
+
+/** One model as the registry normalises it, for either engine kind. */
+export interface EngineModel {
+  engineId: string;
+  engineKind: EngineDescriptor["kind"];
+  engineLabel: string;
+  model: string;
+  sizeBytes?: number;
+  resident?: boolean;
+}
+
 export interface LocalLlmInspection {
   systemRamGb: number;
   gpus: Array<{ name: string; vramGb: number }>;
@@ -116,6 +163,8 @@ export interface LocalLlmInspection {
   comfyUi: { url: string; reachable: boolean };
   harness: { url: string; reachable: boolean };
   recommendations: Array<{ model: string; label: string; reason: string }>;
+  /** Installed / running / address / evidence per engine kind (electron/engine-discovery.ts). */
+  engines: EngineDiscovery[];
 }
 
 export interface UnrealEngineInstall {
@@ -154,8 +203,18 @@ export interface RuntimeProfile {
   agentRuntime: string;
   mempalace:    string;
   ollama?:      string;
+  /** Optional llama.cpp (`llama-server`) lane, alongside Ollama rather than
+   * instead of it. Superseded by the routing table's `engines` map, which is what
+   * the registry reads; kept because a stored profile still carries it and the
+   * table is derived from it when a config predates D2 — see
+   * electron/routing-config.ts. */
+  llamaCpp?:    string;
   /** Last model deliberately selected for this routing profile. */
   defaultModel?: string;
+  /** D7 — whether `defaultModel` names a local lane's model or a gateway provider's.
+   * Absent means `engine`, which is the pre-D7 state and keeps the routing table's
+   * precedence. See the longer note on the same field in electron/config-store.ts. */
+  defaultModelSource?: "engine" | "gateway";
   localServices?: { openWebUi?: string; comfyUi?: string };
   apiKey?:      string; // only present when providerType === "external"
   readonly?:    boolean;
@@ -193,6 +252,9 @@ export interface MemexBridge {
     writeFile:    (path: string, content: string) => Promise<void>;
     readDir:      (path: string)                  => Promise<Array<{ name: string; path: string; isDir: boolean }>>;
     mkdir:        (path: string)                  => Promise<void>;
+    delete:       (path: string)                  => Promise<boolean>;
+    rename:       (oldPath: string, newPath: string) => Promise<boolean>;
+    copy:         (srcPath: string, destPath: string) => Promise<boolean>;
   };
 
   shell: {
@@ -202,6 +264,7 @@ export interface MemexBridge {
 
   dialog: {
     openFolder: () => Promise<string | null>;
+    openFiles:  (options?: { title?: string; multiSelections?: boolean; directory?: boolean }) => Promise<string[]>;
     saveText: (name: string, content: string, mimeType?: string) => Promise<{ canceled: boolean; path?: string }>;
   };
 
@@ -268,11 +331,6 @@ export interface MemexBridge {
     onState:   (cb: (state: BrowserPaneState) => void) => () => void;
   };
 
-  remoteAuth: {
-    signIn: () => Promise<boolean>;
-    signOut: () => Promise<boolean>;
-  };
-
   lsp: {
     start:          (ext: string, rootUri: string) => Promise<boolean>;
     request:        (lang: string, rootUri: string, method: string, params: unknown) => Promise<unknown>;
@@ -333,9 +391,62 @@ export interface MemexBridge {
     recent:     (limit?: number)                                  => Promise<ArtifactRecord[]>;
   };
 
+  engines: {
+    list:   () => Promise<EngineDescriptor[]>;
+    models: (engineId: string) => Promise<EngineModel[]>;
+    /** Candidates for a lane the wizard has discovered but not stored. `{ id }`
+     * only, and the same `EngineModel` rows as `models` — a model is not treated as
+     * universally qualified for per-role work here, so no capability field exists on
+     * a row. D4 answers that separately, one call per `engineId`/`model` pair. */
+    modelsFor: (lane: { id: string }) => Promise<EngineModel[]>;
+    /** D4 — what the engine reports about one model, for the feature the user is
+     * choosing it for. `{ id, model }` resolved against the stored `engines` map, and
+     * the address probed is the one the file holds; main issues the `POST /api/show`
+     * because a renderer fetch cannot leave the active profile's URLs.
+     *
+     * `source` is `"reported"` or `"unknown"`, never a guess: an engine that stayed
+     * silent must read as unverifiable in the UI, not as a pass. Answers are cached in
+     * main per `engineId:model`, so this is cheap enough to call once per visible row. */
+    capabilities: (lane: { id: string; model: string }) => Promise<CapabilityReport>;
+  };
+
+  /** D2 — the routing table `config.json` carries, plus what is wrong with it.
+   * `set` refuses without writing when the table is invalid. `runMap` is D1c: the
+   * sparse role->model map for one run, resolved in main from the stored table. */
+  routing: {
+    get:      () => Promise<RoutingState>;
+    set:      (next: RoutingConfig) => Promise<RoutingResult>;
+    validate: (next: unknown) => Promise<RoutingIssue[]>;
+    runMap:   () => Promise<Record<string, string>>;
+  };
+
+  /** D5 — the model hosts the *runtime* reports, read from the active profile's
+   * own address. An empty `nodes` list means unread, not unavailable: the role
+   * editor must keep working when this cannot be read. Nothing here is stored —
+   * placement is decided by the runtime, not commanded from the app. */
+  runtime: {
+    nodes:    () => Promise<RuntimeTopology>;
+  };
+
+  /* Model providers the harness supports (D6). The key is write-only from here: it
+   * goes to main, main hands it to the runtime, and no call on this side can read a
+   * stored key back — `catalog` reports connected/not/unknown, never the secret. */
+  providers: {
+    catalog:    () => Promise<ProviderCatalog>;
+    connect:    (provider: string, apiKey: string, label: string) => Promise<ConnectResult>;
+    disconnect: (provider: string) => Promise<ConnectResult>;
+    /** D7 — replace the offered subset of a gateway's catalogue. The whole list goes
+     * on every write because the runtime stores it as one value; an empty array is the
+     * answer "offer none", not a no-op. */
+    setSelection: (provider: string, models: string[]) => Promise<SelectionResult>;
+  };
+
   ollama: {
-    listModels:    () => Promise<OllamaModel[]>;
-    contextLength: (model: string) => Promise<number | null>;
+    listModels:      () => Promise<OllamaModel[]>;
+    contextLength:   (model: string) => Promise<number | null>;
+    getLoadedModels: () => Promise<LoadedOllamaModel[]>;
+    unloadModel:     (model?: string) => Promise<{ ok: boolean; unloaded: string[] }>;
+    loadModel:       (model: string) => Promise<{ ok: boolean; host?: string; error?: string }>;
   };
 
   gauntlet: {

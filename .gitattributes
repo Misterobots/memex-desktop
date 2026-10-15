@@ -1,0 +1,105 @@
+# Line endings, declared instead of inherited.
+#
+# Why this file exists: the Git for Windows *system* config
+# (C:\Program Files\Git\etc\gitconfig) sets core.autocrlf=true and neither this repo nor
+# the user config overrides it, so every clone here decides stored form per file by
+# heuristic and rewrites the working copy on checkout. The symptom shows up on ordinary
+# commits: `git add STATUS-2026-09-24.md` printed
+#     warning: in the working copy of 'STATUS-2026-09-24.md', LF will be replaced by
+#     CRLF the next time Git touches it
+# which is the repo saying it does not know what form this file is supposed to be in.
+#
+# What this repo's state actually is, measured rather than assumed
+# (`git ls-files --eol`, 2026-09-28, 246 tracked files):
+#     index:  243 LF, 2 binary/none, 0 CRLF, 0 mixed
+#     work:   105 CRLF, 109 LF, 29 mixed
+# The stored form is already uniform. The CRLF is added at *checkout* by autocrlf and
+# normalised away again at *add*, so it costs nothing today and everything the first
+# time a tool compares bytes instead of content. Unlike Memex_Core, this repo needs no
+# renormalisation commit: there is nothing to renormalise, which was checked rather than
+# inferred - `git add --renormalize .` over all 246 tracked files staged exactly nothing.
+# These rules keep that true, and make the answer identical on a macOS or Linux clone
+# (plan C3 wants both, and a dmg cannot be built from this box).
+#
+# Scope note: `text=auto` and the rules below do NOT rewrite existing blobs, and here
+# they do not need to. Nothing has to be regenerated for this to take effect; files
+# already CRLF on disk stay CRLF until they are re-checked out, and `git status` stays
+# clean either way because the same rules apply in both directions.
+
+* text=auto eol=lf
+
+# Source and content this app ships. Named explicitly so the heuristic is never what
+# decides: the .py files in the repo root are CAD scratch that happens to live here,
+# and they are text like everything else in this list.
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.jsx text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.py text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.scad text eol=lf
+
+# NSIS installer script (build/*.nsh). Text, and LF is read fine by makensis.
+*.nsh text eol=lf
+
+# cmd.exe parses batch files line by line and LF can misbehave interactively, so these
+# keep CRLF on checkout while still storing LF. PowerShell reads LF happily, so *.ps1
+# stays on the default above.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary is a correctness rule, not a style rule: a "normalised" binary is corrupt and
+# the damage is silent. Only one image is tracked today (public/icon.png); the rest of
+# this list covers what lives in this directory untracked - the sink/faucet CAD scratch
+# (*.stl, *.png, *.scad renders) and the packaged output under release*/ (*.exe,
+# *.blockmap, *.zip). Those paths are gitignored, so this is a guard against a forced
+# `git add -f` and against a future asset landing outside the ignore patterns. It is
+# deliberately not left to the auto heuristic, which has mistaken model weights and
+# dumps for text before.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.icns binary
+*.pdf binary
+*.wav binary
+*.mp3 binary
+*.ogg binary
+*.mp4 binary
+*.mov binary
+*.stl binary
+*.3mf binary
+*.gcode binary
+*.glb binary
+*.gltf binary
+*.obj binary
+*.fbx binary
+*.zip binary
+*.gz binary
+*.tgz binary
+*.tar binary
+*.7z binary
+*.exe binary
+*.dll binary
+*.lib binary
+*.pdb binary
+*.blockmap binary
+*.appx binary
+*.dmg binary
+*.pyc binary
+*.db binary
+*.sqlite binary
+
+# Git LFS is configured on this box (filter "lfs" in the system config) but nothing here
+# declares `filter=lfs`, so no file is in LFS and none is pointer-rewritten. If packaged
+# artifacts ever need to be committed rather than ignored, that is an LFS decision made
+# on purpose - not something to discover in a rejected push.

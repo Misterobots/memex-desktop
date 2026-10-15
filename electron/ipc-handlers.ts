@@ -18,6 +18,7 @@ import {
 } from "electron";
 import {
   readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, existsSync, unlinkSync,
+  rmSync, renameSync, copyFileSync, cpSync,
 } from "fs";
 import { exec }      from "child_process";
 import { promisify } from "util";
@@ -39,10 +40,15 @@ import type { HooksStore }             from "./hooks-store";
 import type { PermissionStore }        from "./permission-store";
 import type { WorktreeManager }        from "./worktree-manager";
 import type { GauntletHandoffStore }   from "./gauntlet-handoff-store";
+import { collectResidentModels, type OllamaPsModel } from "./ollama-residency";
+import { discoverEngineModels, engineDescriptors, enginesModelsFor } from "./engine-registry";
+import { enginesCapabilitiesFor, type CapabilityReport } from "./model-capabilities";
+import { runRoleMap, validateRouting } from "./routing-config";
+import { readRuntimeTopology } from "./runtime-nodes";
+import { connectProvider, disconnectProvider, readProviderCatalog, setProviderSelection } from "./provider-keys";
 import { fireHooks }                   from "./hooks-runner";
 import { runOpenScad, type RenderParams } from "./openscad-runner";
 import { autoWireStore }                  from "./ipc-autowire";
-import { MEMEX_PUBLIC_ORIGIN, publicSessionHeaders } from "./remote-auth";
 import { inspectLocalLlm, normalizeLocalEndpoint } from "./local-llm";
 import { discoverUnrealInstalls, validateUnrealRoot } from "./unreal-engine";
 
@@ -156,9 +162,6 @@ export function registerAllIpc(ctx: IpcContext): void {
     headers.set("X-authentik-uid", getCurrentUid());
     headers.set("X-authentik-username", getCurrentUid());
     headers.set("X-desktop-client", "memex-desktop");
-    if (urls.agentRuntime.startsWith(MEMEX_PUBLIC_ORIGIN)) {
-      for (const [name, value] of Object.entries(await publicSessionHeaders())) headers.set(name, value);
-    }
     // The local CAD bridge owns a separate workstation-only token.  Source it
     // locally so a pasted UI value cannot be stale or accidentally be an LLM
     // provider key. Never expose the token back across IPC.
@@ -261,6 +264,34 @@ export function registerAllIpc(ctx: IpcContext): void {
     if (!await firewall.checkMkdir(path, getMain())) throw new Error("Permission denied");
     mkdirSync(path, { recursive: true });
   });
+  ipcMain.handle("fs:delete", async (_e, path: string) => {
+    if (!await firewall.checkWrite(path, getMain())) throw new Error("Permission denied");
+    if (!existsSync(path)) return false;
+    const stat = statSync(path);
+    if (stat.isDirectory()) {
+      rmSync(path, { recursive: true, force: true });
+    } else {
+      unlinkSync(path);
+    }
+    return true;
+  });
+  ipcMain.handle("fs:rename", async (_e, oldPath: string, newPath: string) => {
+    if (!await firewall.checkWrite(oldPath, getMain())) throw new Error("Permission denied");
+    if (!await firewall.checkWrite(newPath, getMain())) throw new Error("Permission denied");
+    renameSync(oldPath, newPath);
+    return true;
+  });
+  ipcMain.handle("fs:copy", async (_e, srcPath: string, destPath: string) => {
+    if (!await firewall.checkRead(srcPath, getMain())) throw new Error("Permission denied");
+    if (!await firewall.checkWrite(destPath, getMain())) throw new Error("Permission denied");
+    const stat = statSync(srcPath);
+    if (stat.isDirectory()) {
+      cpSync(srcPath, destPath, { recursive: true });
+    } else {
+      copyFileSync(srcPath, destPath);
+    }
+    return true;
+  });
 
   // ── Shell (workspace-gated) ───────────────────────────────────────────────
   ipcMain.handle("shell:exec", async (_e, cmd: string, cwd?: string) => {
@@ -333,7 +364,27 @@ export function registerAllIpc(ctx: IpcContext): void {
   // ── App / dialog ──────────────────────────────────────────────────────────
   ipcMain.handle("dialog:openFolder", async () => {
     const r = await dialog.showOpenDialog({ properties: ["openDirectory"] });
-    return r.canceled ? null : r.filePaths[0];
+    if (!r.canceled && r.filePaths[0]) {
+      firewall.addRoot(r.filePaths[0]);
+      return r.filePaths[0];
+    }
+    return null;
+  });
+  ipcMain.handle("dialog:openFiles", async (_e, options?: { title?: string; multiSelections?: boolean; directory?: boolean }) => {
+    const props: Array<"openFile" | "openDirectory" | "multiSelections"> = [];
+    if (options?.directory) {
+      props.push("openDirectory");
+    } else {
+      props.push("openFile");
+    }
+    if (options?.multiSelections !== false) {
+      props.push("multiSelections");
+    }
+    const r = await dialog.showOpenDialog({
+      title: options?.title ?? "Select files to add",
+      properties: props,
+    });
+    return r.canceled ? [] : r.filePaths;
   });
   ipcMain.handle("dialog:saveText", async (_e, name: string, content: string, mimeType = "text/plain") => {
     const safeName = basename(name).replace(/[<>:"/\\|?*\x00-\x1F]/g, "_") || "memex-output.txt";
@@ -468,12 +519,14 @@ export function registerAllIpc(ctx: IpcContext): void {
     return worktrees.enter(repoPath, baseRef, label);
   });
   ipcMain.handle("worktree:exit", async (_e, id: string, force?: boolean) => {
-    const record = worktrees.list().find((item) => item.id === id);
+    const list = await worktrees.list();
+    const record = list.find((item) => item.id === id);
     if (!record || !await firewall.checkWrite(record.repoPath, getMain())) throw new Error("Permission denied");
     return worktrees.exit(id, force === true);
   });
   ipcMain.handle("worktree:merge", async (_e, id: string) => {
-    const record = worktrees.list().find((item) => item.id === id);
+    const list = await worktrees.list();
+    const record = list.find((item) => item.id === id);
     if (!record || !await firewall.checkWrite(record.repoPath, getMain())) throw new Error("Permission denied");
     return worktrees.merge(id);
   });
@@ -533,7 +586,99 @@ export function registerAllIpc(ctx: IpcContext): void {
     add: "addArtifact", forRun: "getForRun", forSession: "getForSession", recent: "getRecent",
   });
 
+  // ── Engine registry ───────────────────────────────────────────────────────
+  // The desktop owns model routing, so the renderer asks this process which
+  // engines the routing table runs and what each one holds. Deliberately
+  // descriptor-based: callers name an engine id, never `profile.ollama`, and the
+  // ids are the `engines` keys the user wrote in config.json (routing-config.ts).
+  ipcMain.handle("engines:list", async () => {
+    try {
+      return engineDescriptors(config.getRouting().engines);
+    } catch {
+      return [];
+    }
+  });
+
+  // An engine that is down answers with an empty list, never an error — the
+  // picker must still show whatever the other engine has.
+  ipcMain.handle("engines:models", async (_e, engineId: string) => {
+    const engine = engineDescriptors(config.getRouting().engines).find((d) => d.id === engineId);
+    if (!engine) return [];
+    return discoverEngineModels(engine);
+  });
+
+  // Candidates for a lane the wizard has discovered but not stored yet, so
+  // `engines:models` — which resolves against the stored table — would answer empty
+  // mid-setup. Id-only by construction: `enginesModelsFor` reads `id` out of the
+  // payload and nothing else, and probes the address the *file* holds for that lane,
+  // so no renderer-supplied `baseUrl` can be fetched from here. That is the same
+  // boundary `prepareApiRequest` enforces above, and the reason this stays a lookup
+  // rather than taking a descriptor (plan D3a).
+  ipcMain.handle("engines:modelsFor", (_e, arg: unknown) =>
+    enginesModelsFor(config.getRouting().engines, arg));
+
+  // D4 — "can this model do the thing I am choosing it for?" Answered here because
+  // `/api/show` is a POST to a path the active profile does not name, and renderer
+  // fetches are confined to those URLs by `prepareApiRequest` above. Same id-only
+  // boundary as `engines:modelsFor`: `enginesCapabilitiesFor` reads `id` and `model`
+  // out of the payload and probes the address the *file* holds for that lane.
+  //
+  // The cache is per-process and keyed `engineId:model`. Without it a picker open is a
+  // POST per visible row per render, and a llama.cpp lane answers `/props` for a
+  // model-specific question it cannot answer. Only `reported` answers are stored — see
+  // the note on `enginesCapabilitiesFor`.
+  const capabilityCache = new Map<string, CapabilityReport>();
+  ipcMain.handle("engines:capabilities", (_e, arg: unknown) =>
+    enginesCapabilitiesFor(config.getRouting().engines, arg, fetch, capabilityCache));
+
+  // ── Routing table (D2) ────────────────────────────────────────────────────
+  // The file is hand-editable this round; the wizard (D3) is what will own editing.
+  // `get` carries the errors with the table because a table the user cannot trust is
+  // the state a picker has to say out loud rather than resolve quietly.
+  ipcMain.handle("routing:get", () => config.getRoutingState());
+  // Refused writes return the issues and change nothing — see ConfigStore.saveRouting.
+  ipcMain.handle("routing:set", (_e, next: unknown) => config.saveRouting(next));
+  // Checked against the pure validator only: this channel cannot write.
+  ipcMain.handle("routing:validate", (_e, next: unknown) => validateRouting(next));
+  // The role map for one run (D1c). Reads the stored table and answers a sparse
+  // role->model object; it takes no argument, so the renderer cannot ask main to
+  // resolve a routing table that was never saved.
+  ipcMain.handle("routing:runMap", () => runRoleMap(config.getRouting()));
+  // Runtime-reported node topology (D5). Takes no argument: main reads the active
+  // profile's own stored address, so the renderer cannot aim this at a host of its
+  // choosing. Read-only and never written to `config.json` — which hosts exist and
+  // what they hold is runtime state, not user intent.
+  ipcMain.handle("runtime:nodes", () => readRuntimeTopology(config.getUrls().agentRuntime, fetch));
+
+  // ── Model providers (D6) ──────────────────────────────────────────────────
+  // Same rule as `runtime:nodes`: no caller-supplied address. The runtime URL comes
+  // from the active profile and the identity header from the desktop's own uid, so
+  // the renderer can neither aim these at a host of its choosing nor act as another
+  // user. `connect` is the one channel that carries a secret: it is passed straight
+  // to the harness, which stores it encrypted, and nothing here writes it to
+  // `config.json` or returns it.
+  ipcMain.handle("providers:catalog", () =>
+    readProviderCatalog(config.getUrls().agentRuntime, getCurrentUid(), fetch));
+  ipcMain.handle("providers:connect", (_e, provider: string, apiKey: string, label: string) =>
+    connectProvider(config.getUrls().agentRuntime, getCurrentUid(), provider, apiKey, label, fetch));
+  ipcMain.handle("providers:disconnect", (_e, provider: string) =>
+    disconnectProvider(config.getUrls().agentRuntime, getCurrentUid(), provider, fetch));
+  // D7 — which of a gateway's models this user is offered. Same no-address rule as
+  // above, and the array is passed through a guard rather than trusted: this channel
+  // can write a preference, and a non-array from a compromised renderer still cannot
+  // aim the request anywhere the profile does not already point.
+  ipcMain.handle("providers:selection", (_e, provider: string, models: unknown) =>
+    setProviderSelection(
+      config.getUrls().agentRuntime,
+      getCurrentUid(),
+      provider,
+      Array.isArray(models) ? models as string[] : [],
+      fetch,
+    ));
+
   // ── Ollama model list ─────────────────────────────────────────────────────
+  // No renderer call site remains — the picker reads `engines:models` now. Left
+  // in place (same daemon, same endpoint) until D1a formally absorbs it.
   ipcMain.handle("ollama:listModels", async () => {
     try {
       const urls  = config.getUrls();
@@ -576,13 +721,126 @@ export function registerAllIpc(ctx: IpcContext): void {
     }
   });
 
+  // ── Ollama loaded models in VRAM ──────────────────────────────────────────
+  ipcMain.handle("ollama:getLoadedModels", async () => {
+    try {
+      const urls = config.getUrls();
+      const hosts = Array.from(new Set([
+        urls.ollama ?? "http://localhost:11434",
+        "http://127.0.0.1:11434",
+        "http://192.168.2.101:11434",
+        "http://192.168.2.103:11434",
+      ]));
+      const reports: Array<{ base: string; models: OllamaPsModel[] }> = [];
+      for (const base of hosts) {
+        try {
+          const res = await fetch(`${base}/api/ps`, { signal: AbortSignal.timeout(2500) });
+          if (!res.ok) continue;
+          const data = await res.json() as { models?: OllamaPsModel[] };
+          reports.push({ base, models: data.models ?? [] });
+        } catch {}
+      }
+      return collectResidentModels(reports);
+    } catch {
+      return [];
+    }
+  });
+
+  // ── Ollama unload model from VRAM ─────────────────────────────────────────
+  ipcMain.handle("ollama:unloadModel", async (_e, model?: string) => {
+    const urls = config.getUrls();
+    const hosts = Array.from(new Set([
+      urls.ollama ?? "http://localhost:11434",
+      "http://127.0.0.1:11434",
+      "http://192.168.2.101:11434",
+      "http://192.168.2.103:11434",
+    ]));
+    const unloaded: string[] = [];
+
+    for (const base of hosts) {
+      try {
+        let targets: string[] = [];
+        if (model && model !== "all") {
+          targets = [model];
+        } else {
+          // Discover loaded models on this host to unload them
+          const psRes = await fetch(`${base}/api/ps`, { signal: AbortSignal.timeout(2500) });
+          if (psRes.ok) {
+            const data = await psRes.json() as { models?: Array<{ name: string }> };
+            targets = (data.models ?? []).map((m) => m.name);
+          }
+        }
+
+        for (const target of targets) {
+          try {
+            const res = await fetch(`${base}/api/generate`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ model: target, keep_alive: 0 }),
+              signal: AbortSignal.timeout(5000),
+            });
+            if (res.ok) {
+              unloaded.push(`${target} (${base})`);
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+
+    return { ok: true, unloaded };
+  });
+
+  // ── Ollama pre-load / warm-up model into VRAM ──────────────────────────────
+  ipcMain.handle("ollama:loadModel", async (_e, model: string) => {
+    if (!model) return { ok: false, error: "No model specified" };
+    const urls = config.getUrls();
+    const hosts = Array.from(new Set([
+      urls.ollama ?? "http://localhost:11434",
+      "http://127.0.0.1:11434",
+      "http://192.168.2.101:11434",
+      "http://192.168.2.103:11434",
+    ]));
+
+    const cleanModel = model.replace(/^ollama\//, "");
+
+    for (const base of hosts) {
+      try {
+        const res = await fetch(`${base}/api/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: cleanModel, prompt: "" }),
+          signal: AbortSignal.timeout(60000),
+        });
+        if (res.ok) {
+          const data = await res.json() as { done_reason?: string };
+          return { ok: true, host: base, doneReason: data.done_reason };
+        }
+      } catch {}
+    }
+    return { ok: false, error: "Failed to load model on available Ollama hosts" };
+  });
+
   // Gauntlet packets are intentionally local and append-only. This keeps the
   // goal/bar/effort policy available even if the hosted coordinator changes.
   autoWireStore("gauntlet", gauntletHandoffs, { create: "create", get: "get", forSession: "forSession", patch: "patch", accept: "accept" });
   ipcMain.handle("gauntlet:resume", (_event, id: string, clarification: string) => gauntletHandoffs.resume(id, clarification));
 
   // ── Local LLM setup ──────────────────────────────────────────────────────
-  ipcMain.handle("localLlm:inspect", () => inspectLocalLlm());
+  // The real probes for engine discovery: `engine-discovery.ts` stays free of `fs`,
+  // so the filesystem and environment are handed to it here, where the rest of the
+  // machine's capabilities are already wired up.
+  ipcMain.handle("localLlm:inspect", () => {
+    // Whatever the routing table already names is probed there first: a llama.cpp lane
+    // the user wrote by hand must not come back as missing because this app only knew
+    // its own defaults ("a configured or probed address", D3 requirement 1).
+    const engines = Object.values(config.getRouting().engines ?? {});
+    const urlsFor = (kind: string) => engines.filter((engine) => engine?.kind === kind && engine.baseUrl).map((engine) => engine.baseUrl);
+    return inspectLocalLlm({
+      fileExists: (path) => { try { return existsSync(path); } catch { return false; } },
+      env: process.env,
+      platform: process.platform,
+    }, { ollama: urlsFor("ollama"), llamaCpp: urlsFor("llama.cpp") });
+  });
   ipcMain.handle("localLlm:openOllamaDownload", async () => {
     await shell.openExternal("https://ollama.com/download");
   });
@@ -606,7 +864,11 @@ export function registerAllIpc(ctx: IpcContext): void {
     const profile = config.saveProfile({
       id: "local-llm", name: "Local LLMs", providerType: "internal",
       agentRuntime: normalizeLocalEndpoint(payload.harnessUrl),
-      mempalace: normalizeLocalEndpoint(payload.mempalaceUrl),
+      // An empty memory URL is a legitimate answer, not a malformed one: this app has
+      // no default memory service to fall back to (see LOCAL_SERVICE_DEFAULTS), and
+      // inventing one is how an install ends up pointing at a stranger's machine.
+      // Unconfigured stays unconfigured, and `health.ts` reports it as disconnected.
+      mempalace: payload.mempalaceUrl?.trim() ? normalizeLocalEndpoint(payload.mempalaceUrl) : "",
       ollama: normalizeLocalEndpoint(payload.ollamaUrl),
       localServices: {
         openWebUi: payload.openWebUiUrl ? normalizeLocalEndpoint(payload.openWebUiUrl) : undefined,

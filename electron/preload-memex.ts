@@ -70,8 +70,11 @@ contextBridge.exposeInMainWorld("memex", {
     stat:         (path: string)                  => ipcRenderer.invoke("fs:stat", path),
     previewWrite: (path: string)                  => ipcRenderer.invoke("fs:previewWrite", path) as Promise<string>,
     writeFile:    (path: string, content: string) => ipcRenderer.invoke("fs:writeFile", path, content),
-    readDir:   (path: string)                  => ipcRenderer.invoke("fs:readDir", path),
-    mkdir:     (path: string)                  => ipcRenderer.invoke("fs:mkdir", path),
+    readDir:      (path: string)                  => ipcRenderer.invoke("fs:readDir", path),
+    mkdir:        (path: string)                  => ipcRenderer.invoke("fs:mkdir", path),
+    delete:       (path: string)                  => ipcRenderer.invoke("fs:delete", path),
+    rename:       (oldPath: string, newPath: string) => ipcRenderer.invoke("fs:rename", oldPath, newPath),
+    copy:         (srcPath: string, destPath: string) => ipcRenderer.invoke("fs:copy", srcPath, destPath),
   },
 
   // Shell
@@ -83,6 +86,8 @@ contextBridge.exposeInMainWorld("memex", {
   // Dialogs
   dialog: {
     openFolder: () => ipcRenderer.invoke("dialog:openFolder"),
+    openFiles: (options?: { title?: string; multiSelections?: boolean; directory?: boolean }) =>
+      ipcRenderer.invoke("dialog:openFiles", options),
     saveText: (name: string, content: string, mimeType?: string) =>
       ipcRenderer.invoke("dialog:saveText", name, content, mimeType) as Promise<{ canceled: boolean; path?: string }>,
   },
@@ -180,11 +185,6 @@ contextBridge.exposeInMainWorld("memex", {
     },
   },
 
-  remoteAuth: {
-    signIn: () => ipcRenderer.invoke("remote-auth:signIn") as Promise<boolean>,
-    signOut: () => ipcRenderer.invoke("remote-auth:signOut") as Promise<boolean>,
-  },
-
   // LSP bridge
   lsp: {
     start:   (ext: string, rootUri: string) =>
@@ -204,9 +204,9 @@ contextBridge.exposeInMainWorld("memex", {
     check:   () => ipcRenderer.invoke("health:check"),
     getLast: () => ipcRenderer.invoke("health:getLast"),
     onStatus: (cb: (status: {
-      agentRuntime: "connected" | "disconnected" | "sign_in_required";
-      mempalace:    "connected" | "disconnected" | "sign_in_required";
-      ollama:       "connected" | "disconnected" | "sign_in_required";
+      agentRuntime: "connected" | "disconnected";
+      mempalace:    "connected" | "disconnected";
+      ollama:       "connected" | "disconnected";
       checkedAt:    string;
     }) => void) => {
       ipcRenderer.on("health:status", (_e, s) => cb(s));
@@ -259,10 +259,58 @@ contextBridge.exposeInMainWorld("memex", {
   // Artifact store
   artifacts: bridgeNamespace("artifact", { add: "add", forRun: "forRun", forSession: "forSession", recent: "recent" }),
 
+  // Engine registry — which engines this install runs, and what each holds.
+  engines: {
+    list:   () => ipcRenderer.invoke("engines:list"),
+    models: (engineId: string) => ipcRenderer.invoke("engines:models", engineId),
+    // Candidates for a lane discovered mid-wizard. Rebuilt as `{ id }` here rather
+    // than passed through: the main process reads no other field, and this keeps the
+    // bridge from being the one place that could hand it a URL to probe.
+    modelsFor: (lane: { id: string }) => ipcRenderer.invoke("engines:modelsFor", { id: lane.id }),
+    // D4 capability check. Rebuilt as `{ id, model }` for the same reason as
+    // `modelsFor`: main reads nothing else, so the bridge cannot be the place that
+    // smuggles a URL into a probe.
+    capabilities: (lane: { id: string; model: string }) =>
+      ipcRenderer.invoke("engines:capabilities", { id: lane.id, model: lane.model }),
+  },
+
+  // Routing table (D2). Hand-written rather than auto-wired: the channel names are
+  // the API (`get`/`set`/`validate`/`runMap`), while the store's methods are
+  // getRoutingState/saveRouting/getRoutingErrors, and `set` answers with a refusal
+  // plus its reasons — a shape no passthrough wrapper should be inferred to have.
+  routing: {
+    get:       () => ipcRenderer.invoke("routing:get"),
+    set:       (next: unknown) => ipcRenderer.invoke("routing:set", next),
+    validate:  (next: unknown) => ipcRenderer.invoke("routing:validate", next),
+    runMap:    () => ipcRenderer.invoke("routing:runMap") as Promise<Record<string, string>>,
+  },
+
+  // The model hosts the runtime itself reports (D5). No arguments — main fetches
+  // the active profile's own address, so this cannot be pointed elsewhere.
+  runtime: {
+    nodes: () => ipcRenderer.invoke("runtime:nodes"),
+  },
+
+  // Model providers the runtime supports and which of them this user has connected
+  // (D6). `connect` is the only bridge call that carries a secret; it goes to main
+  // and no further — nothing on this side of the bridge can read a key back.
+  // D7's `setSelection` carries no secret at all: just which ids to offer.
+  providers: {
+    catalog:    () => ipcRenderer.invoke("providers:catalog"),
+    connect:    (provider: string, apiKey: string, label: string) =>
+      ipcRenderer.invoke("providers:connect", provider, apiKey, label),
+    disconnect: (provider: string) => ipcRenderer.invoke("providers:disconnect", provider),
+    setSelection: (provider: string, models: string[]) =>
+      ipcRenderer.invoke("providers:selection", provider, models),
+  },
+
   // Ollama model list
   ollama: {
-    listModels:    () => ipcRenderer.invoke("ollama:listModels"),
-    contextLength: (model: string) => ipcRenderer.invoke("ollama:contextLength", model) as Promise<number | null>,
+    listModels:      () => ipcRenderer.invoke("ollama:listModels"),
+    contextLength:   (model: string) => ipcRenderer.invoke("ollama:contextLength", model) as Promise<number | null>,
+    getLoadedModels: () => ipcRenderer.invoke("ollama:getLoadedModels"),
+    unloadModel:     (model?: string) => ipcRenderer.invoke("ollama:unloadModel", model),
+    loadModel:       (model: string) => ipcRenderer.invoke("ollama:loadModel", model),
   },
 
   gauntlet: { ...bridgeNamespace("gauntlet", { create: "create", get: "get", forSession: "forSession", patch: "patch", accept: "accept" }), resume: (id: string, clarification: string) => ipcRenderer.invoke("gauntlet:resume", id, clarification) },

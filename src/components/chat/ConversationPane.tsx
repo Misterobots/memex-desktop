@@ -116,8 +116,16 @@ export function ConversationPane({ experience = "chat", workspaceKey, displayMod
             retryPrompt={messages[i - 1]?.role === "user" ? messages[i - 1].content : undefined}
           />
         ))}
-        <div className="h-4" />
+        <div className="h-16" />
       </div>
+      {streaming && (
+        <div className="sticky bottom-6 z-20 flex justify-center pointer-events-none">
+          <div className="flex items-center gap-2 bg-surface/90 backdrop-blur border border-accent/40 text-text px-4 py-1.5 rounded-full shadow-lg pointer-events-auto">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse" />
+            <span className="text-[10px] font-bold uppercase tracking-widest text-accent">Working</span>
+          </div>
+        </div>
+      )}
       {!atLatest && <button
         type="button"
         onClick={jumpToLatest}

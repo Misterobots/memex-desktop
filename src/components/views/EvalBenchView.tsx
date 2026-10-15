@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { desktop }    from "../../lib/desktop";
-import { streamChat } from "../../lib/sse-stream";
+import { runRoleModels, streamChat } from "../../lib/sse-stream";
 import { useStore }   from "../../lib/store";
 import { modelsForArena } from "../../lib/model-arena";
 import { MODE_FLAGS, MODE_LABELS, modeLabel, type MemexMode } from "../../types/memex";
@@ -15,8 +15,8 @@ const EMPTY: Omit<EvalCase, "id" | "createdAt"> = {
   name:          "",
   input:         "",
   mode:          "chat",
-  model:         "qwen3.6:27b",
-  models:        ["qwen3.6:27b"],
+  model:         "qwen3.8:27b",
+  models:        ["qwen3.8:27b"],
   expectedNotes: "",
   rubric:        "",
   workspaceRoot: "",
@@ -142,6 +142,9 @@ export function EvalBenchView() {
     // Deliberately sequential: an arena compares outputs without automatically
     // scheduling two large models onto the user's GPUs at the same time.
     const entrants = modelsForArena(selected);
+    // Resolved once for the whole arena: the routing table is not expected to
+    // change between entrants, and each entrant is the same run shape otherwise.
+    const roleModels = await runRoleModels();
     try {
       for (const model of entrants.length ? entrants : [selectedModel]) {
         let accumulated = "";
@@ -154,6 +157,7 @@ export function EvalBenchView() {
             messages: [{ role: "user", content: selected.input }],
             mode:    selected.mode,
             model,
+            roleModels,
             modeFlags: MODE_FLAGS[selected.mode] ?? {},
             onEvent: (ev) => {
               if (ev.type === "message" || ev.type === "response") {
@@ -255,7 +259,7 @@ export function EvalBenchView() {
                 <TextInput
                   value={editing.model ?? ""}
                   onChange={(model) => setEditing({ ...editing, model, models: [model, ...(editing.models ?? []).slice(1)] })}
-                  placeholder="qwen3.6:27b"
+                  placeholder="qwen3.8:27b"
                   mono
                 />
               </Field>
@@ -270,7 +274,20 @@ export function EvalBenchView() {
                 placeholder={"qwen3:14b\ngemma3:12b"}
                 rows={3}
               />
-              <p className="text-[11px] text-muted">Entrants run one at a time to protect local GPU headroom.</p>
+              {/* D9(e): an empty entrant list is not "no model" — it silently means
+                  "whatever the picker is showing when Run is pressed", and since the model
+                  is now per-conversation, that value belongs to a thread rather than to
+                  this case. Named so a comparison is never run against an unrecorded
+                  entrant. */}
+              <p className="text-[11px] text-muted">
+                Entrants run one at a time to protect local GPU headroom.
+                {modelsForArena({ model: editing.model ?? "", models: editing.models }).length === 0 && (
+                  <> With no entrants listed, this case runs against the model selected in the
+                    picker at the moment you press Run — currently{" "}
+                    <span className="font-mono text-text/80">{selectedModel}</span>, which belongs to
+                    the conversation in view, not to this case. List it above to pin it.</>
+                )}
+              </p>
             </Field>
             <Field label="Expected notes">
               <TextArea value={editing.expectedNotes ?? ""} onChange={(v) => setEditing({ ...editing, expectedNotes: v })}

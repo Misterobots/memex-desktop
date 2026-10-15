@@ -32,6 +32,7 @@ export function CommandPalette() {
     { id: "open-design", label: "Open Design", action: () => { setActiveTab("design"); close(); } },
     { id: "open-art", label: "Open Art & Print", action: () => { setActiveTab("art"); close(); } },
     { id: "open-routines", label: "Open Routines", action: () => { setActiveTab("goals"); close(); } },
+    { id: "open-loadout", label: "Open Loadout", action: () => { setActiveTab("loadout"); close(); } },
     { id: "new-session", label: "New Chat thread", action: () => { createSession("chat"); setActiveTab("chat"); close(); } },
     { id: "toggle-sidebar", label: "Toggle sidebar",  action: () => { toggleSidebar(); close(); } },
   ];

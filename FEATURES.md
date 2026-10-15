@@ -4,6 +4,8 @@ Reconciled 2026-08-26 against the current `memex-desktop` renderer/Electron shel
 
 Terminology note (2026-09-05): the desktop calls the multi-agent mode **Collective**. Legacy `swarm` storage/request values, `/swarm`, and `swarm_mode` remain compatible. See `UI_REVIEW.md` for the latest validation results and unresolved release checks; the dated snapshot below is historical.
 
+Mode contract note (2026-09-22): the runtime routes on request **flags only** — the desktop never sends a mode string — so `MODE_FLAGS` in `src/types/memex.ts` is the whole client/runtime contract. The Code workspace now has a **Code** mode of its own (`dev_mode` alone: the single project loop that calls Pioneers as the scope needs them), and **Collective** means perspective research (`swarm_mode` + `research_mode`). Before this, Code offered only Collective and Gauntlet and no desktop mode carried both flags, which made Perspective Research Mode unreachable from the client.
+
 This document is the current feature baseline. It distinguishes:
 
 - **Shipped** — implementation exists in the current source and has a clear product surface.
@@ -87,7 +89,8 @@ The remaining parity work is concentrated in five areas:
 
 | Capability | Status | Impact |
 |---|---|---|
-| Research mode and perspective matrix | **Shipped** | Multi-lens research and synthesis workflow. |
+| Collective perspective research | **Shipped** | The coordinator spins up domain-grounded Pioneer perspectives (technical, economic, ethical, legal, …) on one question and reconciles them into a convergent/divergent matrix with arguments for and against. Selected by `swarm_mode` **and** `research_mode` together; either flag alone is a build orchestration or a single librarian pass, not a Collective. |
+| Research mode | **Shipped** | Single-agent web and documentation research with synthesis. |
 | Design and mockup mode | **Shipped** | HTML visual generation and design workflow. |
 | Product workshop / discovery mode | **Shipped** | Guided product brief and follow-up continuation. |
 | MemPalace semantic memory | **Shipped** | Durable semantic recall beyond a single project. |

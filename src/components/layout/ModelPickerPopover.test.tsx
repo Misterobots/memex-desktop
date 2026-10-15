@@ -1,0 +1,775 @@
+// @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { ModelPickerPopover } from "./ModelPickerPopover";
+import { useStore } from "../../lib/store";
+import type { CapabilityReport, EngineDescriptor, EngineModel, RoutingConfig, RuntimeProfile } from "../../lib/desktop";
+
+// Every runtime URL is refused: this is the machine state where the user's own
+// engine is up and the orchestrator is down. Since D7 the picker does ask the runtime
+// one question — which models a connected provider key offers — so what these tests
+// hold is the weaker and still load-bearing claim: that ask may only add rows. A dead
+// orchestrator that empties the lane list, or turns it into an error row, fails the
+// tests below loudly, not silently.
+const { apiFetch, getMyPermissions } = vi.hoisted(() => ({
+  apiFetch: vi.fn(),
+  getMyPermissions: vi.fn(),
+}));
+vi.mock("../../lib/api-fetch", () => ({ apiFetch }));
+// The `model_selection` grant is an input to these tests, not the thing under
+// test. It is served locally so the runtime never gets to answer it either.
+vi.mock("../../lib/user-permissions", () => ({ getMyPermissions }));
+
+const OLLAMA: EngineDescriptor = { id: "ollama", kind: "ollama", baseUrl: "http://[::1]:11434", label: "Ollama" };
+const LLAMA: EngineDescriptor = { id: "llama.cpp", kind: "llama.cpp", baseUrl: "http://127.0.0.1:8011", label: "llama.cpp" };
+
+const engineRow = (engine: EngineDescriptor, model: string, extra: Partial<EngineModel> = {}): EngineModel => ({
+  engineId: engine.id,
+  engineKind: engine.kind,
+  engineLabel: engine.label ?? engine.id,
+  model,
+  ...extra,
+});
+
+/** The realistic install: an internal routing profile whose engine is local. */
+const LOCAL_PROFILE: RuntimeProfile = {
+  id: "localhost",
+  name: "Localhost",
+  providerType: "internal",
+  agentRuntime: "http://[::1]:8008",
+  mempalace: "http://192.168.2.102:8200",
+  ollama: "http://[::1]:11434",
+  defaultModel: "qwen3:8b",
+};
+
+/** The D4 answer for a fixture that was never asked: `unknown`, never an empty set
+ * wearing `reported`, because the picker's own contract is that these two read
+ * differently. */
+export const SILENT: CapabilityReport = {
+  capabilities: [], source: "unknown", contextLength: null, detail: "fixture engine did not answer /api/show",
+};
+
+/** A live Ollama's answer, from the payloads recorded in electron/model-capabilities.ts. */
+export const reportedAs = (capabilities: string[], contextLength: number | null = null): CapabilityReport => ({
+  capabilities, source: "reported", contextLength, detail: `/api/show reported: ${capabilities.join(", ")}`,
+});
+
+/** Swaps the bridge to a local-engine install; the runtime stays unreachable. */
+function useLocalEngines(
+  models: (engineId: string) => Promise<EngineModel[]>,
+  descriptors = [OLLAMA],
+  capabilities: (lane: { id: string; model: string }) => Promise<CapabilityReport> = async () => SILENT,
+) {
+  window.memex!.config.getActive = vi.fn().mockResolvedValue(LOCAL_PROFILE);
+  // `modelsFor` takes `{ id }` and main resolves it to a stored lane before probing,
+  // so a fixture that ignores the lookup would hide a missing lane; delegating keeps
+  // the two channels answering the same question.
+  window.memex!.engines = {
+    list: async () => descriptors, models, modelsFor: async ({ id }) => models(id), capabilities,
+  };
+}
+
+/** The D2 table this install routes by, as the main process would hand it over. */
+function useRouting(routing: RoutingConfig) {
+  window.memex!.routing = {
+    get:      async () => ({ routing, errors: [] }),
+    set:      async () => ({ ok: true, routing, issues: [] }),
+    validate: async () => [],
+    runMap:   async () => ({}),
+  };
+}
+
+const OLLAMA_ONLY = (model: string): RoutingConfig => ({
+  runStyle: "multi",
+  engines: { ollama: { kind: "ollama", baseUrl: OLLAMA.baseUrl, label: "Ollama" } },
+  routing: { default: { engine: "ollama", model } },
+});
+
+/** The shared machine for both describes: an external profile, `qwen3:8b` resident in
+ * VRAM, and an orchestrator that answers nothing at all. A test that needs a different
+ * install layers on top — `useLocalEngines`, `useRouting`, or its own `getActive`. */
+function baseSetup() {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    // The orchestrator answers nothing at all, for any URL, in every test here.
+    apiFetch.mockRejectedValue(new TypeError("fetch failed"));
+    getMyPermissions.mockResolvedValue({ features: { model_selection: true } });
+    useStore.setState({
+      selectedModel: "qwen3:8b",
+    });
+
+    window.memex = {
+      config: {
+        getActive: vi.fn().mockResolvedValue({
+          id: "local",
+          providerType: "external",
+          defaultModel: "qwen3:8b",
+        }),
+        save: vi.fn().mockResolvedValue(undefined),
+        onChange: vi.fn().mockReturnValue(() => {}),
+      },
+      ollama: {
+        listModels: vi.fn().mockResolvedValue([]),
+        contextLength: vi.fn().mockResolvedValue(32768),
+        getLoadedModels: vi.fn().mockResolvedValue([
+          {
+            name: "qwen3:8b",
+            model: "qwen3:8b",
+            sizeGb: 5.2,
+            vramGb: 5.2,
+            host: "http://127.0.0.1:11434",
+          },
+        ]),
+        unloadModel: vi.fn().mockResolvedValue({ ok: true, unloaded: ["qwen3:8b"] }),
+      },
+    } as unknown as typeof window.memex;
+  });
+}
+
+describe("ModelPickerPopover", () => {
+  baseSetup();
+
+  afterEach(cleanup);
+
+  it("renders trigger button and shows In VRAM indicator when a model is resident", async () => {
+    render(<ModelPickerPopover />);
+
+    // Waits for access permissions and initial loaded models fetch
+    await waitFor(() => {
+      expect(screen.getAllByTitle(/resident in VRAM/i).length).toBeGreaterThan(0);
+    });
+
+    expect(screen.getByRole("button", { name: /qwen3 8b/i })).toBeTruthy();
+  });
+
+  it("opens popover, shows resident VRAM banner, and calls unloadModel on click", async () => {
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+
+    await waitFor(() => {
+      expect(screen.getAllByTitle(/resident in VRAM/i).length).toBeGreaterThan(0);
+    });
+
+    // Click trigger to open popover
+    await user.click(screen.getByRole("button", { name: /qwen3 8b/i }));
+
+    // Popover is open: check VRAM status banner
+    await waitFor(() => {
+      expect(screen.getByText("In VRAM")).toBeTruthy();
+      expect(screen.getByText("5.2 GB")).toBeTruthy();
+      expect(screen.getByRole("button", { name: /Unload/i })).toBeTruthy();
+    });
+
+    // Click Unload
+    const unloadBtn = screen.getByRole("button", { name: /Unload/i });
+    await user.click(unloadBtn);
+
+    expect(window.memex?.ollama.unloadModel).toHaveBeenCalledWith("qwen3:8b");
+  });
+
+  // D1b acceptance: "with Ollama running and the agent runtime stopped, the
+  // picker still lists pulled models" (plan-09-24-2026.md). `apiFetch` rejects for
+  // every URL in this file, so these tests are that machine state — and the list
+  // they assert on can only have come from the engine bridge.
+  it("lists the engine's pulled models with the agent runtime unreachable", async () => {
+    const models = vi.fn(async () => [
+      engineRow(OLLAMA, "qwen3:14b", { sizeBytes: 9e9 }),
+      engineRow(OLLAMA, "nomic-embed-text:latest", { sizeBytes: 2.78e8 }),
+    ]);
+    useLocalEngines(models);
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    // The trigger only exists once the access check has resolved.
+    await user.click(await screen.findByRole("button", { name: /qwen3 8b/i }));
+
+    await waitFor(() => expect(screen.getByTitle("qwen3:14b — on Ollama")).toBeTruthy());
+    expect(screen.getByTitle("nomic-embed-text:latest — on Ollama")).toBeTruthy();
+
+    // Not merely "unbroken by" the dead runtime — never consulted. Had the list
+    // still come from it, `apiFetch` rejects and an error row replaces both models.
+    //
+    // D7 changed what that sentence is about. The picker now *also* asks the runtime,
+    // for what a connected provider key offers, so the claim that matters is the one
+    // underneath: a stopped orchestrator may not empty or corrupt the lane list. The
+    // read happened, added nothing, and left the engine claim closed — the trigger's
+    // "not offered" chip is only ever rendered on a `loaded` catalogue.
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/Fetch Error|Unrecognized API response|Error 5/)).toBeNull();
+    expect(models).toHaveBeenCalledWith("ollama");
+    expect(document.querySelector("[data-catalogue='absent']")).not.toBeNull();
+  });
+
+  it("selects an engine row without qualifying the model on the wire", async () => {
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b", { sizeBytes: 9e9 })]);
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 8b/i }));
+    await waitFor(() => expect(screen.getByTitle("qwen3:14b — on Ollama")).toBeTruthy());
+    await user.click(screen.getByTitle("qwen3:14b — on Ollama"));
+
+    // D1c is what carries the engine; until then a selection must send the bare
+    // model name exactly as the runtime-backed list did.
+    expect(useStore.getState().selectedModel).toBe("qwen3:14b");
+    expect(window.memex?.config.save).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultModel: "qwen3:14b" }),
+    );
+  });
+
+  it("shows both engines at once, each row labelled and a shared tag kept twice", async () => {
+    useLocalEngines(
+      async (engineId: string) => engineId === LLAMA.id
+        ? [engineRow(LLAMA, "qwen3-coder:30b", { resident: true })]
+        : [engineRow(OLLAMA, "qwen3:14b", { sizeBytes: 9e9 }), engineRow(OLLAMA, "qwen3-coder:30b", { sizeBytes: 1.8e10 })],
+      [OLLAMA, LLAMA],
+    );
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 8b/i }));
+
+    // The lane reuses Ollama's own GGUF, so the same name legitimately exists on
+    // two engines: both are offered, distinguished by their engine.
+    await waitFor(() => expect(screen.getAllByTitle(/qwen3-coder:30b/)).toHaveLength(2));
+    expect(screen.getByTitle("qwen3-coder:30b — on Ollama")).toBeTruthy();
+    expect(screen.getByTitle("qwen3-coder:30b — on llama.cpp")).toBeTruthy();
+    expect(screen.getAllByText("Ollama").length).toBe(2);
+    expect(screen.getByText("llama.cpp")).toBeTruthy();
+  });
+
+  it("keeps an external provider's own model list, which no local engine can answer", async () => {
+    // The shared bridge is already providerType "external"; what must NOT happen
+    // is the picker inventing local Ollama rows for a third-party API profile.
+    const rows = [engineRow(OLLAMA, "qwen3:14b")];
+    window.memex!.engines = {
+      list: async () => [OLLAMA],
+      models: async () => rows,
+      modelsFor: async () => rows,
+      capabilities: async () => SILENT,
+    };
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 8b/i }));
+
+    await waitFor(() => expect(apiFetch).toHaveBeenCalled());
+    expect(screen.queryByTitle("qwen3:14b — on Ollama")).toBeNull();
+  });
+
+  // D2's entitlement change, both directions. Whether the picker *exists* on an
+  // internal profile used to hinge on the same answer either way, so a stopped
+  // orchestrator hid a control that only ever touches the user's own engine.
+  it("lists the engine's models for an internal profile whose runtime never answered", async () => {
+    // Rejection is "nothing answered": `getMyPermissions` throws for a connection
+    // that failed as well as for a runtime that answered without a readable policy.
+    // Neither is a deny, and only a deny may hide the picker.
+    getMyPermissions.mockRejectedValue(new TypeError("fetch failed"));
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b")]);
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 8b/i }));
+
+    await waitFor(() => expect(screen.getByTitle("qwen3:14b — on Ollama")).toBeTruthy());
+    expect(screen.queryByText("Memex default")).toBeNull();
+  });
+
+  it("stays hidden when the runtime answered and withheld model_selection", async () => {
+    const models = vi.fn(async () => [engineRow(OLLAMA, "qwen3:14b")]);
+    useLocalEngines(models);
+    getMyPermissions.mockResolvedValue({ features: { model_selection: false } });
+
+    render(<ModelPickerPopover />);
+
+    // An explicit false is a decision, not an outage: the picker stays closed and the
+    // engine is never even asked — failing open here would be the same bug wearing
+    // the other direction.
+    await waitFor(() => expect(screen.getByText("Memex default")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /qwen3 8b/i })).toBeNull();
+    expect(models).not.toHaveBeenCalled();
+  });
+
+  it("follows routing.default and names the slot the model came from", async () => {
+    // The profile's own legacy default and the routing table disagree on purpose:
+    // once the file declares a route, the file decides.
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b"), engineRow(OLLAMA, "qwen2.5:7b")]);
+    useRouting({
+      ...OLLAMA_ONLY("qwen2.5:7b"),
+      routing: { default: { engine: "ollama", model: "qwen2.5:7b" }, code: { engine: "ollama", model: "qwen3:14b" } },
+    });
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    const trigger = await screen.findByRole("button", { name: /qwen2\.5 7b/i });
+    expect(useStore.getState().selectedModel).toBe("qwen2.5:7b");
+
+    await user.click(trigger);
+    // The substitution has to be visible, not just correct: a model that arrived
+    // through the table should say which slot sent it, and on what engine.
+    await waitFor(() => expect(screen.getByText('routed from routing.default on Ollama')).toBeTruthy());
+    expect(trigger.title).toContain("routed from routing.default");
+  });
+
+  /** A routing stub that records what the picker tried to write and answers with it,
+   * so a later render can be seeded with the result — a restart, not a re-assert. */
+  function captureRouting(initial: RoutingConfig) {
+    const written: RoutingConfig[] = [];
+    let current = initial;
+    window.memex!.routing = {
+      get:      async () => ({ routing: current, errors: [] }),
+      set:      async (next: unknown) => { written.push(next as RoutingConfig); current = next as RoutingConfig; return { ok: true, routing: current, issues: [] }; },
+      validate: async () => [],
+      runMap:   async () => ({}),
+    };
+    return { written, current: () => current };
+  }
+
+  it("writes a pick into routing.default, so the next launch still means it", async () => {
+    // The picker follows routing.default on load. If a click only reaches the profile's
+    // legacy defaultModel, the table re-asserts on the next start and the choice quietly
+    // reverts — the silent substitution this whole layer exists to make impossible.
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b"), engineRow(OLLAMA, "qwen2.5:7b")]);
+    const routing = captureRouting(OLLAMA_ONLY("qwen2.5:7b"));
+
+    const user = userEvent.setup();
+    const view = render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen2\.5 7b/i }));
+    await user.click(await screen.findByTitle("qwen3:14b — on Ollama"));
+
+    await waitFor(() => expect(routing.written.length).toBe(1));
+    expect(routing.written[0].routing.default).toEqual({ engine: "ollama", model: "qwen3:14b" });
+    expect(routing.written[0].engines).toEqual(OLLAMA_ONLY("qwen2.5:7b").engines);
+
+    view.unmount();
+    useStore.setState({ selectedModel: "qwen2.5:7b" });
+    render(<ModelPickerPopover />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /qwen3 14b/i })).toBeTruthy());
+  });
+
+  it("moves the pin in single style, because every slot resolves to it anyway", async () => {
+    // In "single" the table is flattened onto the engine's pinned model, so writing
+    // only routing.default would be a note about a choice that never takes effect.
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b"), engineRow(OLLAMA, "qwen2.5:7b")]);
+    const routing = captureRouting({
+      runStyle: "single",
+      engines: { ollama: { kind: "ollama", baseUrl: OLLAMA.baseUrl, label: "Ollama", pinnedModel: "qwen2.5:7b" } },
+      routing: { default: { engine: "ollama", model: "qwen2.5:7b" } },
+    });
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen2\.5 7b/i }));
+    await user.click(await screen.findByTitle("qwen3:14b — on Ollama"));
+
+    await waitFor(() => expect(routing.written.length).toBe(1));
+    expect(routing.written[0].engines.ollama.pinnedModel).toBe("qwen3:14b");
+    expect(routing.written[0].routing.default.model).toBe("qwen3:14b");
+  });
+
+  it("says so when the table refuses the write, instead of looking accepted", async () => {
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b")]);
+    window.memex!.routing = {
+      get:      async () => ({ routing: OLLAMA_ONLY("qwen2.5:7b"), errors: [] }),
+      set:      async () => ({ ok: false, routing: OLLAMA_ONLY("qwen2.5:7b"), issues: [{ path: "routing.default.engine", message: "names no engine" }] }),
+      validate: async () => [],
+      runMap:   async () => ({}),
+    };
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen2\.5 7b/i }));
+    await user.click(await screen.findByTitle("qwen3:14b — on Ollama"));
+
+    await waitFor(() => expect(screen.getByText(/routing\.default\.engine: names no engine/)).toBeTruthy());
+  });
+
+  // D4 — the picker must say what a model cannot do, and must still list it. The
+  // capability arrays below are the ones measured from `POST /api/show` on this
+  // machine (see the header of electron/model-capabilities.ts). The verdict sentences
+  // come from main's module through the component's own bridge call; nothing here
+  // re-implements the matrix.
+  it("marks the embedding-only model with the capability it lacks, and keeps the row listed and clickable", async () => {
+    useLocalEngines(
+      async () => [engineRow(OLLAMA, "qwen3:14b"), engineRow(OLLAMA, "nomic-embed-text:latest")],
+      [OLLAMA],
+      async ({ model }) => reportedAs(
+        model === "nomic-embed-text:latest" ? ["embedding"] : ["completion", "tools", "thinking"],
+        model === "nomic-embed-text:latest" ? 2048 : 40960,
+      ),
+    );
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 8b/i }));
+
+    // Stated, not filtered: the row is there, it names the missing capability, and it
+    // quotes what the engine actually reported.
+    const row = await screen.findByTitle("nomic-embed-text:latest — on Ollama");
+    expect(row.hasAttribute("disabled")).toBe(false);
+    await waitFor(() => expect(screen.getByText(/needs completion/)).toBeTruthy());
+    expect(screen.getByText(/reports embedding/)).toBeTruthy();
+    // Exactly one row is marked: the capable model beside it carries no such line.
+    expect(document.querySelectorAll("[data-capability='missing']")).toHaveLength(1);
+
+    // And it is still assignable — the app's authority here is the sentence, not the gate.
+    await user.click(row);
+    expect(useStore.getState().selectedModel).toBe("nomic-embed-text:latest");
+  });
+
+  it("says it cannot verify, rather than assuming parity, when the engine stays silent", async () => {
+    useLocalEngines(
+      async () => [engineRow(OLLAMA, "qwen3:14b")],
+      [OLLAMA],
+      async () => SILENT,
+    );
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 8b/i }));
+
+    await waitFor(() => expect(screen.getByText(/cannot verify/)).toBeTruthy());
+    // "cannot verify" is not a refusal: nothing on the row claims the model is unusable.
+    expect(screen.queryByText(/needs completion/)).toBeNull();
+    expect(document.querySelectorAll("[data-capability='missing']")).toHaveLength(0);
+    expect(document.querySelectorAll("[data-capability='unknown']")).toHaveLength(1);
+  });
+
+  it("marks nothing when the preload predates the matrix, which is not the same as everything passing", async () => {
+    const bridge = window.memex!;
+    bridge.config.getActive = vi.fn().mockResolvedValue(LOCAL_PROFILE);
+    bridge.engines = {
+      list: async () => [OLLAMA],
+      models: async () => [engineRow(OLLAMA, "qwen3:14b")],
+      modelsFor: async () => [engineRow(OLLAMA, "qwen3:14b")],
+    } as unknown as typeof bridge.engines;
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 8b/i }));
+
+    await waitFor(() => expect(screen.getByTitle("qwen3:14b — on Ollama")).toBeTruthy());
+    expect(document.querySelectorAll("[data-capability]").length).toBe(0);
+  });
+
+  // D4's outstanding item: the trigger has to be able to say "no engine offers this
+  // model", and the reason it could not say it before is that it could not tell an empty
+  // catalogue from an unread one. `catalogueState` is the discriminant, so the tests
+  // below are all about the states where the sentence is *not* allowed.
+  const deferred = <T,>() => {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((res) => { resolve = res; });
+    return { promise, resolve };
+  };
+  const absentChip = () => document.querySelector("[data-catalogue='absent']");
+
+  it("says it only once the catalogue is closed, and goes quiet again while a re-read is in flight", async () => {
+    const lane = deferred<EngineModel[]>();
+    useLocalEngines(async () => lane.promise);
+    useRouting(OLLAMA_ONLY("qwen3:14b"));
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    const trigger = await screen.findByRole("button", { name: /qwen3 14b/i });
+
+    // idle: the popover has never been opened, so nobody has asked any engine anything.
+    expect(absentChip()).toBeNull();
+
+    await user.click(trigger);
+    // loading: the list is empty here too, and that is precisely the trap — an
+    // assertion read off `models.length` would be a lie in this state.
+    expect(await screen.findByText("No models available")).toBeTruthy();
+    expect(absentChip()).toBeNull();
+
+    lane.resolve([engineRow(OLLAMA, "nomic-embed-text:latest")]);
+    await waitFor(() => expect(screen.getByTitle("nomic-embed-text:latest — on Ollama")).toBeTruthy());
+    // loaded, and the selected model genuinely is in no lane's list. The sentence names
+    // the slot the table will actually resolve, in the vocabulary config.json uses.
+    await waitFor(() => expect(absentChip()).not.toBeNull());
+    const note = document.querySelector("[data-catalogue='absent-note']");
+    expect(note?.textContent).toContain("No engine lane reports qwen3:14b");
+    expect(note?.textContent).toContain("routing.default resolves to qwen3:14b on Ollama");
+    expect(trigger.title).toContain("No engine lane reports qwen3:14b");
+
+    // Re-open against a lane that is now slow. The component still holds last time's
+    // rows, so only the state can make the claim go quiet — which is what it is for.
+    const slow = deferred<EngineModel[]>();
+    useLocalEngines(async () => slow.promise);
+    await user.click(trigger);
+    await user.click(trigger);
+    await waitFor(() => expect(screen.getAllByTitle("nomic-embed-text:latest — on Ollama").length).toBeGreaterThan(0));
+    expect(absentChip()).toBeNull();
+
+    slow.resolve([engineRow(OLLAMA, "nomic-embed-text:latest")]);
+    await waitFor(() => expect(absentChip()).not.toBeNull());
+  });
+
+  it("says nothing about a model it has just listed", async () => {
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b"), engineRow(OLLAMA, "nomic-embed-text:latest")]);
+    useRouting(OLLAMA_ONLY("qwen3:14b"));
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 14b/i }));
+
+    await waitFor(() => expect(screen.getByTitle("qwen3:14b — on Ollama")).toBeTruthy());
+    expect(absentChip()).toBeNull();
+    expect(document.querySelector("[data-catalogue='absent-note']")).toBeNull();
+  });
+
+  it("matches the tag the way the VRAM rows do, so :latest is not an absence", async () => {
+    // `qwen3:14b` and `qwen3:14b:latest` are the same model on this daemon. Calling the
+    // one the user selected absent because the other is spelled longer would be a false
+    // statement of exactly the kind this label is allowed to make.
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b:latest")]);
+    useRouting(OLLAMA_ONLY("qwen3:14b"));
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 14b/i }));
+
+    await waitFor(() => expect(screen.getByTitle("qwen3:14b:latest — on Ollama")).toBeTruthy());
+    expect(absentChip()).toBeNull();
+  });
+
+  it("stays silent when a lane would not answer, because an incomplete list proves nothing", async () => {
+    // Two lanes, one of them refusing: the rows that did come back are real, and the
+    // selected model's absence from them is not — it may be sitting in the lane that
+    // stayed shut.
+    useLocalEngines(async (engineId) => {
+      if (engineId === LLAMA.id) throw new Error("llama-server is not running");
+      return [engineRow(OLLAMA, "qwen3:14b")];
+    }, [OLLAMA, LLAMA]);
+    useRouting(OLLAMA_ONLY("deepseek-r1:32b"));
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /deepseek-r1 32b/i }));
+
+    await waitFor(() => expect(screen.getByTitle("qwen3:14b — on Ollama")).toBeTruthy());
+    expect(absentChip()).toBeNull();
+  });
+
+  it("applies an asserted capability to the row it was written about, and only to that row", async () => {
+    // routing.default asserts `completion` about qwen3:14b because this lane will not
+    // say; the embedder beside it was never asserted about, so it still reads
+    // "cannot verify". One entry, one claim.
+    useLocalEngines(
+      async () => [engineRow(OLLAMA, "qwen3:14b"), engineRow(OLLAMA, "nomic-embed-text:latest")],
+      [OLLAMA],
+      async () => SILENT,
+    );
+    useRouting({
+      ...OLLAMA_ONLY("qwen3:14b"),
+      routing: { default: { engine: "ollama", model: "qwen3:14b", capabilities: ["completion"] } },
+    });
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 14b/i }));
+
+    await waitFor(() => expect(document.querySelectorAll("[data-capability='asserted']")).toHaveLength(1));
+    const line = document.querySelector("[data-capability='asserted']");
+    expect(line?.textContent).toContain("routing.default.capabilities");
+    expect(line?.textContent).toContain("your assertion, not Ollama's answer");
+    // The claim sits on the row it was written about and on no other: the embedder
+    // beside it is still an unknown, because nobody asserted anything about it.
+    const assertedRow = screen.getByTitle("qwen3:14b — on Ollama");
+    const otherRow = screen.getByTitle("nomic-embed-text:latest — on Ollama");
+    expect(assertedRow.querySelector("[data-capability='asserted']")).not.toBeNull();
+    expect(assertedRow.querySelector("[data-capability='unknown']")).toBeNull();
+    expect(otherRow.querySelector("[data-capability='unknown']")).not.toBeNull();
+    expect(otherRow.querySelector("[data-capability='asserted']")).toBeNull();
+    expect(document.querySelectorAll("[data-capability='missing']")).toHaveLength(0);
+  });
+
+  it("stays silent on a provider whose list could not be read, which is not an empty list", async () => {
+    // The shared fixture's external profile with `apiFetch` rejecting for every URL: the
+    // row that appears is an error row, and `models` is as empty as an unasked catalogue.
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 8b/i }));
+
+    await waitFor(() => expect(screen.getByText("Fetch Error: fetch failed")).toBeTruthy());
+    expect(absentChip()).toBeNull();
+    expect(document.querySelector("[data-catalogue='absent-note']")).toBeNull();
+  });
+});
+
+/**
+ * D7's desktop half: the picker has to be able to *reach* a model the user selected on
+ * the Model providers screen, which it could not do while it read only the local lanes.
+ *
+ * The machine state every test below keeps is the one the picker was rewritten to
+ * survive — Ollama up, orchestrator reachable or not — so the gateway read must only
+ * ever add rows. What is asserted is the two ways that could go wrong: the runtime's own
+ * operational list being duplicated into the lanes, and a choice the routing table
+ * cannot express being silently reverted by it on the next load.
+ */
+describe("ModelPickerPopover — gateway models", () => {
+  baseSetup();
+  afterEach(cleanup);
+
+  /** A `/v1/models` answer as the harness writes it: the runtime's own rows tagged
+   * `MarsRL`, a provider row tagged with the provider id. */
+  const modelsPayload = (rows: Record<string, unknown>[]) => ({
+    ok: true, status: 200, json: async () => ({ data: rows }),
+  }) as unknown as Response;
+
+  const GATEWAY_ROW = {
+    id: "meta-llama/llama-3.1-70b-instruct",
+    owned_by: "openrouter",
+    label: "Meta: Llama 3.1 70B Instruct",
+  };
+  const GATEWAY_TITLE = "meta-llama/llama-3.1-70b-instruct — served by your openrouter key, not by an engine lane";
+  const absentChip = () => document.querySelector("[data-catalogue='absent']");
+
+  /** A routing stub that records every write, so "the table was left alone" is an
+   * observation rather than an absence of evidence. */
+  function recordRouting(initial: RoutingConfig) {
+    const written: RoutingConfig[] = [];
+    window.memex!.routing = {
+      get:      async () => ({ routing: initial, errors: [] }),
+      set:      async (next: unknown) => { written.push(next as RoutingConfig); return { ok: true, routing: initial, issues: [] }; },
+      validate: async () => [],
+      runMap:   async () => ({}),
+    };
+    return { written };
+  }
+
+  it("lists what a connected key offers, without duplicating the runtime's own rows", async () => {
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b")]);
+    apiFetch.mockResolvedValue(modelsPayload([
+      { id: "Home-AI-Swarm", owned_by: "MarsRL", label: "Memex default" },
+      { id: "qwen3:14b", owned_by: "MarsRL", label: "qwen3:14b" },
+      GATEWAY_ROW,
+    ]));
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 8b/i }));
+
+    await waitFor(() => expect(screen.getByTitle(GATEWAY_TITLE)).toBeTruthy());
+    // The row says who answers it, and says it as a key rather than as a lane.
+    const chip = screen.getByTitle(GATEWAY_TITLE).querySelector("[data-source='gateway']");
+    expect(chip?.textContent).toBe("openrouter");
+    // `owned_by: MarsRL` is the runtime's own operational catalogue, already covered by
+    // the lanes. Merging it would list qwen3:14b twice as two different machines.
+    expect(screen.getAllByTitle(/qwen3:14b — on Ollama/)).toHaveLength(1);
+    expect(screen.queryAllByTitle("qwen3:14b — served by your MarsRL key, not by an engine lane")).toHaveLength(0);
+  });
+
+  it("records a gateway pick on the profile and leaves the routing table alone", async () => {
+    // `routing.<slot>.engine` must name a configured lane, so the table has no way to
+    // hold this choice. Writing the local engine beside it would claim Ollama serves a
+    // model it has never heard of — and in single style the pin would name it too.
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b")]);
+    const routing = recordRouting(OLLAMA_ONLY("qwen3:14b"));
+    apiFetch.mockResolvedValue(modelsPayload([GATEWAY_ROW]));
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    // The table's `default` names qwen3:14b, so that is what the trigger carries here —
+    // the point of the test is that a gateway pick does not go into that field.
+    await user.click(await screen.findByRole("button", { name: /qwen3 14b/i }));
+    await user.click(await screen.findByTitle(GATEWAY_TITLE));
+
+    await waitFor(() => expect(useStore.getState().selectedModel).toBe("meta-llama/llama-3.1-70b-instruct"));
+    expect(window.memex!.config.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultModel: "meta-llama/llama-3.1-70b-instruct",
+        defaultModelSource: "gateway",
+      }),
+    );
+    expect(routing.written).toHaveLength(0);
+  });
+
+  it("keeps a gateway pick across a restart, which the routing table would otherwise undo", async () => {
+    // The regression this whole field exists for: `routing.default` still names the last
+    // engine model, and the table outranked the profile. Without the provenance the
+    // gateway choice reverts on the next launch with nothing said about it.
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b")]);
+    useRouting(OLLAMA_ONLY("qwen3:14b"));
+    window.memex!.config.getActive = vi.fn().mockResolvedValue({
+      ...LOCAL_PROFILE,
+      defaultModel: "meta-llama/llama-3.1-70b-instruct",
+      defaultModelSource: "gateway",
+    });
+    apiFetch.mockResolvedValue(modelsPayload([GATEWAY_ROW]));
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    const trigger = await screen.findByRole("button", { name: /meta-llama\/llama-3\.1-70b-instruct/i });
+    expect(useStore.getState().selectedModel).toBe("meta-llama/llama-3.1-70b-instruct");
+
+    await user.click(trigger);
+    // Both facts at once: who serves this one, and what the table still resolves for
+    // everything it can express.
+    await waitFor(() => expect(screen.getByText(/served by your openrouter key/)).toBeTruthy());
+    expect(screen.getByText(/served by your openrouter key/).textContent)
+      .toContain("routing.default still names qwen3:14b");
+    expect(screen.queryByText(/^routed from routing\.default on Ollama$/)).toBeNull();
+  });
+
+  it("marks a gateway id an engine lane already answers, and keeps the row", async () => {
+    // The runtime resolves a registry entry before it consults a provider, so this row
+    // cannot win the turn. Hidden, the gap is unexplainable; unmarked, picking it looks
+    // like a choice.
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b")]);
+    apiFetch.mockResolvedValue(modelsPayload([
+      { id: "qwen3:14b", owned_by: "nvidia", label: "Qwen3 14B (NIM)" },
+    ]));
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    await user.click(await screen.findByRole("button", { name: /qwen3 8b/i }));
+
+    const row = await screen.findByTitle("qwen3:14b — served by your nvidia key, not by an engine lane");
+    expect(row.textContent).toContain("answered elsewhere");
+    expect(row.querySelector("[data-source='gateway']")).not.toBeNull();
+    // The lane's own row is untouched — the mark sits on the row that cannot win.
+    expect(screen.getByTitle("qwen3:14b — on Ollama").textContent).not.toContain("answered elsewhere");
+  });
+
+  it("says nothing about a gateway pick it could not check", async () => {
+    // Engines answered, the gateway did not: the pick is absent from `models` because the
+    // list that would carry it never arrived, not because nothing offers it.
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b")]);
+    useRouting(OLLAMA_ONLY("qwen3:14b"));
+    window.memex!.config.getActive = vi.fn().mockResolvedValue({
+      ...LOCAL_PROFILE,
+      defaultModel: "meta-llama/llama-3.1-70b-instruct",
+      defaultModelSource: "gateway",
+    });
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    const trigger = await screen.findByRole("button", { name: /meta-llama\/llama-3\.1-70b-instruct/i });
+    await user.click(trigger);
+
+    await waitFor(() => expect(screen.getByTitle("qwen3:14b — on Ollama")).toBeTruthy());
+    expect(absentChip()).toBeNull();
+    expect(trigger.title).not.toContain("not offered");
+  });
+
+  it("offers no VRAM preload for a model that does not run on a lane", async () => {
+    useLocalEngines(async () => [engineRow(OLLAMA, "qwen3:14b")]);
+    window.memex!.config.getActive = vi.fn().mockResolvedValue({
+      ...LOCAL_PROFILE,
+      defaultModel: "meta-llama/llama-3.1-70b-instruct",
+      defaultModelSource: "gateway",
+    });
+    apiFetch.mockResolvedValue(modelsPayload([GATEWAY_ROW]));
+    window.memex!.ollama!.getLoadedModels = vi.fn().mockResolvedValue([]);
+
+    const user = userEvent.setup();
+    render(<ModelPickerPopover />);
+    const trigger = await screen.findByRole("button", { name: /meta-llama\/llama-3\.1-70b-instruct/i });
+    await user.click(trigger);
+
+    await waitFor(() => expect(screen.getByText(/nothing here to load into VRAM/i)).toBeTruthy());
+    expect(screen.queryByRole("button", { name: /pre-load/i })).toBeNull();
+  });
+});

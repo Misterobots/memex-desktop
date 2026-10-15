@@ -3,6 +3,8 @@ import {
   listTriggers, createTrigger, pauseTrigger, resumeTrigger, deleteTrigger,
   type Trigger, type TriggerType,
 } from "../../lib/trigger-api";
+import { useStore } from "../../lib/store";
+import { getAgentRuntime } from "../../lib/runtime-urls";
 
 /**
  * Settings section for the Memex runtime trigger scheduler (agents/trigger_scheduler.py).
@@ -10,6 +12,16 @@ import {
  * and survives a backend restart. See trigger_scheduler.py for why that's the only
  * trigger kind the REST API can create at all (a raw Python handler isn't JSON-able).
  */
+
+/**
+ * Which runtime owns this schedule. Placement is a fact about who starts that
+ * process — today, never this app — so name the host rather than implying the
+ * desktop keeps the clock. An unparseable address (same-origin in a browser build)
+ * falls back to a wording that is still true, never to a guessed hostname.
+ */
+function runtimeOwner(): string {
+  try { return new URL(getAgentRuntime()).host; } catch { return "the Memex runtime"; }
+}
 
 function fmtTimestamp(ts?: number | null): string {
   if (!ts) return "—";
@@ -46,15 +58,17 @@ function NewTriggerForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
   const [swarmMode, setSwarmMode] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const selectedModel = useStore((s) => s.selectedModel);
 
   const handleCreate = async () => {
     if (!name.trim() || !prompt.trim()) { setError("Name and prompt are required"); return; }
     setError("");
     setSaving(true);
+    const task_config = { prompt, model: selectedModel, swarm_mode: swarmMode, research_mode: swarmMode };
     const body =
-      type === "cron"     ? { name, trigger_type: type, task_config: { prompt, swarm_mode: swarmMode }, cron: { hour: +hour, minute: +minute } } :
-      type === "interval" ? { name, trigger_type: type, task_config: { prompt, swarm_mode: swarmMode }, interval_seconds: +intervalSeconds } :
-                             { name, trigger_type: type, task_config: { prompt, swarm_mode: swarmMode }, delay_seconds: +delaySeconds };
+      type === "cron"     ? { name, trigger_type: type, task_config, cron: { hour: +hour, minute: +minute } } :
+      type === "interval" ? { name, trigger_type: type, task_config, interval_seconds: +intervalSeconds } :
+                             { name, trigger_type: type, task_config, delay_seconds: +delaySeconds };
     const result = await createTrigger(body);
     setSaving(false);
     if (result.trigger) {
@@ -75,6 +89,15 @@ function NewTriggerForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
         rows={2}
         className="w-full px-3 py-1.5 rounded-lg bg-surface2 border border-border/60 text-sm text-text resize-none focus:outline-none focus:ring-1 focus:ring-accent/60"
       />
+      {/* D9(e): a schedule fires on the runtime's clock, with this app possibly closed and
+          some other thread focused if it is open. The model is therefore captured at
+          creation — which is only honest if it is visible at creation, or a task runs for
+          months on a model nobody chose knowingly. */}
+      <div className="text-[11px] text-muted">
+        Runs on <span className="font-mono text-text/80">{selectedModel || "(none selected)"}</span> —
+        the model this conversation is using, pinned when the task is created. Changing it in the
+        picker afterwards will not move this task.
+      </div>
       <div className="flex gap-2">
         {(["cron", "interval", "once"] as const).map((t) => (
           <button key={t} onClick={() => setType(t)}
@@ -158,8 +181,9 @@ export function ScheduledTasks() {
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted">
-        Runs a saved prompt on a schedule via the Memex runtime trigger scheduler. Restarting the
-        backend does not lose these — they're restored from disk on startup.
+        Runs a saved prompt on a schedule via {runtimeOwner()}'s trigger scheduler. Restarting the
+        backend does not lose these — they're restored from disk on startup. They fire on that
+        runtime's own clock, whether or not this desktop is open.
       </p>
 
       {loading && <p className="text-xs text-muted">Loading…</p>}
@@ -193,6 +217,15 @@ export function ScheduledTasks() {
               {t.task_config?.prompt && (
                 <div className="text-xs text-text/60 truncate mt-0.5">"{t.task_config.prompt}"</div>
               )}
+              {/* D9(e): the model is pinned in task_config at creation, so it is part of
+                  what the task *is* — and a task created before this carried none, which
+                  means the runtime decides at fire time and the answer can change under
+                  the user. Both states are shown rather than left blank. */}
+              <div className="text-[10px] text-muted mt-0.5 font-mono truncate">
+                {t.task_config?.model
+                  ? t.task_config.model
+                  : "no model recorded — the runtime's default answers"}
+              </div>
               <div className="text-[10px] text-muted mt-0.5">
                 Fired {t.fire_count}× · last {fmtTimestamp(t.last_fired)}
                 {t.last_error && <span className="text-red-400"> · error: {t.last_error.slice(0, 60)}</span>}

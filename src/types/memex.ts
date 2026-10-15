@@ -1,4 +1,4 @@
-export type AppTab = "chat" | "dev" | "research" | "goals" | "design" | "art" | "memory" | "eval" | "pulls" | "schedules" | "skills" | "sites" | "admin" | "settings";
+export type AppTab = "chat" | "dev" | "research" | "goals" | "design" | "art" | "memory" | "eval" | "pulls" | "schedules" | "skills" | "sites" | "admin" | "settings" | "loadout";
 /** The top-level product workspace, independent from the selected destination. */
 export type AppShellMode = "chat" | "code";
 
@@ -68,6 +68,7 @@ export interface WorkspaceRunPreferences {
 /** Wire/storage identifiers remain legacy-compatible; use MODE_LABELS for UI copy. */
 export type MemexMode =
   | "chat"
+  | "code"
   | "swarm"
   | "research"
   | "design"
@@ -76,9 +77,18 @@ export type MemexMode =
   | "gauntlet"
   | "workshop";
 
+/**
+ * The runtime routes on these flags alone — the desktop never sends a mode
+ * string, so this table is the whole contract between the two.
+ */
 export const MODE_FLAGS: Record<MemexMode, Record<string, boolean>> = {
   chat:     {},
-  swarm:    { swarm_mode: true },
+  code:     { dev_mode: true },
+  // Collective is perspective research: the coordinator only enters Perspective
+  // Research Mode when it is orchestrating (swarm_mode) *and* asked to research
+  // (research_mode). Either flag on its own yields a build loop or a single
+  // librarian pass, neither of which is a Collective.
+  swarm:    { swarm_mode: true, research_mode: true },
   research: { research_mode: true },
   design:   { design_mode: true },
   think:    { ultrathink_mode: true },
@@ -89,6 +99,7 @@ export const MODE_FLAGS: Record<MemexMode, Record<string, boolean>> = {
 
 export const MODE_LABELS: Record<MemexMode, string> = {
   chat:     "Chat",
+  code:     "Code",
   swarm:    "Collective",
   research: "Research",
   design:   "Design",
@@ -203,12 +214,18 @@ export interface Session {
   updatedAt?: number;   // last activity — used for cross-device sync ordering
   messages: ChatMessage[];
   displayMode?: ChatDisplayMode;
+  pinned?: boolean;
+  /** D9 — the model chosen *for this conversation*. Absent means "never chosen here",
+   * which resolves to the active profile's default; it is not the same state as a
+   * session someone set back to a different model. A thread you put on qwen3:14b
+   * should not move because another thread used something else. */
+  model?: string;
 }
 
 export interface ConnectionStatus {
-  agentRuntime: "connected" | "disconnected" | "checking" | "sign_in_required";
-  mempalace:    "connected" | "disconnected" | "checking" | "sign_in_required";
-  ollama:       "connected" | "disconnected" | "checking" | "sign_in_required";
+  agentRuntime: "connected" | "disconnected" | "checking";
+  mempalace:    "connected" | "disconnected" | "checking";
+  ollama:       "connected" | "disconnected" | "checking";
 }
 
 export interface DirEntry {

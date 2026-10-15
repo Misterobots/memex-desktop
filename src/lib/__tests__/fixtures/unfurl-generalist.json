@@ -1,0 +1,178 @@
+{
+  "format": "agent-build-sheet/1",
+  "app": "Agent Build Planner",
+  "dataVersion": 76,
+  "exported": "2026-10-01T23:41:29.683Z",
+  "profile": {
+    "id": "generalist",
+    "name": "The Generalist",
+    "purpose": "All-Round Agent",
+    "priorities": "Balanced reasoning, agency, and compatibility keep it useful across many tasks; speed keeps responses snappy.",
+    "deprioritizes": "Deep specialization and niche expertise matter less than broad everyday usefulness.",
+    "focus": {
+      "reasoning": 1.2,
+      "agency": 1,
+      "compatibility": 1.2,
+      "speed": 0.8,
+      "writing": 0.8
+    }
+  },
+  "items": [
+    {
+      "slot": "weapon",
+      "slotName": "Core Model",
+      "category": "MODEL",
+      "repo": "deepseek-ai/DeepSeek-V3",
+      "name": "Deepseek V3",
+      "url": "https://github.com/deepseek-ai/DeepSeek-V3",
+      "why": "captured-fixture reason"
+    },
+    {
+      "slot": "amulet",
+      "slotName": "Personality",
+      "category": "PLUGIN",
+      "repo": "DietrichGebert/ponytail",
+      "name": "Ponytail",
+      "url": "https://github.com/DietrichGebert/ponytail",
+      "why": "captured-fixture reason"
+    },
+    {
+      "slot": "helm",
+      "slotName": "Memory",
+      "category": "PLUGIN",
+      "repo": "thedotmack/claude-mem",
+      "name": "Claude Mem",
+      "url": "https://github.com/thedotmack/claude-mem",
+      "why": "captured-fixture reason"
+    },
+    {
+      "slot": "knowledge",
+      "slotName": "Knowledge Base",
+      "category": "PLUGIN",
+      "repo": "ayghri/i-have-adhd",
+      "name": "I Have Adhd",
+      "url": "https://github.com/ayghri/i-have-adhd",
+      "why": "captured-fixture reason"
+    },
+    {
+      "slot": "chest",
+      "slotName": "Core Skill 1",
+      "category": "SKILL",
+      "repo": "multica-ai/andrej-karpathy-skills",
+      "name": "Andrej Karpathy Skills",
+      "url": "https://github.com/multica-ai/andrej-karpathy-skills",
+      "why": "captured-fixture reason"
+    },
+    {
+      "slot": "ring1",
+      "slotName": "Core Skill 2",
+      "category": "SKILL",
+      "repo": "anthropics/skills",
+      "name": "Skills",
+      "url": "https://github.com/anthropics/skills",
+      "why": "captured-fixture reason"
+    },
+    {
+      "slot": "gloves",
+      "slotName": "Core Tool 1",
+      "category": "TOOL",
+      "repo": "punkpeye/awesome-mcp-servers",
+      "name": "Awesome Mcp Servers",
+      "url": "https://github.com/punkpeye/awesome-mcp-servers",
+      "why": "captured-fixture reason"
+    },
+    {
+      "slot": "ring2",
+      "slotName": "Core Tool 2",
+      "category": "TOOL",
+      "repo": "headroomlabs-ai/headroom",
+      "name": "Headroom",
+      "url": "https://github.com/headroomlabs-ai/headroom",
+      "why": "captured-fixture reason"
+    },
+    {
+      "slot": "boots",
+      "slotName": "Autonomy",
+      "category": "PLUGIN",
+      "repo": "wshobson/agents",
+      "name": "Agents",
+      "url": "https://github.com/wshobson/agents",
+      "why": "captured-fixture reason"
+    },
+    {
+      "slot": "integrations",
+      "slotName": "Integrations",
+      "category": "PLUGIN",
+      "repo": "feder-cr/invisible_playwright_mcp",
+      "name": "Invisible Playwright Mcp",
+      "url": "https://github.com/feder-cr/invisible_playwright_mcp",
+      "why": "captured-fixture reason"
+    },
+    {
+      "slot": "defense",
+      "slotName": "Defense",
+      "category": "PLUGIN",
+      "repo": "kyegomez/OpenMythos",
+      "name": "Openmythos",
+      "url": "https://github.com/kyegomez/OpenMythos",
+      "why": "captured-fixture reason"
+    },
+    {
+      "slot": "belt",
+      "slotName": "Utility Belt",
+      "category": "MODEL",
+      "repo": "deepseek-ai/DeepSeek-R1",
+      "name": "Deepseek R1",
+      "url": "https://github.com/deepseek-ai/DeepSeek-R1"
+    },
+    {
+      "slot": "belt",
+      "slotName": "Utility Belt",
+      "category": "PLUGIN",
+      "repo": "revfactory/harness",
+      "name": "Harness",
+      "url": "https://github.com/revfactory/harness"
+    }
+  ],
+  "gear": {
+    "weapon": "deepseek-ai/DeepSeek-V3",
+    "amulet": "DietrichGebert/ponytail",
+    "helm": "thedotmack/claude-mem",
+    "knowledge": "ayghri/i-have-adhd",
+    "chest": "multica-ai/andrej-karpathy-skills",
+    "ring1": "anthropics/skills",
+    "gloves": "punkpeye/awesome-mcp-servers",
+    "ring2": "headroomlabs-ai/headroom",
+    "boots": "wshobson/agents",
+    "integrations": "feder-cr/invisible_playwright_mcp",
+    "defense": "kyegomez/OpenMythos"
+  },
+  "belt": [
+    "deepseek-ai/DeepSeek-R1",
+    "revfactory/harness"
+  ],
+  "stats": {
+    "core": {
+      "reasoning": 30,
+      "agency": 20,
+      "memory": 18,
+      "speed": 22,
+      "reach": 25
+    },
+    "sec": {
+      "longterm": 9,
+      "research": 11,
+      "writing": 7,
+      "specialty": 8,
+      "compatibility": 12
+    }
+  },
+  "memex": {
+    "harness": "Memex Desktop (Electron) + agent_runtime",
+    "config": "%APPDATA%/memex-desktop/config.json",
+    "defaultModel": "deepseek-ai/DeepSeek-V3",
+    "defaultModelSource": "gateway",
+    "mode": "chat",
+    "modeFlags": {}
+  }
+}

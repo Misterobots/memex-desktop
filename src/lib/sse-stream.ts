@@ -47,8 +47,14 @@ export interface StreamOptions {
   gauntletBar?: string;
   /** Desktop-owned continuation contract; the runtime may use it but does not own it. */
   gauntletHandoff?: { id: string; role: string; phase: string; goal: string; qualityBar: string; effort: Record<string, string>; clarifications?: string[] };
-  /** Ollama model id to route to (e.g. "qwen3-coder:30b"). Defaults to "swarm". */
+  /** Ollama model id to route to (e.g. "qwen3-coder:30b"). A turn with none
+   * resolved is refused by `streamChat`, never sent with a placeholder (plan D3c). */
   model?: string;
+  /** D1c — roles the user assigned in this app's routing table, as role -> model
+   * id (`{ coder: "qwen3-coder:30b", coordinator: "qwen3.6:27b" }`). Sent as
+   * `role_models` only when non-empty: an absent role is left to the runtime's own
+   * sources rather than reported on the wire as a choice nobody made. */
+  roleModels?: Record<string, string>;
   /** Optional backend routing hint (for example, `general` for Routines). */
   skill?: string;
   /** Enable owner-scoped MemPalace recall and background extraction. */
@@ -59,6 +65,8 @@ export interface StreamOptions {
   alreadySteered?: boolean;
   /** Resume a server-side DevHarness checkpoint after explicit tool replay. */
   devResume?: boolean;
+  currentProjectId?: string;
+  activeFile?: string;
   /** If provided, a RunRecord will be opened and closed around the stream. */
   runMeta?: { profile: string };
   /** Called as soon as the run record is created, with its ID. */
@@ -116,9 +124,36 @@ export function normalizeSSEDelta(delta: Record<string, unknown>): SSEEvent | nu
     data: eventType === "message" || eventType === "response" ? undefined : delta,
   };
 }
+/**
+ * D1c — resolve this app's per-role assignments for one turn, from main's stored
+ * routing table. An empty map means "the table named no role", which the runtime
+ * reads as *no per-role choice* and resolves from the pinned model or Team Builder.
+ * So a missing bridge (the web build) or a failed read sends nothing rather than
+ * inventing assignments — the field is only allowed to carry what someone chose.
+ */
+export async function runRoleModels(): Promise<Record<string, string>> {
+  const bridge = desktop();
+  if (!bridge?.routing?.runMap) return {};
+  try {
+    return (await bridge.routing.runMap()) ?? {};
+  } catch {
+    return {};
+  }
+}
+
 export function streamChat(opts: StreamOptions): () => void {
   const controller = new AbortController();
   const bridge     = desktop();
+  // `model` is a model id on the wire, not a mode. The runtime reads this exact field
+  // as the model to bind every swarm role to, so a turn with no resolved selection
+  // must fail loudly rather than arrive as a placeholder the server cannot load
+  // (plan D3c; the old `?? "swarm"` fallback was load-bearing in SteeringCard).
+  const resolvedModel = (opts.model ?? "").trim();
+  if (!resolvedModel) {
+    opts.onError?.(new Error("No model selected. Memex will not send a placeholder model in its place — choose one in the model picker."));
+    opts.onDone?.();
+    return () => {};
+  }
   let runId: string | undefined;
   const recording = Boolean(bridge?.runs && opts.runMeta);
   const pendingRunEvents: Array<{ type: RunEventType; payload: Record<string, unknown> }> = [];
@@ -141,7 +176,7 @@ export function streamChat(opts: StreamOptions): () => void {
     bridge.runs.start({
       sessionId: opts.sessionId ?? "default",
       mode:      opts.mode,
-      model:     opts.model ?? "swarm",
+      model:     resolvedModel,
       profile:   opts.runMeta.profile,
       message:   userMsg.slice(0, 200),
     }).then((r) => {
@@ -153,9 +188,21 @@ export function streamChat(opts: StreamOptions): () => void {
     });
   }
 
+  const enhancedMessages = [...opts.messages];
+  if (opts.currentProjectId) {
+    const ctx = `You are an AI software engineering assistant working on the project located at "${opts.currentProjectId}".
+Inside your execution sandbox, this project directory is mounted directly at "/workspace" as the root.
+All project files, source code, and repositories are located in "/workspace".
+For file operations and shell commands, use paths relative to "/workspace" or starting with "/workspace/". Do not search for "${opts.currentProjectId}" on the Linux filesystem.`;
+    const sysIdx = enhancedMessages.findIndex(m => m.role === "system");
+    if (sysIdx >= 0) enhancedMessages[sysIdx] = { ...enhancedMessages[sysIdx], content: `${enhancedMessages[sysIdx].content}\n\n${ctx}` };
+    else enhancedMessages.unshift({ role: "system", content: ctx });
+  }
+
   const body = JSON.stringify({
-    model: opts.model || "swarm",
-    messages: opts.messages,
+    model: resolvedModel,
+    ...(opts.roleModels && Object.keys(opts.roleModels).length > 0 ? { role_models: opts.roleModels } : {}),
+    messages: enhancedMessages,
     stream: true,
     ...(opts.skill ? { skill: opts.skill } : {}),
     session_id: opts.sessionId ?? "default_session",
@@ -165,6 +212,8 @@ export function streamChat(opts: StreamOptions): () => void {
     already_steered: opts.alreadySteered ?? false,
     dev_resume: opts.devResume ?? false,
     workspace_key: opts.workspaceKey ?? opts.sessionId ?? "default-workspace",
+    ...(opts.currentProjectId ? { current_project_id: opts.currentProjectId } : {}),
+    ...(opts.activeFile ? { active_file: opts.activeFile } : {}),
     ...(opts.style ? { style: opts.style } : {}),
     ...(opts.gauntletBar ? { gauntlet_bar: opts.gauntletBar } : {}),
     ...(opts.gauntletHandoff ? { gauntlet_handoff: opts.gauntletHandoff } : {}),
@@ -285,7 +334,7 @@ export function streamChat(opts: StreamOptions): () => void {
       opts.onDone();
     };
     const cancel = bridge.api.stream(streamId, {
-      url: `${getAgentRuntime()}/v1/chat/completions`,
+      url: (() => { let b = getAgentRuntime().trim().replace(/\/$/, ""); if (b.endsWith("/v1/chat/completions") || b.endsWith("/chat/completions")) return b; if (b.endsWith("/v1")) return `${b}/chat/completions`; return `${b}/v1/chat/completions`; })(),
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
@@ -338,7 +387,7 @@ export function streamChat(opts: StreamOptions): () => void {
     };
   }
 
-  fetch(`${getAgentRuntime()}/v1/chat/completions`, {
+  fetch((() => { let b = getAgentRuntime().trim().replace(/\/$/, ""); if (b.endsWith("/v1/chat/completions") || b.endsWith("/chat/completions")) return b; if (b.endsWith("/v1")) return `${b}/chat/completions`; return `${b}/v1/chat/completions`; })(), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body,

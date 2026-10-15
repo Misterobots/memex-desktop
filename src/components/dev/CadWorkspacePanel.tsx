@@ -146,7 +146,7 @@ export function CadWorkspacePanel({ onOpenSource, onGoToPrint }: {
         <InputBar
           experience="code"
           workspaceKey={FRIDAY_BODY_ROOT}
-          lockMode="swarm"
+          lockMode="code"
           extraFlags={{ dev_mode: true, cad_mode: true }}
           placeholder="Describe the model you want to create, change, inspect, or prepare…"
         />

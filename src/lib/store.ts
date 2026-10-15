@@ -50,7 +50,7 @@ interface AppState {
   shellMode: AppShellMode;
   designSurface: "product" | "sites";
   mode: MemexMode;
-  cwd: string;
+  cwd: string | null;
   sidebarOpen: boolean;
   commandPaletteOpen: boolean;
   /** Global UI chrome scale. Kept separate from generated artifact sizing. */
@@ -62,7 +62,24 @@ interface AppState {
 
   // Connection
   connections: ConnectionStatus;
+  /** D9 — the model for the conversation currently in view, not a global preference.
+   * It is kept in step with `Session.model` for the active session: a pick writes
+   * through to that session, and switching sessions reads back from the one you land
+   * on. A session nobody has chosen for carries no model and inherits the profile
+   * default. Every consumer means "what answers the next turn here", which is why this
+   * stays one field rather than a lookup at ten call sites. */
   selectedModel: string;
+  /** D9 — the active profile's default model, held separately from `selectedModel` so a
+   * new session can be seeded from it. The picker refreshes this on profile load; it is
+   * deliberately not persisted, because the active profile can change between launches
+   * and a stale default is worse than one re-read at startup. */
+  profileDefaultModel: string;
+  setProfileDefaultModel: (model: string) => void;
+
+  // Right Side Panel state
+  sidePanelTabs: Array<{ id: string, type: "editor"|"terminal"|"browser"|"files"|"review"|"chat"|"pioneers"|"worktrees"|"decomp", title: string, path?: string }>;
+  activeSideTabId: string | null;
+  sidePanelOpen: boolean;
 
   // Actions — sessions
   createSession: (experience?: ExperienceId, workspaceKey?: string) => string;
@@ -82,16 +99,25 @@ interface AppState {
   setShellMode: (mode: AppShellMode) => void;
   setDesignSurface: (surface: "product" | "sites") => void;
   setMode: (mode: MemexMode) => void;
-  setCwd: (cwd: string) => void;
+  setCwd: (cwd: string | null) => void;
   toggleSidebar: () => void;
   setUiScale: (scale: number) => void;
   setUiDensity: (density: "comfortable" | "compact") => void;
   setCommandPalette: (open: boolean) => void;
   setStreaming: (sessionId: string, streaming: boolean, stop?: () => void) => void;
+  
+  // Actions - Side Panel
+  setSidePanelTabs: (tabs: Array<{ id: string, type: "editor"|"terminal"|"browser"|"files"|"review"|"chat"|"pioneers"|"worktrees"|"decomp", title: string, path?: string }>) => void;
+  setActiveSideTabId: (id: string | null) => void;
+  setSidePanelOpen: (open: boolean) => void;
 
   // Actions — connection
   setConnections: (c: Partial<ConnectionStatus>) => void;
   setSelectedModel: (model: string) => void;
+  /** D9 — set the model for one specific session, and make it the visible selection
+   * when that session is the one in view. Used by session restore and by anything that
+   * assigns a model to a thread it is not currently on. */
+  setSessionModel: (sessionId: string, model: string) => void;
 
   activeSession: (experience?: ExperienceId, workspaceKey?: string) => Session | null;
 }
@@ -132,6 +158,11 @@ export const useStore = create<AppState>()(
       commandPaletteOpen: false,
       uiScale: 1,
       uiDensity: "comfortable",
+      
+      sidePanelTabs: [],
+      activeSideTabId: null,
+      sidePanelOpen: false,
+
       streamingSessions: {},
       stopStreams: {},
       connections: {
@@ -143,6 +174,7 @@ export const useStore = create<AppState>()(
       // explicit deep-work choice, but should not make every new Code session
       // wait for a large cold GPU load.
       selectedModel: "qwen3:14b",
+      profileDefaultModel: "qwen3:14b",
 
       createSession: (requestedExperience, requestedWorkspaceKey) => {
         const experience = requestedExperience ?? experienceForTab(get().activeTab) ?? "chat";
@@ -158,10 +190,18 @@ export const useStore = create<AppState>()(
           updatedAt: now,
           messages: [],
           displayMode: get().workspaceDisplayModes[sessionScopeKey(experience, workspaceKey)] ?? "normal",
+          // D9: a new thread starts on the profile default, not on whatever the previous
+          // thread happened to be using. That is the owner's rule, and it is the only
+          // reason this field is seeded here rather than left absent.
+          model: get().profileDefaultModel || undefined,
         };
         set((s) => ({
           sessions: [session, ...s.sessions],
           activeSessionIds: { ...s.activeSessionIds, [sessionScopeKey(experience, workspaceKey)]: id },
+          // The new thread is now in view, so the selection shows its model — which is
+          // the profile default. Leaving the old thread's choice on screen would be the
+          // leak this item exists to close, in the other direction.
+          ...(session.model ? { selectedModel: session.model } : {}),
         }));
         return id;
       },
@@ -174,6 +214,10 @@ export const useStore = create<AppState>()(
             ...s.activeSessionIds,
             [sessionScopeKey(experience, session?.workspaceKey)]: id,
           },
+          // D9: landing on a thread lands on its model. A thread nobody chose for
+          // inherits the profile default rather than keeping whatever the thread you
+          // left was using — otherwise the absence of a choice would look like a choice.
+          selectedModel: session?.model || s.profileDefaultModel || s.selectedModel,
         };
       }),
 
@@ -303,8 +347,34 @@ export const useStore = create<AppState>()(
         streamingSessions: { ...s.streamingSessions, [sessionId]: streaming },
         stopStreams: { ...s.stopStreams, [sessionId]: streaming ? stop : undefined },
       })),
+
+      setSidePanelTabs: (tabs) => set({ sidePanelTabs: tabs }),
+      setActiveSideTabId: (id) => set({ activeSideTabId: id, sidePanelOpen: true }),
+      setSidePanelOpen: (open) => set({ sidePanelOpen: open }),
+
       setConnections:    (c)                 => set((s) => ({ connections: { ...s.connections, ...c } })),
-      setSelectedModel:  (model)             => set({ selectedModel: model }),
+      // D9 — a model pick belongs to the conversation in view. Writing it to the global
+      // field alone is what made the choice leak into every other thread, so it is
+      // recorded on the session as well. No session in view (a fresh shell, a tab with
+      // no thread yet) leaves the field as a plain default rather than silently
+      // attaching the choice to something unrelated.
+      setSelectedModel:  (model)             => {
+        const active = get().activeSession();
+        set((s) => ({
+          selectedModel: model,
+          sessions: active
+            ? s.sessions.map((session) => (session.id === active.id ? { ...session, model } : session))
+            : s.sessions,
+        }));
+      },
+      setSessionModel: (sessionId, model) => {
+        const inView = get().activeSession()?.id === sessionId;
+        set((s) => ({
+          sessions: s.sessions.map((session) => (session.id === sessionId ? { ...session, model } : session)),
+          ...(inView ? { selectedModel: model } : {}),
+        }));
+      },
+      setProfileDefaultModel: (model) => set({ profileDefaultModel: model }),
 
       activeSession: (requestedExperience, requestedWorkspaceKey) => {
         const state = get();
